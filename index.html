@@ -15,10 +15,14 @@
     <style>
       html[dir="rtl"] * {
         font-family: 'Cairo', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Tahoma, Arial, sans-serif !important;
+        direction: rtl;
+        text-align: right;
       }
 
       html[dir="ltr"] * {
         font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Tahoma, Arial, sans-serif;
+        direction: ltr;
+        text-align: left;
       }
 
       /* Ensure responsive scaling */
@@ -34,6 +38,12 @@
           top: 0;
           bottom: 0;
           z-index: 50;
+          left: 0;
+        }
+
+        [dir="rtl"] .sidebar {
+          right: 0;
+          left: auto;
         }
       }
     </style>
