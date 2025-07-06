@@ -79,22 +79,27 @@ const AppRoutes: React.FC = () => {
   )
 }
 
-function App() {
+const AppWrapper = () => {
   const { language } = useLanguage()
 
   useEffect(() => {
     document.documentElement.setAttribute('dir', language === 'ar' ? 'rtl' : 'ltr')
+    document.documentElement.lang = language
   }, [language])
 
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <Router>
-          <AppRoutes />
-        </Router>
-      </AuthProvider>
-    </LanguageProvider>
+    <Router>
+      <AppRoutes />
+    </Router>
   )
 }
+
+const App = () => (
+  <LanguageProvider>
+    <AuthProvider>
+      <AppWrapper />
+    </AuthProvider>
+  </LanguageProvider>
+)
 
 export default App

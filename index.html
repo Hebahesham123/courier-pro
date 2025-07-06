@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -25,13 +25,14 @@
         text-align: left;
       }
 
-      /* Ensure responsive scaling */
       body {
+        margin: 0;
+        padding: 0;
         max-width: 100vw;
         overflow-x: hidden;
+        background-color: #f9fafb;
       }
 
-      /* Make sidebars collapsible on mobile */
       @media (max-width: 768px) {
         .sidebar {
           position: fixed;
@@ -49,7 +50,7 @@
     </style>
   </head>
   <body>
-    <div id="root" class="min-h-screen w-full overflow-x-hidden"></div>
+    <div id="root" class="min-h-screen w-full overflow-x-hidden bg-gray-50"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

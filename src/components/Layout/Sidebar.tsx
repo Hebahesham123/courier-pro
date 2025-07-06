@@ -1,8 +1,8 @@
-"use client";
+"use client"
 
-import type React from "react";
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import type React from "react"
+import { useState } from "react"
+import { Link, useLocation } from "react-router-dom"
 import {
   Package,
   Users,
@@ -15,18 +15,17 @@ import {
   FileText,
   X,
   Menu,
-} from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
-import { useLanguage } from "../../contexts/LanguageContext";
+} from "lucide-react"
+import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 const Sidebar: React.FC = () => {
-  const { user } = useAuth();
-  const { t, language } = useLanguage();
-  const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const isRTL = language === "ar";
+  const { user } = useAuth()
+  const { t, language } = useLanguage()
+  const location = useLocation()
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const isRTL = language === "ar"
 
   const adminMenuItems = [
     { path: "/admin", icon: Home, label: t("dashboard"), color: "text-blue-400" },
@@ -34,34 +33,34 @@ const Sidebar: React.FC = () => {
     { path: "/admin/upload", icon: Upload, label: t("uploadOrders"), color: "text-purple-400" },
     { path: "/admin/couriers", icon: Users, label: t("couriers"), color: "text-orange-400" },
     { path: "/admin/reports", icon: FileText, label: t("reports"), color: "text-pink-400" },
-  ];
+  ]
 
   const courierMenuItems = [
     { path: "/courier", icon: Home, label: t("dashboard"), color: "text-blue-400" },
     { path: "/courier/orders", icon: Truck, label: t("myOrders"), color: "text-green-400" },
-  ];
+  ]
 
-  const menuItems = user?.role === "admin" ? adminMenuItems : courierMenuItems;
+  const menuItems = user?.role === "admin" ? adminMenuItems : courierMenuItems
 
   const getUserInitials = (name?: string) => {
-    if (!name) return "U";
+    if (!name) return "U"
     return name
       .split(" ")
       .map((n) => n[0])
       .join("")
       .toUpperCase()
-      .slice(0, 2);
-  };
+      .slice(0, 2)
+  }
 
   const getUserRole = () => {
     return user?.role === "admin"
       ? `${t("administrator")} / ${t("administrator")}`
-      : `${t("courier")} / ${t("courier")}`;
-  };
+      : `${t("courier")} / ${t("courier")}`
+  }
 
   return (
     <>
-      {/* Mobile Menu Button */}
+      {/* Mobile Menu Toggle Button */}
       <button
         className="fixed top-4 left-4 z-50 p-2 bg-gray-800 text-white rounded-lg lg:hidden"
         onClick={() => setSidebarOpen(true)}
@@ -69,7 +68,7 @@ const Sidebar: React.FC = () => {
         <Menu />
       </button>
 
-      {/* Overlay for mobile */}
+      {/* Mobile Overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-40 z-40 lg:hidden"
@@ -77,29 +76,28 @@ const Sidebar: React.FC = () => {
         />
       )}
 
+      {/* Sidebar Container */}
       <div
-        className={`fixed top-0 ${
-          isRTL ? "right-0" : "left-0"
-        } z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 ${isRTL ? "right-0" : "left-0"} z-50 h-full bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white shadow-2xl transition-all duration-300 ease-in-out ${
           isCollapsed ? "w-20" : "w-72"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static`}
         dir={isRTL ? "rtl" : "ltr"}
       >
-        {/* Toggle Collapse */}
+        {/* Collapse Button */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className={`absolute ${isRTL ? "-left-3" : "-right-3"} top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-1.5 shadow-lg transition-all duration-200 border border-gray-600 z-10`}
+          className={`absolute ${isRTL ? "-left-3" : "-right-3"} top-8 bg-gray-800 hover:bg-gray-700 text-white rounded-full p-1.5 shadow-lg border border-gray-600 z-10`}
         >
-          {isCollapsed ? (
-            isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
-          ) : isRTL ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
-          )}
+          {isCollapsed
+            ? isRTL
+              ? <ChevronLeft className="w-4 h-4" />
+              : <ChevronRight className="w-4 h-4" />
+            : isRTL
+              ? <ChevronRight className="w-4 h-4" />
+              : <ChevronLeft className="w-4 h-4" />}
         </button>
 
-        {/* Close Button for mobile */}
+        {/* Close Button (Mobile) */}
         <button
           onClick={() => setSidebarOpen(false)}
           className="absolute top-3 right-3 text-white bg-gray-700 hover:bg-gray-600 p-1.5 rounded-full lg:hidden"
@@ -135,9 +133,7 @@ const Sidebar: React.FC = () => {
             </div>
             {!isCollapsed && (
               <div className={`${isRTL ? "mr-3" : "ml-3"} flex-1 min-w-0`}>
-                <div className="text-sm font-semibold text-white truncate">
-                  {user?.name || "User"}
-                </div>
+                <div className="text-sm font-semibold text-white truncate">{user?.name || "User"}</div>
                 <div className="text-xs text-gray-400 truncate">{getUserRole()}</div>
                 <div className="text-xs text-gray-500 truncate mt-0.5">{user?.email}</div>
               </div>
@@ -145,12 +141,12 @@ const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Menu */}
+        {/* Menu Items */}
         <nav className="flex-1 overflow-y-auto p-4">
           <div className="space-y-2">
             {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+              const Icon = item.icon
+              const isActive = location.pathname === item.path
 
               return (
                 <Link
@@ -169,7 +165,7 @@ const Sidebar: React.FC = () => {
                       className={`absolute ${isRTL ? "right-0" : "left-0"} top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-purple-400 ${
                         isRTL ? "rounded-l-full" : "rounded-r-full"
                       }`}
-                    ></div>
+                    />
                   )}
                   <div className={`flex-shrink-0 ${isActive ? "text-white" : item.color}`}>
                     <Icon className="w-5 h-5" />
@@ -178,13 +174,13 @@ const Sidebar: React.FC = () => {
                     <span className={`${isRTL ? "mr-3" : "ml-3"} truncate`}>{item.label}</span>
                   )}
                 </Link>
-              );
+              )
             })}
           </div>
         </nav>
       </div>
     </>
-  );
-};
+  )
+}
 
-export default Sidebar;
+export default Sidebar

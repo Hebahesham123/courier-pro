@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 
 interface LanguageContextType {
   language: "en" | "ar"
@@ -9,36 +9,28 @@ interface LanguageContextType {
   t: (key: string) => string
 }
 
+// ⬇️ Add your translations here
 const translations = {
   en: {
-    // Auth
     login: "Login",
     email: "Email",
     password: "Password",
     signIn: "Sign In",
     invalidCredentials: "Invalid credentials",
-
-    // Navigation
     dashboard: "Dashboard",
     orders: "Orders",
     couriers: "Couriers",
     reports: "Reports",
     logout: "Logout",
-
-    // Admin Panel
     adminDashboard: "Admin Dashboard",
     uploadOrders: "Upload Orders",
     uploadExcel: "Upload Excel File",
     assignOrders: "Assign Orders",
     selectCourier: "Select Courier",
     assign: "Assign",
-
-    // Courier Panel
     courierDashboard: "Courier Dashboard",
     myOrders: "My Orders",
     todaySummary: "Today's Summary",
-
-    // Orders
     orderId: "Order ID",
     customerName: "Customer Name",
     address: "Address",
@@ -47,20 +39,14 @@ const translations = {
     paymentMethod: "Payment Method",
     status: "Status",
     actions: "Actions",
-
-    // Status
     pending: "Pending",
     assigned: "Assigned",
     delivered: "Delivered",
     canceled: "Canceled",
     partial: "Partial",
-
-    // Payment Methods
     cash: "Cash",
     card: "Card",
     valu: "VALU",
-
-    // Actions
     done: "Done",
     cancel: "Cancel",
     markDelivered: "Mark as Delivered",
@@ -70,16 +56,12 @@ const translations = {
     partialAmount: "Partial Amount",
     comment: "Comment",
     save: "Save",
-
-    // Summary
     totalDelivered: "Total Delivered",
     totalCashCollected: "Total Cash Collected",
     totalDeliveryFees: "Total Delivery Fees",
     canceledOrders: "Canceled Orders",
     partialOrders: "Partial Orders",
     grandTotal: "Grand Total",
-
-    // Common
     loading: "Loading...",
     error: "Error",
     success: "Success",
@@ -89,8 +71,6 @@ const translations = {
     export: "Export",
     date: "Date",
     today: "Today",
-
-    // Additional for Sidebar
     analytics: "Analytics",
     settings: "Settings",
     notifications: "Notifications",
@@ -114,34 +94,25 @@ const translations = {
     note: "Note",
   },
   ar: {
-    // Auth
     login: "تسجيل الدخول",
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
     signIn: "دخول",
     invalidCredentials: "بيانات غير صحيحة",
-
-    // Navigation
     dashboard: "لوحة التحكم",
     orders: "الطلبات",
     couriers: "المناديب",
     reports: "التقارير",
     logout: "تسجيل الخروج",
-
-    // Admin Panel
     adminDashboard: "لوحة تحكم الإدارة",
     uploadOrders: "رفع الطلبات",
     uploadExcel: "رفع ملف Excel",
     assignOrders: "تعيين الطلبات",
     selectCourier: "اختر المندوب",
     assign: "تعيين",
-
-    // Courier Panel
     courierDashboard: "لوحة تحكم المندوب",
     myOrders: "طلباتي",
     todaySummary: "ملخص اليوم",
-
-    // Orders
     orderId: "رقم الطلب",
     customerName: "اسم العميل",
     address: "العنوان",
@@ -150,20 +121,14 @@ const translations = {
     paymentMethod: "طريقة الدفع",
     status: "الحالة",
     actions: "الإجراءات",
-
-    // Status
     pending: "في الانتظار",
     assigned: "معين",
     delivered: "تم التوصيل",
     canceled: "ملغي",
     partial: "جزئي",
-
-    // Payment Methods
     cash: "نقدي",
     card: "بطاقة",
     valu: "فالو",
-
-    // Actions
     done: "تم",
     cancel: "إلغاء",
     markDelivered: "تم التوصيل",
@@ -173,16 +138,12 @@ const translations = {
     partialAmount: "المبلغ الجزئي",
     comment: "تعليق",
     save: "حفظ",
-
-    // Summary
     totalDelivered: "إجمالي المُسلم",
     totalCashCollected: "إجمالي النقد المحصل",
     totalDeliveryFees: "إجمالي رسوم التوصيل",
     canceledOrders: "الطلبات الملغية",
     partialOrders: "الطلبات الجزئية",
     grandTotal: "الإجمالي العام",
-
-    // Common
     loading: "جارٍ التحميل...",
     error: "خطأ",
     success: "نجح",
@@ -192,8 +153,6 @@ const translations = {
     export: "تصدير",
     date: "التاريخ",
     today: "اليوم",
-
-    // Additional for Sidebar
     analytics: "التحليلات",
     settings: "الإعدادات",
     notifications: "الإشعارات",
@@ -234,18 +193,26 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem("language", language)
     document.documentElement.dir = language === "ar" ? "rtl" : "ltr"
     document.documentElement.lang = language
+
+    // Optional: set font class on body
+    document.getElementById('root')?.classList.remove("font-sans", "font-arabic")
+    document.getElementById('root')?.classList.add(language === "ar" ? "font-arabic" : "font-sans")
   }, [language])
 
   const t = (key: string): string => {
-    return translations[language][key as keyof (typeof translations)["en"]] ?? key
+    return translations[language][key as keyof typeof translations["en"]] || key
   }
 
-  return <LanguageContext.Provider value={{ language, setLanguage, t }}>{children}</LanguageContext.Provider>
+  return (
+    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+      {children}
+    </LanguageContext.Provider>
+  )
 }
 
-export const useLanguage = () => {
+export const useLanguage = (): LanguageContextType => {
   const context = useContext(LanguageContext)
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useLanguage must be used within a LanguageProvider")
   }
   return context
