@@ -1,8 +1,7 @@
-// ✅ Full App.tsx with proper courier and report pages
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { LanguageProvider } from './contexts/LanguageContext'
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import LoginForm from './components/Auth/LoginForm'
 import Header from './components/Layout/Header'
 import Sidebar from './components/Layout/Sidebar'
@@ -155,11 +154,13 @@ const AppRoutes: React.FC = () => {
 }
 
 function App() {
+  const { language } = useLanguage()
+
   return (
     <LanguageProvider>
       <AuthProvider>
         <Router>
-          <div dir="ltr" className="font-sans">
+          <div dir={language === 'ar' ? 'rtl' : 'ltr'} className={language === 'ar' ? 'font-arabic' : 'font-sans'}>
             <AppRoutes />
           </div>
         </Router>
