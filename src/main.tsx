@@ -3,12 +3,15 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 
-// Detect language from localStorage or fallback to English
-const language = localStorage.getItem('language') || 'en'
-
-// Dynamically set <html lang="..."> and dir="rtl/ltr"
-document.documentElement.lang = language
-document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+try {
+  const language = localStorage?.getItem('language') || 'en'
+  document.documentElement.lang = language
+  document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+} catch (e) {
+  // fallback if localStorage fails
+  document.documentElement.lang = 'en'
+  document.documentElement.dir = 'ltr'
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
