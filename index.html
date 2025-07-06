@@ -25,11 +25,13 @@
         text-align: left;
       }
 
+      html,
       body {
         margin: 0;
         padding: 0;
-        max-width: 100vw;
-        overflow-x: hidden;
+        width: 100%;
+        height: 100%;
+        overflow-x: auto;
         background-color: #f9fafb;
       }
 
@@ -50,7 +52,7 @@
     </style>
   </head>
   <body>
-    <div id="root" class="min-h-screen w-full overflow-x-hidden bg-gray-50"></div>
+    <div id="root" class="min-h-screen w-full overflow-x-auto bg-gray-50"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
