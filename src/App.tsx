@@ -1,7 +1,7 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
+import { LanguageProvider } from './contexts/LanguageContext'
 import LoginForm from './components/Auth/LoginForm'
 import Header from './components/Layout/Header'
 import Sidebar from './components/Layout/Sidebar'
@@ -68,85 +68,35 @@ const AppRoutes: React.FC = () => {
             path="/"
             element={<Navigate to={user.role === 'admin' ? '/admin' : '/courier'} replace />}
           />
-
-          {/* Admin Routes */}
           <Route
             path="/admin"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <AppLayout>
-                  <Summary />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><Summary /></AppLayout></ProtectedRoute>}
           />
           <Route
             path="/admin/orders"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <AppLayout>
-                  <OrdersManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><OrdersManagement /></AppLayout></ProtectedRoute>}
           />
           <Route
             path="/admin/upload"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <AppLayout>
-                  <UploadOrders />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><UploadOrders /></AppLayout></ProtectedRoute>}
           />
           <Route
             path="/admin/couriers"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <AppLayout>
-                  <CouriersManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><CouriersManagement /></AppLayout></ProtectedRoute>}
           />
           <Route
             path="/admin/reports"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <AppLayout>
-                  <Reports />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['admin']}><AppLayout><Reports /></AppLayout></ProtectedRoute>}
           />
-
-          {/* Courier Routes */}
           <Route
             path="/courier"
-            element={
-              <ProtectedRoute allowedRoles={['courier']}>
-                <AppLayout>
-                  <Summary />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['courier']}><AppLayout><Summary /></AppLayout></ProtectedRoute>}
           />
           <Route
             path="/courier/orders"
-            element={
-              <ProtectedRoute allowedRoles={['courier']}>
-                <AppLayout>
-                  <OrdersList />
-                </AppLayout>
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute allowedRoles={['courier']}><AppLayout><OrdersList /></AppLayout></ProtectedRoute>}
           />
-
-          <Route
-            path="*"
-            element={<Navigate to={user.role === 'admin' ? '/admin' : '/courier'} replace />}
-          />
+          <Route path="*" element={<Navigate to={user.role === 'admin' ? '/admin' : '/courier'} replace />} />
         </>
       )}
     </Routes>
@@ -154,15 +104,11 @@ const AppRoutes: React.FC = () => {
 }
 
 function App() {
-  const { language } = useLanguage()
-
   return (
     <LanguageProvider>
       <AuthProvider>
         <Router>
-          <div dir={language === 'ar' ? 'rtl' : 'ltr'} className={language === 'ar' ? 'font-arabic' : 'font-sans'}>
-            <AppRoutes />
-          </div>
+          <AppRoutes />
         </Router>
       </AuthProvider>
     </LanguageProvider>
