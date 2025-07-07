@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useEffect, useState, type KeyboardEvent } from "react"
 import {
@@ -63,64 +62,69 @@ const Summary: React.FC = () => {
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
-      loading: "Loading... / جاري التحميل...",
-      pleaseLogin: "Please login / يرجى تسجيل الدخول",
-      noDataForDate: "No data for this date / لا توجد بيانات لهذا التاريخ",
-      todaySummary: "Today's Summary / ملخص اليوم",
-      selectDate: "Select Date / اختر التاريخ",
-      courier: "Courier / المندوب",
-      ordersCount: "orders / طلبات",
-      amount: "Amount / المبلغ",
+      loading: "جاري التحميل...",
+      pleaseLogin: "يرجى تسجيل الدخول",
+      noDataForDate: "لا توجد بيانات لهذا التاريخ",
+      todaySummary: "ملخص اليوم",
+      selectDate: "اختر التاريخ",
+      courier: "المندوب",
+      ordersCount: "طلبات",
+      amount: "المبلغ",
       EGP: "ج.م",
-
       // Order Status Metrics
-      deliveredOrders: "Delivered Orders / الطلبات المسلمة",
-      partialOrders: "Partial Orders / الطلبات الجزئية",
-      handToHandOrders: "Hand to Hand Orders / الطلبات يد بيد",
-      returnOrders: "Return Orders / الطلبات المرتجعة",
-      canceledOrders: "Canceled Orders / الطلبات الملغاة",
-
+      deliveredOrders: "الطلبات المسلمة",
+      partialOrders: "الطلبات الجزئية",
+      handToHandOrders: "الطلبات يد بيد",
+      returnOrders: "الطلبات المرتجعة",
+      canceledOrders: "الطلبات الملغاة",
       // Electronic Payment Methods
-      visaOrders: "Visa Orders / طلبات فيزا",
-      valuOrders: "ValU Orders / طلبات فاليو",
-
+      visaOrders: "طلبات فيزا",
+      valuOrders: "طلبات فاليو",
       // Cash-based Payment Sub-types
-      cashOnHandOrders: "Cash on Hand Orders / طلبات نقداً",
-      instapayOrders: "Instapay Orders / طلبات إنستاباي",
-      walletOrders: "Wallet Orders / طلبات المحفظة",
-
+      cashOnHandOrders: "طلبات نقداً",
+      instapayOrders: "طلبات إنستاباي",
+      walletOrders: "طلبات المحفظة",
       // Collection Metrics
-      totalCashOnHand: "Total Cash on Hand / إجمالي النقد في اليد",
-      totalVisaCollected: "Total Visa Collected / إجمالي فيزا محصل",
-      totalValuCollected: "Total ValU Collected / إجمالي فاليو محصل",
-      deliveryFeesCollected: "Delivery Fees Collected / رسوم التوصيل المحصلة",
-      totalCollected: "Total Collected / إجمالي المحصل",
-
-      orderId: "Order ID / رقم الطلب",
-      customer: "Customer / العميل",
-      total: "Total / الإجمالي",
-      status: "Status / الحالة",
-      address: "Address / العنوان",
-      phone: "Phone / الهاتف",
-      comment: "Comment / تعليق",
-      close: "Close / إغلاق",
-      paymentMethod: "Payment Method / طريقة الدفع",
-      collectedBy: "Collected By / محصل بواسطة",
-      partialAmount: "Partial Amount / المبلغ الجزئي",
-      deliveryFee: "Delivery Fee / رسوم التوصيل",
-      assigned: "Assigned / مكلف",
-      delivered: "Delivered / تم التوصيل",
-      canceled: "Canceled / ملغي",
-      partial: "Partial / جزئي",
-      hand_to_hand: "Hand to Hand / استبدال",
-      return: "Return / مرتجع",
-      cash: "Cash / نقداً",
-      visa: "Visa / فيزا",
-      valu: "ValU / فاليو",
-      courier_payment: "Courier / المندوب",
-      on_hand: "Cash on Hand / نقداً",
-      instapay: "Instapay / إنستاباي",
-      wallet: "Wallet / المحفظة",
+      totalCashOnHand: "إجمالي النقد في اليد",
+      totalVisaCollected: "إجمالي فيزا محصل",
+      totalValuCollected: "إجمالي فاليو محصل",
+      deliveryFeesCollected: "رسوم التوصيل المحصلة",
+      totalCollected: "إجمالي المحصل",
+      orderId: "رقم الطلب",
+      customer: "العميل",
+      total: "الإجمالي",
+      status: "الحالة",
+      address: "العنوان",
+      phone: "الهاتف",
+      comment: "تعليق",
+      close: "إغلاق",
+      paymentMethod: "طريقة الدفع",
+      collectedBy: "محصل بواسطة",
+      partialAmount: "المبلغ الجزئي",
+      deliveryFee: "رسوم التوصيل",
+      assigned: "مكلف",
+      delivered: "تم التوصيل",
+      canceled: "ملغي",
+      partial: "جزئي",
+      hand_to_hand: "استبدال",
+      return: "مرتجع",
+      cash: "نقداً",
+      visa: "فيزا",
+      valu: "فاليو",
+      courier_payment: "المندوب",
+      on_hand: "نقداً",
+      instapay: "إنستاباي",
+      wallet: "المحفظة",
+      orderStatusSection: "حالة الطلبات",
+      electronicPaymentsSection: "المدفوعات الإلكترونية",
+      cashPaymentsSection: "المدفوعات النقدية",
+      collectionSummarySection: "ملخص التحصيل",
+      orderTotalLabel: "إجمالي الطلب",
+      partialAmountLabel: "المبلغ الجزئي",
+      orderAmountCollectedLabel: "مبلغ الطلب المحصل",
+      totalCourierHandledLabel: "إجمالي ما تعامل معه المندوب",
+      paymentSubTypeLabel: "نوع الدفع",
+      proofImagesLabel: "صور الإثبات",
     }
     return translations[key] || key
   }
@@ -198,12 +202,10 @@ const Summary: React.FC = () => {
     if (Number(order.partial_paid_amount || 0) > 0) {
       return Number(order.partial_paid_amount || 0)
     }
-
     // If no partial amount but order is processed (not just assigned), use total order amount
     if (["delivered", "partial", "hand_to_hand", "return"].includes(order.status)) {
       return Number(order.total_order_fees || 0)
     }
-
     // For canceled orders, only count if there's delivery fee (handled below)
     return 0
   }
@@ -212,7 +214,6 @@ const Summary: React.FC = () => {
   const getTotalCourierAmount = (order: Order): number => {
     let orderAmount = 0
     const deliveryAmount = Number(order.delivery_fee || 0)
-
     // For canceled orders, only count delivery fee if courier put it
     if (order.status === "canceled") {
       orderAmount = 0 // No order amount for canceled
@@ -220,7 +221,6 @@ const Summary: React.FC = () => {
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
-
     return orderAmount + deliveryAmount
   }
 
@@ -271,11 +271,10 @@ const Summary: React.FC = () => {
     {
       label: "canceledOrders",
       icon: XCircle,
-      isMoney: true, // Changed to true because canceled orders can have delivery fees
+      isMoney: true,
       filter: (o, courierId) => o.status === "canceled" && o.assigned_courier_id === courierId,
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-
     // ELECTRONIC PAYMENT METHODS
     {
       label: "visaOrders",
@@ -297,7 +296,6 @@ const Summary: React.FC = () => {
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-
     // CASH-BASED PAYMENT SUB-TYPES
     {
       label: "cashOnHandOrders",
@@ -323,7 +321,6 @@ const Summary: React.FC = () => {
         o.payment_sub_type === "wallet" && o.assigned_courier_id === courierId && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-
     // COLLECTION SUMMARY METRICS
     {
       label: "totalCashOnHand",
@@ -373,11 +370,9 @@ const Summary: React.FC = () => {
     const filtered = allOrders.filter((o) => metric.filter(o, courierId))
     const count = filtered.length
     let amount = 0
-
     if (metric.calculateAmount) {
       amount = metric.calculateAmount(filtered)
     }
-
     return { count, amount }
   }
 
@@ -386,13 +381,27 @@ const Summary: React.FC = () => {
     setSelectedOrders(allOrders.filter(filterFn))
   }
 
-  if (loading) return <div className="p-6 text-center">{translate("loading")}</div>
-  if (!user) return <div className="p-6 text-center">{translate("pleaseLogin")}</div>
-  if (summaryList.length === 0) return <div className="p-6 text-center">{translate("noDataForDate")}</div>
+  if (loading)
+    return (
+      <div className="p-6 text-center" dir="rtl">
+        {translate("loading")}
+      </div>
+    )
+  if (!user)
+    return (
+      <div className="p-6 text-center" dir="rtl">
+        {translate("pleaseLogin")}
+      </div>
+    )
+  if (summaryList.length === 0)
+    return (
+      <div className="p-6 text-center" dir="rtl">
+        {translate("noDataForDate")}
+      </div>
+    )
 
   const renderMetric = (metric: Metric, courierId: string) => {
     const { count, amount } = calcCountAmount(metric, courierId)
-
     if (count === 0) return null // Don't show metrics with 0 count
 
     return (
@@ -405,7 +414,7 @@ const Summary: React.FC = () => {
         onKeyPress={(e: KeyboardEvent<HTMLDivElement>) => {
           if (e.key === "Enter") openOrders((o) => metric.filter(o, courierId), translate(metric.label))
         }}
-        aria-label={`${translate(metric.label)}: ${count} ${translate("ordersCount")}${metric.isMoney ? `, ${translate("amount")}: ${amount.toFixed(2)}` : ""}`}
+        aria-label={`${translate(metric.label)}: ${count} ${translate("ordersCount")}${metric.isMoney ? `، ${translate("amount")}: ${amount.toFixed(2)}` : ""}`}
       >
         <div className="flex justify-between items-center">
           <div className="flex-1">
@@ -428,7 +437,7 @@ const Summary: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6 text-left">
+    <div className="max-w-7xl mx-auto p-6 text-right" dir="rtl">
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900">{translate("todaySummary")}</h2>
         <input
@@ -449,7 +458,7 @@ const Summary: React.FC = () => {
 
           {/* Order Status Section */}
           <div className="mb-8">
-            <h4 className="text-lg font-semibold text-gray-700 mb-4">Order Status / حالة الطلبات</h4>
+            <h4 className="text-lg font-semibold text-gray-700 mb-4">{translate("orderStatusSection")}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {metrics
                 .slice(0, 5)
@@ -460,7 +469,7 @@ const Summary: React.FC = () => {
 
           {/* Electronic Payment Methods Section */}
           <div className="mb-8">
-            <h4 className="text-lg font-semibold text-gray-700 mb-4">Electronic Payments / المدفوعات الإلكترونية</h4>
+            <h4 className="text-lg font-semibold text-gray-700 mb-4">{translate("electronicPaymentsSection")}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4">
               {metrics
                 .slice(5, 7)
@@ -471,7 +480,7 @@ const Summary: React.FC = () => {
 
           {/* Cash-based Payment Methods Section */}
           <div className="mb-8">
-            <h4 className="text-lg font-semibold text-gray-700 mb-4">Cash-based Payments / المدفوعات النقدية</h4>
+            <h4 className="text-lg font-semibold text-gray-700 mb-4">{translate("cashPaymentsSection")}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {metrics
                 .slice(7, 10)
@@ -482,7 +491,7 @@ const Summary: React.FC = () => {
 
           {/* Collection Summary Section */}
           <div className="mb-8">
-            <h4 className="text-lg font-semibold text-gray-700 mb-4">Collection Summary / ملخص التحصيل</h4>
+            <h4 className="text-lg font-semibold text-gray-700 mb-4">{translate("collectionSummarySection")}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {metrics
                 .slice(10)
@@ -500,7 +509,10 @@ const Summary: React.FC = () => {
           aria-modal="true"
           aria-labelledby="modal-title"
         >
-          <div className="bg-white p-6 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto relative text-left">
+          <div
+            className="bg-white p-6 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto relative text-right"
+            dir="rtl"
+          >
             <div className="flex justify-between items-center mb-6">
               <h3 id="modal-title" className="text-2xl font-bold text-gray-900">
                 {modalTitle} ({selectedOrders.length} {translate("ordersCount")})
@@ -514,7 +526,6 @@ const Summary: React.FC = () => {
                 ✖
               </button>
             </div>
-
             <div className="space-y-4 max-h-[60vh] overflow-y-auto">
               {selectedOrders.map((order) => {
                 const courierOrderAmount = getCourierOrderAmount(order)
@@ -533,14 +544,14 @@ const Summary: React.FC = () => {
                         </p>
                         <p>
                           <strong>{translate("phone")}:</strong>
-                          <a href={`tel:${order.mobile_number}`} className="text-blue-600 hover:underline ml-1">
+                          <a href={`tel:${order.mobile_number}`} className="text-blue-600 hover:underline mr-1">
                             {order.mobile_number}
                           </a>
                         </p>
                         <p>
                           <strong>{translate("status")}:</strong>
                           <span
-                            className={`ml-1 px-2 py-1 rounded text-sm ${
+                            className={`mr-1 px-2 py-1 rounded text-sm ${
                               order.status === "canceled" ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"
                             }`}
                           >
@@ -548,66 +559,60 @@ const Summary: React.FC = () => {
                           </span>
                         </p>
                       </div>
-
                       <div className="space-y-2">
                         <p>
-                          <strong>Order Total / إجمالي الطلب:</strong>
-                          <span className="text-gray-600 ml-1">
+                          <strong>{translate("orderTotalLabel")}:</strong>
+                          <span className="text-gray-600 mr-1">
                             {translate("EGP")} {Number(order.total_order_fees).toFixed(2)}
                           </span>
                         </p>
-
                         {courierOrderAmount > 0 && (
                           <p>
                             <strong>
                               {Number(order.partial_paid_amount || 0) > 0
-                                ? "Partial Amount / المبلغ الجزئي:"
-                                : "Order Amount Collected / مبلغ الطلب المحصل:"}
+                                ? translate("partialAmountLabel")
+                                : translate("orderAmountCollectedLabel")}
+                              :
                             </strong>
-                            <span className="text-green-600 font-semibold ml-1">
+                            <span className="text-green-600 font-semibold mr-1">
                               {translate("EGP")} {courierOrderAmount.toFixed(2)}
                             </span>
                           </p>
                         )}
-
                         {deliveryFee > 0 && (
                           <p>
                             <strong>{translate("deliveryFee")}:</strong>
-                            <span className="text-blue-600 font-semibold ml-1">
+                            <span className="text-blue-600 font-semibold mr-1">
                               {translate("EGP")} {deliveryFee.toFixed(2)}
                             </span>
                           </p>
                         )}
-
                         {totalCourierAmount > 0 && (
                           <p className="border-t pt-2">
-                            <strong>Total Courier Handled / إجمالي ما تعامل معه المندوب:</strong>
-                            <span className="text-purple-600 font-bold ml-1">
+                            <strong>{translate("totalCourierHandledLabel")}:</strong>
+                            <span className="text-purple-600 font-bold mr-1">
                               {translate("EGP")} {totalCourierAmount.toFixed(2)}
                             </span>
                           </p>
                         )}
-
                         {order.payment_sub_type && (
                           <p>
-                            <strong>Payment Sub-Type / نوع الدفع:</strong>
-                            <span className="ml-1 px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
+                            <strong>{translate("paymentSubTypeLabel")}:</strong>
+                            <span className="mr-1 px-2 py-1 rounded text-sm bg-purple-100 text-purple-800">
                               {translate(order.payment_sub_type)}
                             </span>
                           </p>
                         )}
-
                         {order.collected_by && (
                           <p>
                             <strong>{translate("collectedBy")}:</strong>
-                            <span className="ml-1 px-2 py-1 rounded text-sm bg-green-100 text-green-800">
+                            <span className="mr-1 px-2 py-1 rounded text-sm bg-green-100 text-green-800">
                               {translate(order.collected_by)}
                             </span>
                           </p>
                         )}
                       </div>
                     </div>
-
                     <div className="mt-3">
                       <p>
                         <strong>{translate("address")}:</strong> {order.address}
@@ -615,20 +620,19 @@ const Summary: React.FC = () => {
                       {order.internal_comment && (
                         <p className="mt-2">
                           <strong>{translate("comment")}:</strong>
-                          <span className="italic text-gray-700 ml-1">{order.internal_comment}</span>
+                          <span className="italic text-gray-700 mr-1">{order.internal_comment}</span>
                         </p>
                       )}
                     </div>
-
                     {order.order_proofs && order.order_proofs.length > 0 && (
                       <div className="mt-4">
-                        <strong className="block mb-2">Proof Images / صور الإثبات:</strong>
+                        <strong className="block mb-2">{translate("proofImagesLabel")}:</strong>
                         <div className="flex flex-wrap gap-2">
                           {order.order_proofs.map((proof) => (
                             <img
                               key={proof.id}
                               src={proof.image_data || "/placeholder.svg"}
-                              alt="Proof"
+                              alt="إثبات"
                               className="h-20 w-auto rounded border object-contain"
                             />
                           ))}
