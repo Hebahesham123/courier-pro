@@ -2,49 +2,23 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { Edit, Phone, MapPin, Package, DollarSign, Camera, Check, X, Clock, RefreshCw, Truck, MessageCircle } from "lucide-react"
-
-// Mock data and functions since we don't have actual Supabase integration
-const mockOrders = [
-  {
-    id: "1",
-    order_id: "12345",
-    customer_name: "أحمد محمد",
-    address: "شارع النيل، الدقي، الجيزة",
-    mobile_number: "+201234567890",
-    total_order_fees: 250.50,
-    delivery_fee: 15.00,
-    payment_method: "courier",
-    payment_sub_type: "on_hand",
-    status: "assigned",
-    partial_paid_amount: null,
-    internal_comment: null,
-    collected_by: null,
-    assigned_courier_id: "user-1",
-    notes: "يرجى التواصل قبل الوصول",
-    order_proofs: []
-  },
-  {
-    id: "2",
-    order_id: "12346",
-    customer_name: "فاطمة أحمد",
-    address: "شارع التحرير، وسط البلد، القاهرة",
-    mobile_number: "+201098765432",
-    total_order_fees: 180.00,
-    delivery_fee: 10.00,
-    payment_method: "paymob.valu",
-    payment_sub_type: null,
-    status: "delivered",
-    partial_paid_amount: null,
-    internal_comment: "تم التسليم بنجاح",
-    collected_by: "valu",
-    assigned_courier_id: "user-1",
-    notes: null,
-    order_proofs: [
-      { id: "p1", image_data: "https://via.placeholder.com/150" }
-    ]
-  }
-]
+import {
+  Edit,
+  Phone,
+  MapPin,
+  Package,
+  DollarSign,
+  Camera,
+  Check,
+  X,
+  Clock,
+  RefreshCw,
+  Truck,
+  MessageCircle,
+} from "lucide-react"
+import { supabase } from "../../lib/supabase"
+import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface OrderProof {
   id: string
@@ -95,12 +69,17 @@ const paymentSubTypes: Record<string, string> = {
   wallet: "المحفظة",
 }
 
+// Cloudinary config
+const CLOUDINARY_CLOUD_NAME = "dclsvvfu2"
+const CLOUDINARY_UPLOAD_PRESET = "hebaaa"
+
 const OrdersList: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>(mockOrders)
-  const [loading, setLoading] = useState(false)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [phoneOptionsOpen, setPhoneOptionsOpen] = useState<string | null>(null)
+  const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
+  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
   const [updateData, setUpdateData] = useState({
     status: "",
     delivery_fee: "",
@@ -111,6 +90,34 @@ const OrdersList: React.FC = () => {
   })
   const [imageUploading, setImageUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const { user } = useAuth()
+  const { t } = useLanguage()
+
+  useEffect(() => {
+    if (user?.id) fetchOrders()
+  }, [user])
+
+  const fetchOrders = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          order_proofs (id, image_data)
+        `)
+        .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
+        .order("created_at", { ascending: false })
+
+      if (error) throw error
+      setOrders(data || [])
+    } catch (error) {
+      console.error("Error fetching orders:", error)
+      alert("فشل تحميل الطلبات")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const normalizeMethod = (method: string) => {
     if (method?.includes("paymob.valu")) return "valu"
@@ -118,22 +125,23 @@ const OrdersList: React.FC = () => {
     return method
   }
 
-  const handlePhoneClick = (phoneNumber: string, orderId: string) => {
-    setPhoneOptionsOpen(orderId)
+  const handlePhoneClick = (phoneNumber: string) => {
+    setSelectedPhoneNumber(phoneNumber)
+    setPhoneOptionsOpen(true)
   }
 
-  const handlePhoneCall = (phoneNumber: string) => {
-    window.location.href = `tel:${phoneNumber}`
-    setPhoneOptionsOpen(null)
+  const handlePhoneCall = () => {
+    window.location.href = `tel:${selectedPhoneNumber}`
+    setPhoneOptionsOpen(false)
   }
 
-  const handleWhatsApp = (phoneNumber: string, customerName: string, orderId: string) => {
-    // Remove the + sign and format for WhatsApp
-    const cleanNumber = phoneNumber.replace(/\+/g, '')
-    const message = encodeURIComponent(`مرحباً ${customerName}، أنا مندوب التوصيل الخاص بطلبك رقم #${orderId}`)
-    const whatsappUrl = `https://wa.me/${cleanNumber}?text=${message}`
-    window.open(whatsappUrl, '_blank')
-    setPhoneOptionsOpen(null)
+  const handleWhatsApp = () => {
+    // Remove any non-digit characters and ensure it starts with country code
+    const cleanNumber = selectedPhoneNumber.replace(/\D/g, "")
+    // If number doesn't start with country code, assume it's Egyptian (+20)
+    const whatsappNumber = cleanNumber.startsWith("20") ? cleanNumber : `20${cleanNumber}`
+    window.open(`https://wa.me/${whatsappNumber}`, "_blank")
+    setPhoneOptionsOpen(false)
   }
 
   const openModal = (order: Order) => {
@@ -152,40 +160,124 @@ const OrdersList: React.FC = () => {
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !selectedOrder) return
+    if (!e.target.files || !selectedOrder || !user) return
+
     const file = e.target.files[0]
     setImageUploading(true)
 
-    // Simulate upload
-    setTimeout(() => {
-      const newProof = { id: crypto.randomUUID(), image_data: URL.createObjectURL(file) }
-      setSelectedOrder(prev => prev ? { ...prev, order_proofs: [...(prev.order_proofs || []), newProof] } : prev)
-      setOrders(prev => prev.map(o => 
-        o.id === selectedOrder.id 
-          ? { ...o, order_proofs: [...(o.order_proofs || []), newProof] }
-          : o
-      ))
-      setImageUploading(false)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
+
+      const { error } = await supabase.from("order_proofs").insert({
+        order_id: selectedOrder.id,
+        courier_id: user.id,
+        image_data: data.secure_url,
+      })
+
+      if (error) throw error
+
       alert("تم رفع الصورة بنجاح!")
-    }, 1000)
+      setSelectedOrder((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          order_proofs: [...(prev.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
+        }
+      })
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id
+            ? {
+                ...o,
+                order_proofs: [...(o.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
+              }
+            : o,
+        ),
+      )
+    } catch (error: any) {
+      alert("فشل الرفع: " + error.message)
+    } finally {
+      setImageUploading(false)
+    }
   }
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
-    setSaving(true)
 
-    // Simulate save
-    setTimeout(() => {
-      setOrders(prev => prev.map(o => 
-        o.id === selectedOrder.id 
-          ? { ...o, status: updateData.status, delivery_fee: parseFloat(updateData.delivery_fee) || 0 }
-          : o
-      ))
+    setSaving(true)
+    try {
+      const method = normalizeMethod(selectedOrder.payment_method)
+      const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
+
+      const updatePayload: any = {
+        status: updateData.status,
+        updated_at: new Date().toISOString(),
+      }
+
+      const fee = Number.parseFloat(updateData.delivery_fee)
+      updatePayload.delivery_fee = isNaN(fee) ? 0 : fee
+
+      const partial = Number.parseFloat(updateData.partial_paid_amount)
+      updatePayload.partial_paid_amount = isNaN(partial) ? 0 : partial
+
+      if (updateData.internal_comment?.trim()) updatePayload.internal_comment = updateData.internal_comment.trim()
+
+      if (["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status)) {
+        const collected = updateData.collected_by || (isPaid ? method : "")
+        if (collected) {
+          const allowedCollected = ["visa", "valu", "courier"]
+          if (!allowedCollected.includes(collected)) {
+            alert("يرجى اختيار طريقة تحصيل صحيحة.")
+            return
+          }
+          updatePayload.collected_by = collected
+
+          if (collected === "courier") {
+            if (updateData.payment_sub_type) {
+              updatePayload.payment_sub_type = updateData.payment_sub_type
+            } else {
+              updatePayload.payment_sub_type = null
+            }
+          } else {
+            updatePayload.payment_sub_type = null
+          }
+        } else {
+          updatePayload.collected_by = null
+          updatePayload.payment_sub_type = null
+        }
+      } else {
+        updatePayload.collected_by = null
+        updatePayload.payment_sub_type = null
+      }
+
+      const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
+
+      if (error) {
+        console.error("Supabase error:", error.message)
+        alert("خطأ في الحفظ: " + error.message)
+        return
+      }
+
+      await fetchOrders()
       setModalOpen(false)
       setSelectedOrder(null)
-      setSaving(false)
       alert("تم تحديث الطلب بنجاح!")
-    }, 1000)
+    } catch (error: any) {
+      alert("خطأ: " + error.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const getStatusInfo = (status: string) => {
@@ -279,39 +371,16 @@ const OrdersList: React.FC = () => {
                     <div className="space-y-3 mb-4">
                       <div className="flex items-start gap-3">
                         <Phone className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1">
+                        <div>
                           <p className="text-xs text-gray-500 mb-1">الهاتف</p>
-                          <div className="relative">
-                            <button
-                              onClick={() => handlePhoneClick(order.mobile_number, order.id)}
-                              className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
-                            >
-                              {order.mobile_number}
-                            </button>
-                            
-                            {/* Phone Options Dropdown */}
-                            {phoneOptionsOpen === order.id && (
-                              <div className="absolute top-full left-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px]">
-                                <button
-                                  onClick={() => handlePhoneCall(order.mobile_number)}
-                                  className="w-full px-4 py-3 text-right hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                                >
-                                  <Phone className="w-4 h-4 text-blue-600" />
-                                  <span>اتصال هاتفي</span>
-                                </button>
-                                <button
-                                  onClick={() => handleWhatsApp(order.mobile_number, order.customer_name, order.order_id)}
-                                  className="w-full px-4 py-3 text-right hover:bg-gray-50 flex items-center gap-2 transition-colors border-t border-gray-100"
-                                >
-                                  <MessageCircle className="w-4 h-4 text-green-600" />
-                                  <span>رسالة واتساب</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                          <button
+                            onClick={() => handlePhoneClick(order.mobile_number)}
+                            className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer"
+                          >
+                            {order.mobile_number}
+                          </button>
                         </div>
                       </div>
-
                       <div className="flex items-start gap-3">
                         <MapPin className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                         <div>
@@ -331,30 +400,24 @@ const OrdersList: React.FC = () => {
                         <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
                           تفاصيل إضافية
                         </h4>
-
                         {order.delivery_fee && Number(order.delivery_fee) > 0 && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">رسوم التوصيل:</span>
                             <p className="text-sm text-gray-700">{Number(order.delivery_fee).toFixed(2)} ج.م</p>
                           </div>
                         )}
-
                         {order.partial_paid_amount && Number(order.partial_paid_amount) > 0 && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">المبلغ الجزئي:</span>
-                            <p className="text-sm text-gray-700">
-                              {Number(order.partial_paid_amount).toFixed(2)} ج.م
-                            </p>
+                            <p className="text-sm text-gray-700">{Number(order.partial_paid_amount).toFixed(2)} ج.م</p>
                           </div>
                         )}
-
                         {order.notes && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">ملاحظات:</span>
                             <p className="text-sm text-gray-700">{order.notes}</p>
                           </div>
                         )}
-
                         {order.payment_sub_type && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">نوع الدفع:</span>
@@ -363,18 +426,14 @@ const OrdersList: React.FC = () => {
                             </p>
                           </div>
                         )}
-
                         {order.collected_by && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">
-                              تم التحصيل بواسطة:
-                            </span>
+                            <span className="text-xs font-semibold text-gray-600">تم التحصيل بواسطة:</span>
                             <p className="text-sm text-gray-700">
                               {collectionMethods[order.collected_by] || order.collected_by}
                             </p>
                           </div>
                         )}
-
                         {order.internal_comment && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">تعليق داخلي:</span>
@@ -420,15 +479,44 @@ const OrdersList: React.FC = () => {
           </div>
         )}
 
-        {/* Backdrop for dropdown */}
+        {/* Phone Options Modal */}
         {phoneOptionsOpen && (
-          <div 
-            className="fixed inset-0 z-5"
-            onClick={() => setPhoneOptionsOpen(null)}
-          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full">
+              <div className="p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">اختر طريقة التواصل</h3>
+                <p className="text-gray-600 text-center mb-6">{selectedPhoneNumber}</p>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handlePhoneCall}
+                    className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-6 rounded-xl transition-colors duration-200"
+                  >
+                    <Phone className="w-5 h-5" />
+                    مكالمة هاتفية
+                  </button>
+
+                  <button
+                    onClick={handleWhatsApp}
+                    className="w-full flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-xl transition-colors duration-200"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    رسالة واتساب
+                  </button>
+
+                  <button
+                    onClick={() => setPhoneOptionsOpen(false)}
+                    className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors duration-200"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* Modal */}
+        {/* Update Order Modal */}
         {modalOpen && selectedOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
@@ -465,9 +553,7 @@ const OrdersList: React.FC = () => {
 
                   {/* Delivery Fee */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      رسوم التوصيل
-                    </label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">رسوم التوصيل</label>
                     <div className="relative">
                       <input
                         type="number"
@@ -488,9 +574,7 @@ const OrdersList: React.FC = () => {
 
                       {/* Collected By */}
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          تم تحصيل الدفع بواسطة
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">تم تحصيل الدفع بواسطة</label>
                         <select
                           value={updateData.collected_by}
                           onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
@@ -508,9 +592,7 @@ const OrdersList: React.FC = () => {
                       {/* Payment Sub-Type */}
                       {updateData.collected_by === "courier" && (
                         <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            نوع الدفع الفرعي
-                          </label>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">نوع الدفع الفرعي</label>
                           <select
                             value={updateData.payment_sub_type}
                             onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
@@ -528,9 +610,7 @@ const OrdersList: React.FC = () => {
 
                       {/* Partial Amount */}
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          المبلغ المدفوع جزئياً
-                        </label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">المبلغ المدفوع جزئياً</label>
                         <div className="relative">
                           <input
                             type="number"
@@ -548,9 +628,7 @@ const OrdersList: React.FC = () => {
 
                   {/* Comment */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      التعليق الداخلي
-                    </label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">التعليق الداخلي</label>
                     <textarea
                       rows={3}
                       value={updateData.internal_comment}
@@ -562,9 +640,7 @@ const OrdersList: React.FC = () => {
 
                   {/* Image Upload */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      رفع صورة إثبات
-                    </label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">رفع صورة إثبات</label>
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors">
                       <Camera className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                       <input
@@ -591,9 +667,7 @@ const OrdersList: React.FC = () => {
                   {/* Current Images Display */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        صور الإثبات الحالية
-                      </label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">صور الإثبات الحالية</label>
                       <div className="flex flex-wrap gap-2">
                         {selectedOrder.order_proofs.map((proof) => (
                           <img
