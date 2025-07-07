@@ -32,28 +32,28 @@ interface Order {
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
-  assigned: { label: "Assigned / مكلف", icon: Clock, color: "bg-blue-100 text-blue-800 border-blue-200" },
-  delivered: { label: "Delivered / تم التوصيل", icon: Check, color: "bg-green-100 text-green-800 border-green-200" },
-  canceled: { label: "Canceled / ملغي", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
-  partial: { label: "Partial / جزئي", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  assigned: { label: "مكلف", icon: Clock, color: "bg-blue-100 text-blue-800 border-blue-200" },
+  delivered: { label: "تم التوصيل", icon: Check, color: "bg-green-100 text-green-800 border-green-200" },
+  canceled: { label: "ملغي", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
+  partial: { label: "جزئي", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
   hand_to_hand: {
-    label: "Hand to Hand / استبدال",
+    label: "استبدال",
     icon: RefreshCw,
     color: "bg-purple-100 text-purple-800 border-purple-200",
   },
-  return: { label: "Return / مرتجع", icon: Truck, color: "bg-orange-100 text-orange-800 border-orange-200" },
+  return: { label: "مرتجع", icon: Truck, color: "bg-orange-100 text-orange-800 border-orange-200" },
 }
 
 const collectionMethods: Record<string, string> = {
-  visa: "Visa / فيزا",
-  valu: "valU / فاليو",
-  courier: "Courier / المندوب",
+  visa: "فيزا",
+  valu: "فاليو",
+  courier: "المندوب",
 }
 
 const paymentSubTypes: Record<string, string> = {
-  on_hand: "Cash on Hand / نقداً",
-  instapay: "Instapay / إنستاباي",
-  wallet: "Wallet / المحفظة",
+  on_hand: "نقداً",
+  instapay: "إنستاباي",
+  wallet: "المحفظة",
 }
 
 // Cloudinary config
@@ -98,7 +98,7 @@ const OrdersList: React.FC = () => {
       setOrders(data || [])
     } catch (error) {
       console.error("Error fetching orders:", error)
-      alert("Failed to load orders / فشل تحميل الطلبات")
+      alert("فشل تحميل الطلبات")
     } finally {
       setLoading(false)
     }
@@ -141,7 +141,7 @@ const OrdersList: React.FC = () => {
       })
 
       const data = await res.json()
-      if (!data.secure_url) throw new Error("Cloudinary upload failed")
+      if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
       const { error } = await supabase.from("order_proofs").insert({
         order_id: selectedOrder.id,
@@ -151,7 +151,7 @@ const OrdersList: React.FC = () => {
 
       if (error) throw error
 
-      alert("Image uploaded successfully! / تم رفع الصورة بنجاح!")
+      alert("تم رفع الصورة بنجاح!")
 
       setSelectedOrder((prev) => {
         if (!prev) return prev
@@ -172,7 +172,7 @@ const OrdersList: React.FC = () => {
         ),
       )
     } catch (error: any) {
-      alert("Upload failed: " + error.message + " / فشل الرفع: " + error.message)
+      alert("فشل الرفع: " + error.message)
     } finally {
       setImageUploading(false)
     }
@@ -205,7 +205,7 @@ const OrdersList: React.FC = () => {
         if (collected) {
           const allowedCollected = ["visa", "valu", "courier"]
           if (!allowedCollected.includes(collected)) {
-            alert("Please select a valid payment collection method. / يرجى اختيار طريقة تحصيل صحيحة.")
+            alert("يرجى اختيار طريقة تحصيل صحيحة.")
             return
           }
           updatePayload.collected_by = collected
@@ -232,16 +232,16 @@ const OrdersList: React.FC = () => {
 
       if (error) {
         console.error("Supabase error:", error.message)
-        alert("Error saving: " + error.message + " / خطأ في الحفظ: " + error.message)
+        alert("خطأ في الحفظ: " + error.message)
         return
       }
 
       await fetchOrders()
       setModalOpen(false)
       setSelectedOrder(null)
-      alert("Order updated successfully! / تم تحديث الطلب بنجاح!")
+      alert("تم تحديث الطلب بنجاح!")
     } catch (error: any) {
-      alert("Error: " + error.message + " / خطأ: " + error.message)
+      alert("خطأ: " + error.message)
     } finally {
       setSaving(false)
     }
@@ -256,27 +256,27 @@ const OrdersList: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600">Loading orders... / جاري تحميل الطلبات...</p>
+          <p className="text-xl text-gray-600">جاري تحميل الطلبات...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
+    <div className="min-h-screen bg-gray-50 py-6" dir="rtl">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">My Orders / طلبياتي</h1>
-          <p className="text-gray-600">Manage your delivery orders / إدارة طلبات التوصيل</p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">طلبياتي</h1>
+          <p className="text-gray-600">إدارة طلبات التوصيل</p>
         </div>
 
         {/* Orders Grid */}
         {orders.length === 0 ? (
           <div className="text-center py-16">
             <Package className="w-24 h-24 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-2xl font-semibold text-gray-600 mb-2">No orders found / لا توجد طلبات</h3>
-            <p className="text-gray-500">Check back later / تحقق لاحقاً</p>
+            <h3 className="text-2xl font-semibold text-gray-600 mb-2">لا توجد طلبات</h3>
+            <p className="text-gray-500">تحقق لاحقاً</p>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -295,8 +295,8 @@ const OrdersList: React.FC = () => {
                   <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className="text-lg font-bold">Order #{order.order_id} / طلب رقم</h3>
-                        <p className="text-blue-100 text-sm">Customer / العميل: {order.customer_name}</p>
+                        <h3 className="text-lg font-bold">طلب رقم #{order.order_id}</h3>
+                        <p className="text-blue-100 text-sm">العميل: {order.customer_name}</p>
                       </div>
                       <div
                         className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusInfo.color} bg-white`}
@@ -317,17 +317,17 @@ const OrdersList: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-5 h-5 text-green-600" />
                           <span className="text-2xl font-bold text-green-700">
-                            {order.total_order_fees.toFixed(2)} EGP / ج.م
+                            {order.total_order_fees.toFixed(2)} ج.م
                           </span>
                         </div>
                         {isPaid && (
                           <span className="bg-green-200 text-green-800 px-2 py-1 rounded-full text-xs font-semibold">
-                            Paid / مدفوع
+                            مدفوع
                           </span>
                         )}
                       </div>
                       <p className="text-sm text-green-600 mt-1">
-                        Payment Method / طريقة الدفع:{" "}
+                        طريقة الدفع:{" "}
                         {paymentSubTypes[order.payment_sub_type ?? ""] ||
                           collectionMethods[normalizeMethod(order.payment_method)] ||
                           order.payment_method}
@@ -339,7 +339,7 @@ const OrdersList: React.FC = () => {
                       <div className="flex items-start gap-3">
                         <Phone className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-gray-500 mb-1">Phone / الهاتف</p>
+                          <p className="text-xs text-gray-500 mb-1">الهاتف</p>
                           <a
                             href={`tel:${order.mobile_number}`}
                             className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
@@ -352,7 +352,7 @@ const OrdersList: React.FC = () => {
                       <div className="flex items-start gap-3">
                         <MapPin className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-gray-500 mb-1">Address / العنوان</p>
+                          <p className="text-xs text-gray-500 mb-1">العنوان</p>
                           <p className="text-gray-700 text-sm leading-relaxed">{order.address}</p>
                         </div>
                       </div>
@@ -366,35 +366,35 @@ const OrdersList: React.FC = () => {
                       order.partial_paid_amount) && (
                       <div className="space-y-2 mb-4 p-3 bg-gray-50 rounded-lg">
                         <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                          Additional Details / تفاصيل إضافية
+                          تفاصيل إضافية
                         </h4>
 
                         {order.delivery_fee && Number(order.delivery_fee) > 0 && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">Delivery Fee / رسوم التوصيل:</span>
-                            <p className="text-sm text-gray-700">{Number(order.delivery_fee).toFixed(2)} EGP / ج.م</p>
+                            <span className="text-xs font-semibold text-gray-600">رسوم التوصيل:</span>
+                            <p className="text-sm text-gray-700">{Number(order.delivery_fee).toFixed(2)} ج.م</p>
                           </div>
                         )}
 
                         {order.partial_paid_amount && Number(order.partial_paid_amount) > 0 && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">Partial Amount / المبلغ الجزئي:</span>
+                            <span className="text-xs font-semibold text-gray-600">المبلغ الجزئي:</span>
                             <p className="text-sm text-gray-700">
-                              {Number(order.partial_paid_amount).toFixed(2)} EGP / ج.م
+                              {Number(order.partial_paid_amount).toFixed(2)} ج.م
                             </p>
                           </div>
                         )}
 
                         {order.notes && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">Notes / ملاحظات:</span>
+                            <span className="text-xs font-semibold text-gray-600">ملاحظات:</span>
                             <p className="text-sm text-gray-700">{order.notes}</p>
                           </div>
                         )}
 
                         {order.payment_sub_type && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">Payment Type / نوع الدفع:</span>
+                            <span className="text-xs font-semibold text-gray-600">نوع الدفع:</span>
                             <p className="text-sm text-gray-700">
                               {paymentSubTypes[order.payment_sub_type] || order.payment_sub_type}
                             </p>
@@ -404,7 +404,7 @@ const OrdersList: React.FC = () => {
                         {order.collected_by && (
                           <div>
                             <span className="text-xs font-semibold text-gray-600">
-                              Collected By / تم التحصيل بواسطة:
+                              تم التحصيل بواسطة:
                             </span>
                             <p className="text-sm text-gray-700">
                               {collectionMethods[order.collected_by] || order.collected_by}
@@ -414,7 +414,7 @@ const OrdersList: React.FC = () => {
 
                         {order.internal_comment && (
                           <div>
-                            <span className="text-xs font-semibold text-gray-600">Internal Comment / تعليق داخلي:</span>
+                            <span className="text-xs font-semibold text-gray-600">تعليق داخلي:</span>
                             <p className="text-sm text-gray-700">{order.internal_comment}</p>
                           </div>
                         )}
@@ -426,14 +426,14 @@ const OrdersList: React.FC = () => {
                       <div className="mb-4">
                         <p className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
                           <Camera className="w-4 h-4" />
-                          Proof Images / صور الإثبات
+                          صور الإثبات
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {order.order_proofs.map((proof) => (
                             <img
                               key={proof.id}
                               src={proof.image_data || "/placeholder.svg"}
-                              alt="Proof Image / صورة إثبات"
+                              alt="صورة إثبات"
                               className="h-16 w-16 rounded-lg border border-gray-200 object-cover shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                               onClick={() => window.open(proof.image_data, "_blank")}
                             />
@@ -448,7 +448,7 @@ const OrdersList: React.FC = () => {
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center gap-2"
                     >
                       <Edit className="w-5 h-5" />
-                      Update Order / تحديث الطلب
+                      تحديث الطلب
                     </button>
                   </div>
                 </div>
@@ -463,8 +463,8 @@ const OrdersList: React.FC = () => {
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
               {/* Modal Header */}
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white rounded-t-3xl">
-                <h3 className="text-2xl font-bold">Update Order #{selectedOrder.order_id} / تحديث الطلب رقم</h3>
-                <p className="text-blue-100 mt-1">Customer / العميل: {selectedOrder.customer_name}</p>
+                <h3 className="text-2xl font-bold">تحديث الطلب رقم #{selectedOrder.order_id}</h3>
+                <p className="text-blue-100 mt-1">العميل: {selectedOrder.customer_name}</p>
               </div>
 
               {/* Modal Content */}
@@ -478,7 +478,7 @@ const OrdersList: React.FC = () => {
                 >
                   {/* Status */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Order Status / حالة الطلب</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">حالة الطلب</label>
                     <select
                       value={updateData.status}
                       onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
@@ -495,7 +495,7 @@ const OrdersList: React.FC = () => {
                   {/* Delivery Fee */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Delivery Fee / رسوم التوصيل
+                      رسوم التوصيل
                     </label>
                     <div className="relative">
                       <input
@@ -504,28 +504,28 @@ const OrdersList: React.FC = () => {
                         value={updateData.delivery_fee}
                         onChange={(e) => setUpdateData({ ...updateData, delivery_fee: e.target.value })}
                         className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
-                        placeholder="Enter amount / أدخل المبلغ"
+                        placeholder="أدخل المبلغ"
                       />
-                      <span className="absolute right-3 top-3 text-gray-500">EGP / ج.م</span>
+                      <span className="absolute left-3 top-3 text-gray-500">ج.م</span>
                     </div>
                   </div>
 
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status) && (
                     <div className="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                      <h4 className="font-semibold text-blue-800">Collection Details / تفاصيل التحصيل</h4>
+                      <h4 className="font-semibold text-blue-800">تفاصيل التحصيل</h4>
 
                       {/* Collected By */}
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Payment Collected By / تم تحصيل الدفع بواسطة
+                          تم تحصيل الدفع بواسطة
                         </label>
                         <select
                           value={updateData.collected_by}
                           onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
                           className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
                         >
-                          <option value="">Select Method / اختر الطريقة</option>
+                          <option value="">اختر الطريقة</option>
                           {Object.entries(collectionMethods).map(([key, label]) => (
                             <option key={key} value={key}>
                               {label}
@@ -538,14 +538,14 @@ const OrdersList: React.FC = () => {
                       {updateData.collected_by === "courier" && (
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Payment Sub-Type / نوع الدفع الفرعي
+                            نوع الدفع الفرعي
                           </label>
                           <select
                             value={updateData.payment_sub_type}
                             onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
                             className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
                           >
-                            <option value="">Select Type / اختر النوع</option>
+                            <option value="">اختر النوع</option>
                             {Object.entries(paymentSubTypes).map(([key, label]) => (
                               <option key={key} value={key}>
                                 {label}
@@ -558,7 +558,7 @@ const OrdersList: React.FC = () => {
                       {/* Partial Amount */}
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Partial Paid Amount / المبلغ المدفوع جزئياً
+                          المبلغ المدفوع جزئياً
                         </label>
                         <div className="relative">
                           <input
@@ -567,9 +567,9 @@ const OrdersList: React.FC = () => {
                             value={updateData.partial_paid_amount}
                             onChange={(e) => setUpdateData({ ...updateData, partial_paid_amount: e.target.value })}
                             className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
-                            placeholder="Enter partial amount / أدخل المبلغ الجزئي"
+                            placeholder="أدخل المبلغ الجزئي"
                           />
-                          <span className="absolute right-3 top-3 text-gray-500">EGP / ج.م</span>
+                          <span className="absolute left-3 top-3 text-gray-500">ج.م</span>
                         </div>
                       </div>
                     </div>
@@ -578,21 +578,21 @@ const OrdersList: React.FC = () => {
                   {/* Comment */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Internal Comment / التعليق الداخلي
+                      التعليق الداخلي
                     </label>
                     <textarea
                       rows={3}
                       value={updateData.internal_comment}
                       onChange={(e) => setUpdateData({ ...updateData, internal_comment: e.target.value })}
                       className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors resize-none"
-                      placeholder="Add any notes or comments... / أضف أي ملاحظات أو تعليقات..."
+                      placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
 
                   {/* Image Upload */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Upload Proof Image / رفع صورة إثبات
+                      رفع صورة إثبات
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors">
                       <Camera className="w-12 h-12 text-gray-400 mx-auto mb-3" />
@@ -611,9 +611,9 @@ const OrdersList: React.FC = () => {
                           imageUploading ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       >
-                        {imageUploading ? "Uploading Image... / جاري رفع الصورة..." : "Take Photo / التقط صورة"}
+                        {imageUploading ? "جاري رفع الصورة..." : "التقط صورة"}
                       </label>
-                      <p className="text-xs text-gray-500 mt-2">Click to capture image / اضغط لالتقاط صورة</p>
+                      <p className="text-xs text-gray-500 mt-2">اضغط لالتقاط صورة</p>
                     </div>
                   </div>
 
@@ -621,14 +621,14 @@ const OrdersList: React.FC = () => {
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Current Proof Images / صور الإثبات الحالية
+                        صور الإثبات الحالية
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {selectedOrder.order_proofs.map((proof) => (
                           <img
                             key={proof.id}
                             src={proof.image_data || "/placeholder.svg"}
-                            alt="Current Proof / إثبات حالي"
+                            alt="إثبات حالي"
                             className="h-20 w-20 rounded-lg border border-gray-200 object-cover shadow-sm cursor-pointer"
                             onClick={() => window.open(proof.image_data, "_blank")}
                           />
@@ -645,7 +645,7 @@ const OrdersList: React.FC = () => {
                       className="flex-1 px-6 py-3 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold transition-colors"
                       disabled={saving}
                     >
-                      Cancel / إلغاء
+                      إلغاء
                     </button>
                     <button
                       type="submit"
@@ -655,12 +655,12 @@ const OrdersList: React.FC = () => {
                       {saving ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          Saving... / جاري الحفظ...
+                          جاري الحفظ...
                         </>
                       ) : (
                         <>
                           <Check className="w-5 h-5" />
-                          Save Changes / حفظ التغييرات
+                          حفظ التغييرات
                         </>
                       )}
                     </button>
