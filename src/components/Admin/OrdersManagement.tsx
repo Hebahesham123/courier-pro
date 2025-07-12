@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -20,6 +19,8 @@ import {
   User,
   FileText,
   RefreshCw,
+  MapPin,
+  Maximize2,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -70,6 +71,8 @@ const OrdersManagement: React.FC = () => {
   const [orderEdits, setOrderEdits] = useState<{ [id: string]: Partial<Order> }>({})
   const [editingOrder, setEditingOrder] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [expandedField, setExpandedField] = useState<{ orderId: string; field: string } | null>(null)
+  const [expandedValue, setExpandedValue] = useState("")
   const [filters, setFilters] = useState({
     courier: "",
     mobile: "",
@@ -141,9 +144,7 @@ const OrdersManagement: React.FC = () => {
   const fetchCouriers = async () => {
     try {
       const { data: allUsers, error } = await supabase.from("users").select("id, name, email, role")
-
       if (error) throw error
-
       const courierUsers = allUsers?.filter((user) => user.role?.toLowerCase() === "courier") || []
       setCouriers(courierUsers)
     } catch (error: any) {
@@ -158,13 +159,31 @@ const OrdersManagement: React.FC = () => {
     }))
   }
 
+  const openExpandedEdit = (orderId: string, field: string, currentValue: string) => {
+    setExpandedField({ orderId, field })
+    setExpandedValue(currentValue)
+  }
+
+  const closeExpandedEdit = () => {
+    if (expandedField) {
+      if (expandedField.field === "notes") {
+        // Handle notes separately since they update directly
+        setNoteEdits((prev) => ({ ...prev, [expandedField.orderId]: expandedValue }))
+        updateNote(expandedField.orderId)
+      } else {
+        handleEditChange(expandedField.orderId, expandedField.field as keyof Order, expandedValue)
+      }
+    }
+    setExpandedField(null)
+    setExpandedValue("")
+  }
+
   const saveOrderEdit = async (orderId: string) => {
     const changes = orderEdits[orderId]
     if (!changes) return
 
     try {
       const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
-
       if (error) throw error
 
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
@@ -185,7 +204,6 @@ const OrdersManagement: React.FC = () => {
 
     try {
       const { error } = await supabase.from("orders").update({ notes: noteEdits[orderId] }).eq("id", orderId)
-
       if (error) throw error
 
       setSuccessMessage("Note updated / تم تحديث الملاحظة")
@@ -239,7 +257,6 @@ const OrdersManagement: React.FC = () => {
 
     try {
       const { error } = await supabase.from("orders").delete().in("id", selectedOrders)
-
       if (error) throw error
 
       await fetchOrders()
@@ -546,6 +563,9 @@ const OrdersManagement: React.FC = () => {
                     Customer / العميل
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Address / العنوان
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Mobile / الهاتف
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -572,7 +592,6 @@ const OrdersManagement: React.FC = () => {
                 {orders.map((order) => {
                   const edited = orderEdits[order.id] || {}
                   const isEditing = editingOrder === order.id
-
                   return (
                     <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
@@ -591,16 +610,49 @@ const OrdersManagement: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         {isEditing ? (
-                          <input
-                            type="text"
-                            value={edited.customer_name ?? order.customer_name}
-                            onChange={(e) => handleEditChange(order.id, "customer_name", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={edited.customer_name ?? order.customer_name}
+                              onChange={(e) => handleEditChange(order.id, "customer_name", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button
+                              onClick={() =>
+                                openExpandedEdit(order.id, "customer_name", edited.customer_name ?? order.customer_name)
+                              }
+                              className="p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex items-center">
                             <User className="w-4 h-4 text-gray-400 mr-2" />
                             <span className="text-sm text-gray-900">{order.customer_name}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={edited.address ?? order.address}
+                              onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button
+                              onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                              className="p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-start">
+                            <MapPin className="w-4 h-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 break-words">{order.address}</span>
                           </div>
                         )}
                       </td>
@@ -701,6 +753,15 @@ const OrdersManagement: React.FC = () => {
                             placeholder="Add notes / أضف ملاحظات"
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
+                          <button
+                            onClick={() =>
+                              openExpandedEdit(order.id, "notes", noteEdits[order.id] ?? order.notes ?? "")
+                            }
+                            className="p-1 text-gray-400 hover:text-gray-600"
+                            title="Expand notes editor / توسيع محرر الملاحظات"
+                          >
+                            <Maximize2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -758,7 +819,6 @@ const OrdersManagement: React.FC = () => {
               </tbody>
             </table>
           </div>
-
           {orders.length === 0 && (
             <div className="text-center py-12">
               <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -767,6 +827,62 @@ const OrdersManagement: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Expanded Edit Modal */}
+        {expandedField && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Edit3 className="w-5 h-5" />
+                  Edit {expandedField.field.replace("_", " ").toUpperCase()} / تعديل{" "}
+                  {expandedField.field === "address"
+                    ? "العنوان"
+                    : expandedField.field === "customer_name"
+                      ? "اسم العميل"
+                      : expandedField.field === "notes"
+                        ? "الملاحظات"
+                        : expandedField.field}
+                </h3>
+                <button onClick={() => setExpandedField(null)} className="p-2 text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="mb-6">
+                <textarea
+                  value={expandedValue}
+                  onChange={(e) => setExpandedValue(e.target.value)}
+                  placeholder={`Enter ${expandedField.field.replace("_", " ")} / أدخل ${
+                    expandedField.field === "address"
+                      ? "العنوان"
+                      : expandedField.field === "customer_name"
+                        ? "اسم العميل"
+                        : expandedField.field === "notes"
+                          ? "الملاحظات"
+                          : expandedField.field
+                  }`}
+                  className="w-full h-40 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setExpandedField(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel / إلغاء
+                </button>
+                <button
+                  onClick={closeExpandedEdit}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Done / تم
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (

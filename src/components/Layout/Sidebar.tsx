@@ -36,8 +36,9 @@ const Sidebar: React.FC = () => {
   ];
 
   const courierMenuItems = [
+        { path: "/courier/orders", icon: Truck, label: t("myOrders"), color: "text-green-400" },
+
     { path: "/courier", icon: Home, label: t("dashboard"), color: "text-blue-400" },
-    { path: "/courier/orders", icon: Truck, label: t("myOrders"), color: "text-green-400" },
   ];
 
   const menuItems = user?.role === "admin" ? adminMenuItems : courierMenuItems;

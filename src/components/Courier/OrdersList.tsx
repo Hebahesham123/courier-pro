@@ -7,7 +7,7 @@ import {
   Phone,
   MapPin,
   Package,
-  DollarSign,
+  CoinsIcon,
   Camera,
   Check,
   X,
@@ -15,6 +15,15 @@ import {
   RefreshCw,
   Truck,
   MessageCircle,
+  Eye,
+  AlertCircle,
+  Loader2,
+  User,
+  CreditCard,
+  FileText,
+  Upload,
+  Save,
+  XCircle,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -44,18 +53,45 @@ interface Order {
   order_proofs?: OrderProof[]
 }
 
-const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
-  assigned: { label: "مكلف", icon: Clock, color: "bg-blue-100 text-blue-800 border-blue-200" },
-  delivered: { label: "تم التوصيل", icon: Check, color: "bg-green-100 text-green-800 border-green-200" },
-  canceled: { label: "ملغي", icon: X, color: "bg-red-100 text-red-800 border-red-200" },
-  partial: { label: "جزئي", icon: Clock, color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
-  hand_to_hand: {
-    label: "استبدال",
-    icon: RefreshCw,
-    color: "bg-purple-100 text-purple-800 border-purple-200",
-  },
-  return: { label: "مرتجع", icon: Truck, color: "bg-orange-100 text-orange-800 border-orange-200" },
-}
+const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
+  {
+    assigned: {
+      label: "مكلف",
+      icon: Clock,
+      color: "text-blue-700",
+      bgColor: "bg-blue-50 border-blue-200",
+    },
+    delivered: {
+      label: "تم التوصيل",
+      icon: Check,
+      color: "text-green-700",
+      bgColor: "bg-green-50 border-green-200",
+    },
+    canceled: {
+      label: "ملغي",
+      icon: X,
+      color: "text-red-700",
+      bgColor: "bg-red-50 border-red-200",
+    },
+    partial: {
+      label: "جزئي",
+      icon: Clock,
+      color: "text-yellow-700",
+      bgColor: "bg-yellow-50 border-yellow-200",
+    },
+    hand_to_hand: {
+      label: "استبدال",
+      icon: RefreshCw,
+      color: "text-purple-700",
+      bgColor: "bg-purple-50 border-purple-200",
+    },
+    return: {
+      label: "مرتجع",
+      icon: Truck,
+      color: "text-orange-700",
+      bgColor: "bg-orange-50 border-orange-200",
+    },
+  }
 
 const collectionMethods: Record<string, string> = {
   visa: "فيزا",
@@ -136,9 +172,7 @@ const OrdersList: React.FC = () => {
   }
 
   const handleWhatsApp = () => {
-    // Remove any non-digit characters and ensure it starts with country code
     const cleanNumber = selectedPhoneNumber.replace(/\D/g, "")
-    // If number doesn't start with country code, assume it's Egyptian (+20)
     const whatsappNumber = cleanNumber.startsWith("20") ? cleanNumber : `20${cleanNumber}`
     window.open(`https://wa.me/${whatsappNumber}`, "_blank")
     setPhoneOptionsOpen(false)
@@ -161,20 +195,16 @@ const OrdersList: React.FC = () => {
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !selectedOrder || !user) return
-
     const file = e.target.files[0]
     setImageUploading(true)
-
     try {
       const formData = new FormData()
       formData.append("file", file)
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
-
       const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
         method: "POST",
         body: formData,
       })
-
       const data = await res.json()
       if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
@@ -183,7 +213,6 @@ const OrdersList: React.FC = () => {
         courier_id: user.id,
         image_data: data.secure_url,
       })
-
       if (error) throw error
 
       alert("تم رفع الصورة بنجاح!")
@@ -194,7 +223,6 @@ const OrdersList: React.FC = () => {
           order_proofs: [...(prev.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
         }
       })
-
       setOrders((prev) =>
         prev.map((o) =>
           o.id === selectedOrder.id
@@ -214,12 +242,10 @@ const OrdersList: React.FC = () => {
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
-
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
       const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
-
       const updatePayload: any = {
         status: updateData.status,
         updated_at: new Date().toISOString(),
@@ -242,7 +268,6 @@ const OrdersList: React.FC = () => {
             return
           }
           updatePayload.collected_by = collected
-
           if (collected === "courier") {
             if (updateData.payment_sub_type) {
               updatePayload.payment_sub_type = updateData.payment_sub_type
@@ -262,7 +287,6 @@ const OrdersList: React.FC = () => {
       }
 
       const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
-
       if (error) {
         console.error("Supabase error:", error.message)
         alert("خطأ في الحفظ: " + error.message)
@@ -281,37 +305,78 @@ const OrdersList: React.FC = () => {
   }
 
   const getStatusInfo = (status: string) => {
-    return statusLabels[status] || { label: status, icon: Clock, color: "bg-gray-100 text-gray-800 border-gray-200" }
+    return (
+      statusLabels[status] || {
+        label: status,
+        icon: Clock,
+        color: "text-gray-700",
+        bgColor: "bg-gray-50 border-gray-200",
+      }
+    )
   }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600">جاري تحميل الطلبات...</p>
+        <div className="text-center space-y-6">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+            <Package className="w-6 h-6 text-blue-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-gray-800">جاري تحميل الطلبات</h2>
+            <p className="text-gray-600">يرجى الانتظار قليلاً...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6" dir="rtl">
-      <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">طلبياتي</h1>
-          <p className="text-gray-600">إدارة طلبات التوصيل</p>
+    <div className="min-h-screen bg-gray-50" dir="rtl">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="text-center space-y-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-xl">
+              <Package className="w-6 h-6 text-white" />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold text-gray-900">طلبياتي</h1>
+              <p className="text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
+            </div>
+            <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-sm font-medium">{orders.length} طلب</span>
+            </div>
+          </div>
         </div>
+      </div>
 
-        {/* Orders Grid */}
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {orders.length === 0 ? (
+          /* Empty State */
           <div className="text-center py-16">
-            <Package className="w-24 h-24 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-2xl font-semibold text-gray-600 mb-2">لا توجد طلبات</h3>
-            <p className="text-gray-500">تحقق لاحقاً</p>
+            <div className="space-y-6">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full">
+                <Package className="w-10 h-10 text-gray-400" />
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-xl font-semibold text-gray-800">لا توجد طلبات متاحة</h3>
+                <p className="text-gray-600 max-w-md mx-auto">لم يتم العثور على أي طلبات مخصصة لك في الوقت الحالي</p>
+              </div>
+              <button
+                onClick={fetchOrders}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                تحديث
+              </button>
+            </div>
           </div>
         ) : (
+          /* Orders Grid */
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {orders.map((order) => {
               const method = normalizeMethod(order.payment_method)
@@ -322,17 +387,20 @@ const OrdersList: React.FC = () => {
               return (
                 <div
                   key={order.id}
-                  className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100"
+                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-200 overflow-hidden"
                 >
-                  {/* Header */}
-                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="text-lg font-bold">طلب رقم #{order.order_id}</h3>
-                        <p className="text-blue-100 text-sm">العميل: {order.customer_name}</p>
+                  {/* Card Header */}
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold text-gray-900">طلب #{order.order_id}</h3>
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <User className="w-4 h-4" />
+                          <span className="text-sm">{order.customer_name}</span>
+                        </div>
                       </div>
                       <div
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusInfo.color} bg-white`}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
                       >
                         <div className="flex items-center gap-1">
                           <StatusIcon className="w-3 h-3" />
@@ -342,134 +410,148 @@ const OrdersList: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Content */}
-                  <div className="p-6">
-                    {/* Amount */}
-                    <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                  {/* Card Content */}
+                  <div className="p-6 space-y-6">
+                    {/* Amount Section */}
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-green-600" />
-                          <span className="text-2xl font-bold text-green-700">
-                            {order.total_order_fees.toFixed(2)} ج.م
-                          </span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                            <CoinsIcon className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-green-700">{order.total_order_fees.toFixed(2)}</p>
+                            <p className="text-xs text-green-600">جنيه مصري</p>
+                          </div>
                         </div>
                         {isPaid && (
-                          <span className="bg-green-200 text-green-800 px-2 py-1 rounded-full text-xs font-semibold">
-                            مدفوع
-                          </span>
+                          <span className="bg-green-600 text-white px-2 py-1 rounded text-xs font-medium">مدفوع</span>
                         )}
                       </div>
-                      <p className="text-sm text-green-600 mt-1">
-                        طريقة الدفع:{" "}
-                        {paymentSubTypes[order.payment_sub_type ?? ""] ||
-                          collectionMethods[normalizeMethod(order.payment_method)] ||
-                          order.payment_method}
-                      </p>
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <div className="flex items-center gap-2 text-sm text-green-700">
+                          <CreditCard className="w-4 h-4" />
+                          <span>
+                            {paymentSubTypes[order.payment_sub_type ?? ""] ||
+                              collectionMethods[normalizeMethod(order.payment_method)] ||
+                              order.payment_method}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Contact Info */}
-                    <div className="space-y-3 mb-4">
-                      <div className="flex items-start gap-3">
-                        <Phone className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">الهاتف</p>
+                    {/* Contact Information */}
+                    <div className="space-y-4">
+                      {/* Phone */}
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Phone className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">رقم الهاتف</p>
                           <button
                             onClick={() => handlePhoneClick(order.mobile_number)}
-                            className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer"
+                            className="text-blue-700 hover:text-blue-900 font-medium transition-colors truncate block"
                           >
                             {order.mobile_number}
                           </button>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3">
-                        <MapPin className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">العنوان</p>
-                          <p className="text-gray-700 text-sm leading-relaxed">{order.address}</p>
+
+                      {/* Address */}
+                      <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <MapPin className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">عنوان التوصيل</p>
+                          <p className="text-sm text-gray-800 leading-relaxed">{order.address}</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Additional Info */}
+                    {/* Additional Information */}
                     {(order.notes ||
                       order.payment_sub_type ||
                       order.collected_by ||
                       order.delivery_fee ||
-                      order.partial_paid_amount) && (
-                      <div className="space-y-2 mb-4 p-3 bg-gray-50 rounded-lg">
-                        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                          تفاصيل إضافية
-                        </h4>
-                        {order.delivery_fee && Number(order.delivery_fee) > 0 && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">رسوم التوصيل:</span>
-                            <p className="text-sm text-gray-700">{Number(order.delivery_fee).toFixed(2)} ج.م</p>
-                          </div>
-                        )}
-                        {order.partial_paid_amount && Number(order.partial_paid_amount) > 0 && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">المبلغ الجزئي:</span>
-                            <p className="text-sm text-gray-700">{Number(order.partial_paid_amount).toFixed(2)} ج.م</p>
-                          </div>
-                        )}
-                        {order.notes && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">ملاحظات:</span>
-                            <p className="text-sm text-gray-700">{order.notes}</p>
-                          </div>
-                        )}
-                        {order.payment_sub_type && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">نوع الدفع:</span>
-                            <p className="text-sm text-gray-700">
-                              {paymentSubTypes[order.payment_sub_type] || order.payment_sub_type}
-                            </p>
-                          </div>
-                        )}
-                        {order.collected_by && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">تم التحصيل بواسطة:</span>
-                            <p className="text-sm text-gray-700">
-                              {collectionMethods[order.collected_by] || order.collected_by}
-                            </p>
-                          </div>
-                        )}
-                        {order.internal_comment && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-600">تعليق داخلي:</span>
-                            <p className="text-sm text-gray-700">{order.internal_comment}</p>
-                          </div>
-                        )}
+                      order.partial_paid_amount ||
+                      order.internal_comment) && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <AlertCircle className="w-4 h-4 text-gray-600" />
+                          <h4 className="text-sm font-medium text-gray-700">معلومات إضافية</h4>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          {order.delivery_fee && Number(order.delivery_fee) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">رسوم التوصيل:</span>
+                              <span className="font-medium text-gray-900">
+                                {Number(order.delivery_fee).toFixed(2)} ج.م
+                              </span>
+                            </div>
+                          )}
+                          {order.partial_paid_amount && Number(order.partial_paid_amount) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">المبلغ الجزئي:</span>
+                              <span className="font-medium text-gray-900">
+                                {Number(order.partial_paid_amount).toFixed(2)} ج.م
+                              </span>
+                            </div>
+                          )}
+                          {order.notes && (
+                            <div>
+                              <span className="text-gray-600 block mb-1">ملاحظات:</span>
+                              <p className="text-gray-800 bg-white p-2 rounded border text-xs">{order.notes}</p>
+                            </div>
+                          )}
+                          {order.internal_comment && (
+                            <div>
+                              <span className="text-gray-600 block mb-1">تعليق داخلي:</span>
+                              <p className="text-gray-800 bg-white p-2 rounded border text-xs">
+                                {order.internal_comment}
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
                     {/* Proof Images */}
                     {order.order_proofs && order.order_proofs.length > 0 && (
-                      <div className="mb-4">
-                        <p className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-2">
-                          <Camera className="w-4 h-4" />
-                          صور الإثبات
-                        </p>
-                        <div className="flex flex-wrap gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Camera className="w-4 h-4 text-gray-600" />
+                          <h4 className="text-sm font-medium text-gray-700">
+                            صور الإثبات ({order.order_proofs.length})
+                          </h4>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
                           {order.order_proofs.map((proof) => (
-                            <img
-                              key={proof.id}
-                              src={proof.image_data || "/placeholder.svg"}
-                              alt="صورة إثبات"
-                              className="h-16 w-16 rounded-lg border border-gray-200 object-cover shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                              onClick={() => window.open(proof.image_data, "_blank")}
-                            />
+                            <div key={proof.id} className="relative group">
+                              <img
+                                src={proof.image_data || "/placeholder.svg"}
+                                alt="صورة إثبات"
+                                className="w-full h-16 rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity"
+                                onClick={() => window.open(proof.image_data, "_blank")}
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Eye className="w-4 h-4 text-white drop-shadow-lg" />
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
                     )}
+                  </div>
 
-                    {/* Action Button */}
+                  {/* Card Footer */}
+                  <div className="px-6 pb-6">
                     <button
                       onClick={() => openModal(order)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 flex items-center justify-center gap-2"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                      <Edit className="w-5 h-5" />
+                      <Edit className="w-4 h-4" />
                       تحديث الطلب
                     </button>
                   </div>
@@ -481,32 +563,34 @@ const OrdersList: React.FC = () => {
 
         {/* Phone Options Modal */}
         {phoneOptionsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-sm w-full">
               <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">اختر طريقة التواصل</h3>
-                <p className="text-gray-600 text-center mb-6">{selectedPhoneNumber}</p>
-
+                <div className="text-center mb-6">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Phone className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">اختر طريقة التواصل</h3>
+                  <p className="text-gray-600 bg-gray-50 px-3 py-2 rounded-lg font-mono">{selectedPhoneNumber}</p>
+                </div>
                 <div className="space-y-3">
                   <button
                     onClick={handlePhoneCall}
-                    className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-6 rounded-xl transition-colors duration-200"
+                    className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
                   >
                     <Phone className="w-5 h-5" />
                     مكالمة هاتفية
                   </button>
-
                   <button
                     onClick={handleWhatsApp}
-                    className="w-full flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white font-semibold py-4 px-6 rounded-xl transition-colors duration-200"
+                    className="w-full flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
                   >
                     <MessageCircle className="w-5 h-5" />
                     رسالة واتساب
                   </button>
-
                   <button
                     onClick={() => setPhoneOptionsOpen(false)}
-                    className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-colors duration-200"
+                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-3 px-4 rounded-lg transition-colors"
                   >
                     إلغاء
                   </button>
@@ -518,12 +602,22 @@ const OrdersList: React.FC = () => {
 
         {/* Update Order Modal */}
         {modalOpen && selectedOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
               {/* Modal Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white rounded-t-3xl">
-                <h3 className="text-2xl font-bold">تحديث الطلب رقم #{selectedOrder.order_id}</h3>
-                <p className="text-blue-100 mt-1">العميل: {selectedOrder.customer_name}</p>
+              <div className="bg-blue-600 text-white p-6 rounded-t-xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold">تحديث الطلب #{selectedOrder.order_id}</h3>
+                    <p className="text-blue-100 mt-1">العميل: {selectedOrder.customer_name}</p>
+                  </div>
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    className="text-blue-100 hover:text-white transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
 
               {/* Modal Content */}
@@ -535,13 +629,16 @@ const OrdersList: React.FC = () => {
                     handleSaveUpdate()
                   }}
                 >
-                  {/* Status */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">حالة الطلب</label>
+                  {/* Status Selection */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      حالة الطلب <span className="text-red-500">*</span>
+                    </label>
                     <select
                       value={updateData.status}
                       onChange={(e) => setUpdateData({ ...updateData, status: e.target.value })}
-                      className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
                     >
                       {Object.entries(statusLabels).map(([key, { label }]) => (
                         <option key={key} value={key}>
@@ -552,33 +649,36 @@ const OrdersList: React.FC = () => {
                   </div>
 
                   {/* Delivery Fee */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">رسوم التوصيل</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">رسوم التوصيل</label>
                     <div className="relative">
                       <input
                         type="number"
                         step="0.01"
                         value={updateData.delivery_fee}
                         onChange={(e) => setUpdateData({ ...updateData, delivery_fee: e.target.value })}
-                        className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
-                        placeholder="أدخل المبلغ"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="0.00"
                       />
-                      <span className="absolute left-3 top-3 text-gray-500">ج.م</span>
+                      <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                     </div>
                   </div>
 
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status) && (
-                    <div className="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                      <h4 className="font-semibold text-blue-800">تفاصيل التحصيل</h4>
+                    <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h4 className="font-medium text-blue-800 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4" />
+                        تفاصيل التحصيل
+                      </h4>
 
                       {/* Collected By */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">تم تحصيل الدفع بواسطة</label>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
                         <select
                           value={updateData.collected_by}
                           onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
-                          className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value="">اختر الطريقة</option>
                           {Object.entries(collectionMethods).map(([key, label]) => (
@@ -591,12 +691,12 @@ const OrdersList: React.FC = () => {
 
                       {/* Payment Sub-Type */}
                       {updateData.collected_by === "courier" && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">نوع الدفع الفرعي</label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">نوع الدفع الفرعي</label>
                           <select
                             value={updateData.payment_sub_type}
                             onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
-                            className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           >
                             <option value="">اختر النوع</option>
                             {Object.entries(paymentSubTypes).map(([key, label]) => (
@@ -609,85 +709,107 @@ const OrdersList: React.FC = () => {
                       )}
 
                       {/* Partial Amount */}
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">المبلغ المدفوع جزئياً</label>
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">المبلغ المدفوع جزئياً</label>
                         <div className="relative">
                           <input
                             type="number"
                             step="0.01"
                             value={updateData.partial_paid_amount}
                             onChange={(e) => setUpdateData({ ...updateData, partial_paid_amount: e.target.value })}
-                            className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
-                            placeholder="أدخل المبلغ الجزئي"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="0.00"
                           />
-                          <span className="absolute left-3 top-3 text-gray-500">ج.م</span>
+                          <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Comment */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">التعليق الداخلي</label>
+                  {/* Internal Comment */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      التعليق الداخلي
+                    </label>
                     <textarea
                       rows={3}
                       value={updateData.internal_comment}
                       onChange={(e) => setUpdateData({ ...updateData, internal_comment: e.target.value })}
-                      className="w-full rounded-xl border-2 border-gray-200 px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                       placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
 
                   {/* Image Upload */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">رفع صورة إثبات</label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-400 transition-colors">
-                      <Camera className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleImageChange}
-                        disabled={imageUploading}
-                        className="hidden"
-                        id="image-upload"
-                      />
-                      <label
-                        htmlFor="image-upload"
-                        className={`cursor-pointer text-blue-600 hover:text-blue-700 font-medium ${
-                          imageUploading ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      >
-                        {imageUploading ? "جاري رفع الصورة..." : "التقط صورة"}
-                      </label>
-                      <p className="text-xs text-gray-500 mt-2">اضغط لالتقاط صورة</p>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <Upload className="w-4 h-4" />
+                      رفع صورة إثبات
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+                      <div className="space-y-3">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                          {imageUploading ? (
+                            <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                          ) : (
+                            <Camera className="w-6 h-6 text-gray-400" />
+                          )}
+                        </div>
+                        <div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleImageChange}
+                            disabled={imageUploading}
+                            className="hidden"
+                            id="image-upload"
+                          />
+                          <label
+                            htmlFor="image-upload"
+                            className={`cursor-pointer text-blue-600 hover:text-blue-700 font-medium ${
+                              imageUploading ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            {imageUploading ? "جاري رفع الصورة..." : "التقط صورة"}
+                          </label>
+                          <p className="text-xs text-gray-500 mt-1">اضغط لالتقاط صورة من الكاميرا</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Current Images Display */}
+                  {/* Current Images */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">صور الإثبات الحالية</label>
-                      <div className="flex flex-wrap gap-2">
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        صور الإثبات الحالية ({selectedOrder.order_proofs.length})
+                      </label>
+                      <div className="grid grid-cols-4 gap-3">
                         {selectedOrder.order_proofs.map((proof) => (
-                          <img
-                            key={proof.id}
-                            src={proof.image_data || "/placeholder.svg"}
-                            alt="إثبات حالي"
-                            className="h-20 w-20 rounded-lg border border-gray-200 object-cover shadow-sm cursor-pointer"
-                            onClick={() => window.open(proof.image_data, "_blank")}
-                          />
+                          <div key={proof.id} className="relative group">
+                            <img
+                              src={proof.image_data || "/placeholder.svg"}
+                              alt="إثبات حالي"
+                              className="w-full h-20 rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity"
+                              onClick={() => window.open(proof.image_data, "_blank")}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Eye className="w-5 h-5 text-white drop-shadow-lg" />
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
                   )}
 
                   {/* Action Buttons */}
-                  <div className="flex gap-4 pt-4">
+                  <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button
                       type="button"
                       onClick={() => setModalOpen(false)}
-                      className="flex-1 px-6 py-3 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold transition-colors"
+                      className="flex-1 px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium transition-colors"
                       disabled={saving}
                     >
                       إلغاء
@@ -695,16 +817,16 @@ const OrdersList: React.FC = () => {
                     <button
                       type="submit"
                       disabled={saving}
-                      className="flex-1 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {saving ? (
                         <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <Loader2 className="w-4 h-4 animate-spin" />
                           جاري الحفظ...
                         </>
                       ) : (
                         <>
-                          <Check className="w-5 h-5" />
+                          <Save className="w-4 h-4" />
                           حفظ التغييرات
                         </>
                       )}

@@ -1,123 +1,1008 @@
-import React, { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
-import { Pencil, Save } from 'lucide-react'
+"use client"
 
-const CouriersManagement: React.FC = () => {
-  const [couriers, setCouriers] = useState<any[]>([])
-  const [editMode, setEditMode] = useState<{ [id: string]: boolean }>({})
+import type React from "react"
+import { useState, useEffect } from "react"
+import {
+  Trash2,
+  UserPlus,
+  AlertCircle,
+  CheckCircle,
+  Search,
+  Filter,
+  Edit3,
+  Save,
+  X,
+  Package,
+  Users,
+  Phone,
+  CreditCard,
+  Hash,
+  User,
+  FileText,
+  RefreshCw,
+  MapPin,
+  Maximize2,
+  Settings,
+  Upload,
+  TrendingUp,
+  Activity,
+} from "lucide-react"
+import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
-  // Simple bilingual translation function
-  const translate = (key: string) => {
-    const translations: Record<string, string> = {
-      manageCouriers: 'Manage Couriers / إدارة المندوبين',
-      name: 'Name / الاسم',
-      email: 'Email / البريد الإلكتروني',
-      actions: 'Actions / الإجراءات',
-      edit: 'Edit / تعديل',
-      save: 'Save / حفظ',
-    }
-    return translations[key] || key
+interface Order {
+  id: string
+  order_id: string
+  customer_name: string
+  address: string
+  mobile_number: string
+  total_order_fees: number
+  payment_method: string
+  status: string
+  assigned_courier_id: string | null
+  courier_name?: string
+  created_at?: string
+  notes?: string
+}
+
+interface Courier {
+  id: string
+  name: string
+  email: string
+  role: string
+}
+
+const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
+  {
+    assigned: {
+      label: "مكلف",
+      color: "text-blue-700",
+      bgColor: "bg-blue-50 border-blue-200",
+      icon: Activity,
+    },
+    delivered: {
+      label: "تم التوصيل",
+      color: "text-green-700",
+      bgColor: "bg-green-50 border-green-200",
+      icon: CheckCircle,
+    },
+    canceled: {
+      label: "ملغي",
+      color: "text-red-700",
+      bgColor: "bg-red-50 border-red-200",
+      icon: X,
+    },
+    partial: {
+      label: "جزئي",
+      color: "text-yellow-700",
+      bgColor: "bg-yellow-50 border-yellow-200",
+      icon: Activity,
+    },
+    hand_to_hand: {
+      label: "استبدال",
+      color: "text-purple-700",
+      bgColor: "bg-purple-50 border-purple-200",
+      icon: RefreshCw,
+    },
+    return: {
+      label: "مرتجع",
+      color: "text-orange-700",
+      bgColor: "bg-orange-50 border-orange-200",
+      icon: Upload,
+    },
   }
 
+const OrdersManagement: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [couriers, setCouriers] = useState<Courier[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([])
+  const [selectedCourier, setSelectedCourier] = useState("")
+  const [assignLoading, setAssignLoading] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [noteEdits, setNoteEdits] = useState<{ [id: string]: string }>({})
+  const [orderEdits, setOrderEdits] = useState<{ [id: string]: Partial<Order> }>({})
+  const [editingOrder, setEditingOrder] = useState<string | null>(null)
+  const [showFilters, setShowFilters] = useState(false)
+  const [expandedField, setExpandedField] = useState<{ orderId: string; field: string } | null>(null)
+  const [expandedValue, setExpandedValue] = useState("")
+  const [filters, setFilters] = useState({
+    courier: "",
+    mobile: "",
+    payment: "",
+    orderId: "",
+  })
+
+  const { t } = useLanguage()
+
   useEffect(() => {
+    fetchOrders()
     fetchCouriers()
   }, [])
 
-  const fetchCouriers = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .eq('role', 'courier')
+  // Auto-hide messages after 5 seconds
+  useEffect(() => {
+    if (error || successMessage) {
+      const timer = setTimeout(() => {
+        setError(null)
+        setSuccessMessage(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [error, successMessage])
 
-    if (error) {
-      console.error('Error fetching couriers:', error.message)
-    } else {
-      setCouriers(data)
+  const fetchOrders = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      let query = supabase
+        .from("orders")
+        .select(`
+          id, order_id, customer_name, address, mobile_number, total_order_fees,
+          payment_method, status, assigned_courier_id, created_at, notes,
+          users!orders_assigned_courier_id_fkey(name)
+        `)
+        .order("created_at", { ascending: false })
+
+      if (filters.courier) {
+        const { data: matchedCouriers } = await supabase
+          .from("users")
+          .select("id")
+          .ilike("name", `%${filters.courier}%`)
+        const ids = matchedCouriers?.map((c) => c.id) || []
+        query = query.in("assigned_courier_id", ids.length > 0 ? ids : [""])
+      }
+
+      if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
+      if (filters.payment) query = query.ilike("payment_method", `%${filters.payment}%`)
+      if (filters.orderId) query = query.ilike("order_id", `%${filters.orderId}%`)
+
+      const { data, error } = await query
+
+      if (error) throw error
+
+      const ordersWithCourierNames =
+        data?.map((order: any) => ({
+          ...order,
+          courier_name: order.users?.name || null,
+        })) || []
+
+      setOrders(ordersWithCourierNames)
+    } catch (error: any) {
+      setError("Failed to fetch orders / فشل تحميل الطلبات: " + error.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleChange = (id: string, field: string, value: string) => {
-    setCouriers(prev =>
-      prev.map(c => (c.id === id ? { ...c, [field]: value } : c))
+  const fetchCouriers = async () => {
+    try {
+      const { data: allUsers, error } = await supabase.from("users").select("id, name, email, role")
+      if (error) throw error
+      const courierUsers = allUsers?.filter((user) => user.role?.toLowerCase() === "courier") || []
+      setCouriers(courierUsers)
+    } catch (error: any) {
+      setError("Failed to fetch couriers / فشل تحميل المندوبين: " + error.message)
+    }
+  }
+
+  const handleEditChange = (orderId: string, field: keyof Order, value: any) => {
+    setOrderEdits((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], [field]: value },
+    }))
+  }
+
+  const openExpandedEdit = (orderId: string, field: string, currentValue: string) => {
+    setExpandedField({ orderId, field })
+    setExpandedValue(currentValue)
+  }
+
+  const closeExpandedEdit = () => {
+    if (expandedField) {
+      if (expandedField.field === "notes") {
+        // Handle notes separately since they update directly
+        setNoteEdits((prev) => ({ ...prev, [expandedField.orderId]: expandedValue }))
+        updateNote(expandedField.orderId)
+      } else {
+        handleEditChange(expandedField.orderId, expandedField.field as keyof Order, expandedValue)
+      }
+    }
+    setExpandedField(null)
+    setExpandedValue("")
+  }
+
+  const saveOrderEdit = async (orderId: string) => {
+    const changes = orderEdits[orderId]
+    if (!changes) return
+    try {
+      const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
+      if (error) throw error
+      setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
+      setOrderEdits((prev) => {
+        const copy = { ...prev }
+        delete copy[orderId]
+        return copy
+      })
+      setEditingOrder(null)
+      fetchOrders()
+    } catch (error: any) {
+      setError("Failed to save changes / فشل حفظ التغييرات: " + error.message)
+    }
+  }
+
+  const updateNote = async (orderId: string) => {
+    if (noteEdits[orderId] === undefined) return
+    try {
+      const { error } = await supabase.from("orders").update({ notes: noteEdits[orderId] }).eq("id", orderId)
+      if (error) throw error
+      setSuccessMessage("Note updated / تم تحديث الملاحظة")
+      fetchOrders()
+    } catch (error: any) {
+      setError("Failed to update note / فشل تحديث الملاحظة: " + error.message)
+    }
+  }
+
+  const handleAssignOrders = async () => {
+    if (!selectedCourier || selectedOrders.length === 0) {
+      setError("Please select courier and orders / يرجى اختيار المندوب والطلبات")
+      return
+    }
+    setAssignLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({
+          assigned_courier_id: selectedCourier,
+          status: "assigned",
+        })
+        .in("id", selectedOrders)
+      if (error) throw error
+      await fetchOrders()
+      setSelectedOrders([])
+      setSelectedCourier("")
+      setSuccessMessage(
+        `Successfully assigned ${selectedOrders.length} orders / تم تعيين ${selectedOrders.length} طلبات بنجاح`,
+      )
+    } catch (error: any) {
+      setError("Failed to assign orders / فشل تعيين الطلبات: " + error.message)
+    } finally {
+      setAssignLoading(false)
+    }
+  }
+
+  const handleDeleteOrders = async () => {
+    if (selectedOrders.length === 0) {
+      setError("Please select orders to delete / يرجى اختيار طلبات للحذف")
+      return
+    }
+    setDeleteLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase.from("orders").delete().in("id", selectedOrders)
+      if (error) throw error
+      await fetchOrders()
+      setSelectedOrders([])
+      setShowDeleteConfirm(false)
+      setSuccessMessage(
+        `Successfully deleted ${selectedOrders.length} orders / تم حذف ${selectedOrders.length} طلبات بنجاح`,
+      )
+    } catch (error: any) {
+      setError("Failed to delete orders / فشل حذف الطلبات: " + error.message)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const toggleOrderSelection = (id: string) => {
+    setSelectedOrders((prev) => (prev.includes(id) ? prev.filter((orderId) => orderId !== id) : [...prev, id]))
+  }
+
+  const toggleAllOrders = () => {
+    if (selectedOrders.length === orders.length) {
+      setSelectedOrders([])
+    } else {
+      setSelectedOrders(orders.map((order) => order.id))
+    }
+  }
+
+  const clearFilters = () => {
+    setFilters({
+      courier: "",
+      mobile: "",
+      payment: "",
+      orderId: "",
+    })
+    fetchOrders()
+  }
+
+  const getStatusBadge = (status: string) => {
+    const config = statusConfig[status] || {
+      label: status,
+      color: "text-gray-700",
+      bgColor: "bg-gray-50 border-gray-200",
+      icon: Activity,
+    }
+    const StatusIcon = config.icon
+
+    return (
+      <div
+        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
+      >
+        <StatusIcon className="w-3 h-3" />
+        <span>{config.label}</span>
+      </div>
     )
   }
 
-  const saveChanges = async (courier: any) => {
-    const { id, name, email } = courier
-    const { error } = await supabase.from('users').update({ name, email }).eq('id', id)
-
-    if (error) {
-      console.error('Error saving changes:', error.message)
-    } else {
-      setEditMode(prev => ({ ...prev, [id]: false }))
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-gray-800">جاري تحميل الطلبات</h2>
+            <p className="text-gray-600">Loading orders...</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto" dir="ltr" lang="en">
-      <h2 className="text-2xl font-bold mb-4">{translate('manageCouriers')}</h2>
-      <table className="w-full table-auto border border-collapse text-left">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-2 border">{translate('name')}</th>
-            <th className="p-2 border">{translate('email')}</th>
-            <th className="p-2 border">{translate('actions')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {couriers.map(courier => (
-            <tr key={courier.id} className="hover:bg-gray-50">
-              <td className="border p-2 align-middle">
-                {editMode[courier.id] ? (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <Settings className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">إدارة الطلبات</h1>
+                <p className="text-gray-600">Orders Management</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  showFilters
+                    ? "bg-blue-50 border-blue-200 text-blue-700"
+                    : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                <span className="hidden sm:inline">{showFilters ? "إخفاء المرشحات" : "إظهار المرشحات"}</span>
+              </button>
+              <button
+                onClick={fetchOrders}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">تحديث</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">إجمالي الطلبات</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{orders.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Total Orders</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Package className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">المندوبين المتاحين</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{couriers.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Available Couriers</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <Users className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">الطلبات المحددة</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{selectedOrders.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Selected Orders</p>
+              </div>
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">القيمة الإجمالية</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {orders.reduce((sum, order) => sum + order.total_order_fees, 0).toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">EGP Total Value</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-orange-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters Section */}
+        {showFilters && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Search className="w-4 h-4 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">مرشحات البحث</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بالمندوب</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
-                    value={courier.name}
-                    onChange={e => handleChange(courier.id, 'name', e.target.value)}
-                    className="border p-1 w-full rounded"
-                    aria-label={`${translate('name')} - ${courier.name}`}
+                    type="text"
+                    placeholder="اسم المندوب"
+                    value={filters.courier}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, courier: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                ) : (
-                  courier.name
-                )}
-              </td>
-              <td className="border p-2 align-middle">
-                {editMode[courier.id] ? (
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بالهاتف</label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
-                    value={courier.email}
-                    onChange={e => handleChange(courier.id, 'email', e.target.value)}
-                    className="border p-1 w-full rounded"
-                    aria-label={`${translate('email')} - ${courier.email}`}
+                    type="text"
+                    placeholder="رقم الهاتف"
+                    value={filters.mobile}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, mobile: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                ) : (
-                  courier.email
-                )}
-              </td>
-              <td className="border p-2 align-middle">
-                {editMode[courier.id] ? (
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بطريقة الدفع</label>
+                <div className="relative">
+                  <CreditCard className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="طريقة الدفع"
+                    value={filters.payment}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, payment: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث برقم الطلب</label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="رقم الطلب"
+                    value={filters.orderId}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, orderId: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={fetchOrders}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Search className="w-4 h-4" />
+                تطبيق المرشحات
+              </button>
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                <X className="w-4 h-4" />
+                مسح المرشحات
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Actions */}
+        {selectedOrders.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="font-semibold text-gray-900">{selectedOrders.length} طلب محدد</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedCourier}
+                  onChange={(e) => setSelectedCourier(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">اختر المندوب</option>
+                  {couriers.map((courier) => (
+                    <option key={courier.id} value={courier.id}>
+                      {courier.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAssignOrders}
+                  disabled={assignLoading || !selectedCourier}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {assignLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                  تعيين المحدد
+                </button>
+              </div>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={deleteLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                حذف المحدد
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="flex items-center gap-3 text-red-800">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <div className="flex items-center gap-3 text-green-800">
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Orders Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-4 text-right">
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.length === orders.length && orders.length > 0}
+                      onChange={toggleAllOrders}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    رقم الطلب
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    العميل
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    العنوان
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الهاتف
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المبلغ
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    طريقة الدفع
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الحالة
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المندوب
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الملاحظات
+                  </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الإجراءات
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {orders.map((order) => {
+                  const edited = orderEdits[order.id] || {}
+                  const isEditing = editingOrder === order.id
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.includes(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Hash className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={edited.customer_name ?? order.customer_name}
+                              onChange={(e) => handleEditChange(order.id, "customer_name", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <button
+                              onClick={() =>
+                                openExpandedEdit(order.id, "customer_name", edited.customer_name ?? order.customer_name)
+                              }
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-900">{order.customer_name}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={edited.address ?? order.address}
+                              onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <button
+                              onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 break-words">{order.address}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={edited.mobile_number ?? order.mobile_number}
+                            onChange={(e) => handleEditChange(order.id, "mobile_number", e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                            <a
+                              href={`tel:${order.mobile_number}`}
+                              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                              {order.mobile_number}
+                            </a>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={edited.total_order_fees ?? order.total_order_fees}
+                            onChange={(e) => handleEditChange(order.id, "total_order_fees", Number(e.target.value))}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm font-medium text-gray-900">
+                              {order.total_order_fees.toFixed(2)} ج.م
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={edited.payment_method ?? order.payment_method}
+                            onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        ) : (
+                          <span className="text-sm text-gray-900">{order.payment_method}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {isEditing ? (
+                          <select
+                            value={edited.status ?? order.status}
+                            onChange={(e) => handleEditChange(order.id, "status", e.target.value)}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="assigned">مكلف</option>
+                            <option value="delivered">تم التوصيل</option>
+                            <option value="canceled">ملغي</option>
+                            <option value="partial">جزئي</option>
+                            <option value="hand_to_hand">استبدال</option>
+                            <option value="return">مرتجع</option>
+                          </select>
+                        ) : (
+                          getStatusBadge(order.status)
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <select
+                          value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
+                          onChange={(e) => {
+                            handleEditChange(order.id, "assigned_courier_id", e.target.value)
+                            saveOrderEdit(order.id)
+                          }}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">اختر المندوب</option>
+                          {couriers.map((courier) => (
+                            <option key={courier.id} value={courier.id}>
+                              {courier.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            value={noteEdits[order.id] ?? order.notes ?? ""}
+                            onChange={(e) => setNoteEdits({ ...noteEdits, [order.id]: e.target.value })}
+                            onBlur={() => updateNote(order.id)}
+                            placeholder="أضف ملاحظات"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                          <button
+                            onClick={() =>
+                              openExpandedEdit(order.id, "notes", noteEdits[order.id] ?? order.notes ?? "")
+                            }
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="توسيع محرر الملاحظات"
+                          >
+                            <Maximize2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => saveOrderEdit(order.id)}
+                                className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                              >
+                                <Save className="w-3 h-3" />
+                                حفظ
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingOrder(null)
+                                  setOrderEdits((prev) => {
+                                    const copy = { ...prev }
+                                    delete copy[order.id]
+                                    return copy
+                                  })
+                                }}
+                                className="flex items-center gap-1 px-3 py-1 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm"
+                              >
+                                <X className="w-3 h-3" />
+                                إلغاء
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingOrder(order.id)}
+                                className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                                تعديل
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedOrders([order.id])
+                                  setShowDeleteConfirm(true)
+                                }}
+                                className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                حذف
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {orders.length === 0 && (
+            <div className="text-center py-16">
+              <div className="space-y-4">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                  <Package className="w-8 h-8 text-gray-400" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-gray-800">لا توجد طلبات</h3>
+                  <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Expanded Edit Modal */}
+        {expandedField && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Edit3 className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    تعديل{" "}
+                    {expandedField.field === "address"
+                      ? "العنوان"
+                      : expandedField.field === "customer_name"
+                        ? "اسم العميل"
+                        : expandedField.field === "notes"
+                          ? "الملاحظات"
+                          : expandedField.field}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setExpandedField(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                <textarea
+                  value={expandedValue}
+                  onChange={(e) => setExpandedValue(e.target.value)}
+                  placeholder={`أدخل ${
+                    expandedField.field === "address"
+                      ? "العنوان"
+                      : expandedField.field === "customer_name"
+                        ? "اسم العميل"
+                        : expandedField.field === "notes"
+                          ? "الملاحظات"
+                          : expandedField.field
+                  }`}
+                  className="w-full h-40 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3 justify-end p-6 border-t border-gray-200">
+                <button
+                  onClick={() => setExpandedField(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={closeExpandedEdit}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  تم
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">تأكيد الحذف</h3>
+                </div>
+                <p className="text-gray-600 mb-6">
+                  هل أنت متأكد من حذف {selectedOrders.length} طلب؟ لا يمكن التراجع عن هذا الإجراء.
+                </p>
+                <div className="flex gap-3">
                   <button
-                    onClick={() => saveChanges(courier)}
-                    className="bg-green-600 text-white px-3 py-1 rounded flex items-center gap-1 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
-                    aria-label={`${translate('save')} ${courier.name}`}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <Save className="w-4 h-4" />
-                    {translate('save')}
+                    إلغاء
                   </button>
-                ) : (
                   <button
-                    onClick={() => setEditMode(prev => ({ ...prev, [courier.id]: true }))}
-                    className="bg-yellow-500 text-white px-3 py-1 rounded flex items-center gap-1 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    aria-label={`${translate('edit')} ${courier.name}`}
+                    onClick={handleDeleteOrders}
+                    disabled={deleteLoading}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                   >
-                    <Pencil className="w-4 h-4" />
-                    {translate('edit')}
+                    {deleteLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        جاري الحذف...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        حذف
+                      </>
+                    )}
                   </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-export default CouriersManagement
+export default OrdersManagement

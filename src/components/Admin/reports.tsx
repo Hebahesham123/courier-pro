@@ -4,7 +4,6 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import {
   Download,
-  FileText,
   Users,
   Package,
   Calendar,
@@ -20,6 +19,14 @@ import {
   TrendingUp,
   Eye,
   ExternalLink,
+  BarChart3,
+  Activity,
+  CheckCircle,
+  X,
+  Filter,
+  ArrowUpRight,
+  Target,
+  Percent,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
@@ -66,14 +73,45 @@ interface CourierStats {
   completionRate: number
 }
 
-const statusColors: Record<string, string> = {
-  assigned: "bg-blue-100 text-blue-800 border-blue-200",
-  delivered: "bg-green-100 text-green-800 border-green-200",
-  canceled: "bg-red-100 text-red-800 border-red-200",
-  partial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  hand_to_hand: "bg-purple-100 text-purple-800 border-purple-200",
-  return: "bg-orange-100 text-orange-800 border-orange-200",
-}
+const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
+  {
+    assigned: {
+      label: "مكلف",
+      color: "text-blue-700",
+      bgColor: "bg-blue-50 border-blue-200",
+      icon: Activity,
+    },
+    delivered: {
+      label: "تم التوصيل",
+      color: "text-green-700",
+      bgColor: "bg-green-50 border-green-200",
+      icon: CheckCircle,
+    },
+    canceled: {
+      label: "ملغي",
+      color: "text-red-700",
+      bgColor: "bg-red-50 border-red-200",
+      icon: X,
+    },
+    partial: {
+      label: "جزئي",
+      color: "text-yellow-700",
+      bgColor: "bg-yellow-50 border-yellow-200",
+      icon: Activity,
+    },
+    hand_to_hand: {
+      label: "استبدال",
+      color: "text-purple-700",
+      bgColor: "bg-purple-50 border-purple-200",
+      icon: RefreshCw,
+    },
+    return: {
+      label: "مرتجع",
+      color: "text-orange-700",
+      bgColor: "bg-orange-50 border-orange-200",
+      icon: TrendingUp,
+    },
+  }
 
 const Reports: React.FC = () => {
   const [couriers, setCouriers] = useState<Courier[]>([])
@@ -91,50 +129,50 @@ const Reports: React.FC = () => {
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
-      courierReports: "Courier Reports / تقارير المندوبين",
-      couriers: "Couriers / المندوبين",
-      loadingCouriers: "Loading couriers... / جاري تحميل المندوبين...",
-      selectCourier: "Select a courier / اختر مندوب",
-      loadingOrders: "Loading orders... / جاري تحميل الطلبات...",
-      noOrders: "No orders found / لا توجد طلبات",
-      exportCSV: "Export CSV / تصدير CSV",
-      orderId: "Order ID / رقم الطلب",
-      status: "Status / الحالة",
-      customer: "Customer / العميل",
-      address: "Address / العنوان",
-      phone: "Phone / الهاتف",
-      totalFees: "Total Fees / المبلغ الإجمالي",
-      deliveryFee: "Delivery Fee / رسوم التوصيل",
-      paymentMethod: "Payment Method / طريقة الدفع",
-      partialPaidAmount: "Partial Paid Amount / المبلغ المدفوع جزئياً",
-      collectedBy: "Collected By / تم التحصيل بواسطة",
-      internalComment: "Internal Comment / تعليق داخلي",
-      notes: "Notes / ملاحظات",
-      proofImages: "Proof Images / صور الإثبات",
-      createdAt: "Created At / تاريخ الإنشاء",
-      updatedAt: "Updated At / تاريخ التحديث",
-      clickToOpen: "Click to open full image / اضغط لفتح الصورة كاملة",
-      noImages: "No images / لا توجد صور",
-      totalOrders: "Total Orders / إجمالي الطلبات",
-      deliveredOrders: "Delivered Orders / الطلبات المسلمة",
-      totalAmount: "Total Amount / المبلغ الإجمالي",
-      deliveredAmount: "Delivered Amount / المبلغ المسلم",
-      averageOrderValue: "Average Order Value / متوسط قيمة الطلب",
-      completionRate: "Completion Rate / معدل الإنجاز",
-      searchOrders: "Search orders... / البحث في الطلبات...",
-      filterByStatus: "Filter by status / تصفية حسب الحالة",
-      allStatuses: "All Statuses / جميع الحالات",
-      dateFrom: "Date From / من تاريخ",
-      dateTo: "Date To / إلى تاريخ",
-      clearFilters: "Clear Filters / مسح المرشحات",
-      viewDetails: "View Details / عرض التفاصيل",
-      orderDetails: "Order Details / تفاصيل الطلب",
-      close: "Close / إغلاق",
-      refresh: "Refresh / تحديث",
-      courierPerformance: "Courier Performance / أداء المندوب",
-      ordersOverview: "Orders Overview / نظرة عامة على الطلبات",
-      noExportData: "No data to export / لا توجد بيانات للتصدير",
-      exportSuccess: "Data exported successfully / تم تصدير البيانات بنجاح",
+      courierReports: "تقارير المندوبين",
+      couriers: "المندوبين",
+      loadingCouriers: "جاري تحميل المندوبين...",
+      selectCourier: "اختر مندوب",
+      loadingOrders: "جاري تحميل الطلبات...",
+      noOrders: "لا توجد طلبات",
+      exportCSV: "تصدير CSV",
+      orderId: "رقم الطلب",
+      status: "الحالة",
+      customer: "العميل",
+      address: "العنوان",
+      phone: "الهاتف",
+      totalFees: "المبلغ الإجمالي",
+      deliveryFee: "رسوم التوصيل",
+      paymentMethod: "طريقة الدفع",
+      partialPaidAmount: "المبلغ المدفوع جزئياً",
+      collectedBy: "تم التحصيل بواسطة",
+      internalComment: "تعليق داخلي",
+      notes: "ملاحظات",
+      proofImages: "صور الإثبات",
+      createdAt: "تاريخ الإنشاء",
+      updatedAt: "تاريخ التحديث",
+      clickToOpen: "اضغط لفتح الصورة كاملة",
+      noImages: "لا توجد صور",
+      totalOrders: "إجمالي الطلبات",
+      deliveredOrders: "الطلبات المسلمة",
+      totalAmount: "المبلغ الإجمالي",
+      deliveredAmount: "المبلغ المسلم",
+      averageOrderValue: "متوسط قيمة الطلب",
+      completionRate: "معدل الإنجاز",
+      searchOrders: "البحث في الطلبات...",
+      filterByStatus: "تصفية حسب الحالة",
+      allStatuses: "جميع الحالات",
+      dateFrom: "من تاريخ",
+      dateTo: "إلى تاريخ",
+      clearFilters: "مسح المرشحات",
+      viewDetails: "عرض التفاصيل",
+      orderDetails: "تفاصيل الطلب",
+      close: "إغلاق",
+      refresh: "تحديث",
+      courierPerformance: "أداء المندوب",
+      ordersOverview: "نظرة عامة على الطلبات",
+      noExportData: "لا توجد بيانات للتصدير",
+      exportSuccess: "تم تصدير البيانات بنجاح",
     }
     return translations[key] || key
   }
@@ -271,11 +309,21 @@ const Reports: React.FC = () => {
   }
 
   const getStatusBadge = (status: string) => {
-    const colorClass = statusColors[status] || "bg-gray-100 text-gray-800 border-gray-200"
+    const config = statusConfig[status] || {
+      label: status,
+      color: "text-gray-700",
+      bgColor: "bg-gray-50 border-gray-200",
+      icon: Activity,
+    }
+    const StatusIcon = config.icon
+
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colorClass}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
+      <div
+        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
+      >
+        <StatusIcon className="w-3 h-3" />
+        <span>{config.label}</span>
+      </div>
     )
   }
 
@@ -285,264 +333,400 @@ const Reports: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
-      <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                <FileText className="w-8 h-8 text-blue-600" />
-                {translate("courierReports")}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                View detailed courier performance and order reports / عرض تقارير أداء المندوبين والطلبات
-              </p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{translate("courierReports")}</h1>
+                <p className="text-gray-600">تقارير أداء المندوبين والطلبات</p>
+              </div>
             </div>
             <button
               onClick={() => selectedCourier && fetchOrdersForCourier(selectedCourier)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
-              {translate("refresh")}
+              <span className="hidden sm:inline">{translate("refresh")}</span>
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Courier List */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Courier List Sidebar */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
-                {translate("couriers")}
-              </h3>
-              {loadingCouriers ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p className="text-gray-600">{translate("loadingCouriers")}</p>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">{translate("couriers")}</h3>
                 </div>
-              ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {couriers.map((courier) => (
-                    <button
-                      key={courier.id}
-                      onClick={() => fetchOrdersForCourier(courier)}
-                      className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-                        selectedCourier?.id === courier.id
-                          ? "bg-blue-100 text-blue-800 border border-blue-200 font-semibold"
-                          : "hover:bg-gray-50 border border-transparent"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        {courier.name}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+              </div>
+              <div className="p-6">
+                {loadingCouriers ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-sm text-gray-600">{translate("loadingCouriers")}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {couriers.map((courier) => (
+                      <button
+                        key={courier.id}
+                        onClick={() => fetchOrdersForCourier(courier)}
+                        className={`w-full text-right px-4 py-3 rounded-lg transition-all duration-200 ${
+                          selectedCourier?.id === courier.id
+                            ? "bg-blue-50 border-2 border-blue-200 text-blue-700 font-semibold shadow-sm"
+                            : "hover:bg-gray-50 border-2 border-transparent text-gray-700"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                selectedCourier?.id === courier.id ? "bg-blue-100" : "bg-gray-100"
+                              }`}
+                            >
+                              <User
+                                className={`w-4 h-4 ${
+                                  selectedCourier?.id === courier.id ? "text-blue-600" : "text-gray-500"
+                                }`}
+                              />
+                            </div>
+                            <span className="text-sm">{courier.name}</span>
+                          </div>
+                          {selectedCourier?.id === courier.id && <ArrowUpRight className="w-4 h-4 text-blue-600" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Main Content */}
           <div className="lg:col-span-3">
             {selectedCourier ? (
-              <div className="space-y-6">
-                {/* Courier Stats */}
+              <div className="space-y-8">
+                {/* Performance Statistics */}
                 {courierStats && (
-                  <div className="bg-white rounded-lg shadow-sm border p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-600" />
-                      {translate("courierPerformance")}: {selectedCourier.name}
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="w-5 h-5 text-blue-600" />
-                          <span className="text-sm font-medium text-blue-800">{translate("totalOrders")}</span>
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                          <TrendingUp className="w-4 h-4 text-green-600" />
                         </div>
-                        <p className="text-2xl font-bold text-blue-900">{courierStats.totalOrders}</p>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {translate("courierPerformance")}: {selectedCourier.name}
+                        </h3>
                       </div>
-                      <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="w-5 h-5 text-green-600" />
-                          <span className="text-sm font-medium text-green-800">{translate("deliveredOrders")}</span>
+                    </div>
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                              <Package className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-blue-900">{courierStats.totalOrders}</p>
+                              <p className="text-xs text-blue-600 mt-1">طلب</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-blue-800">{translate("totalOrders")}</p>
                         </div>
-                        <p className="text-2xl font-bold text-green-900">{courierStats.deliveredOrders}</p>
-                      </div>
-                      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <DollarSign className="w-5 h-5 text-purple-600" />
-                          <span className="text-sm font-medium text-purple-800">{translate("totalAmount")}</span>
+
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center">
+                              <CheckCircle className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-green-900">{courierStats.deliveredOrders}</p>
+                              <p className="text-xs text-green-600 mt-1">طلب مسلم</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-green-800">{translate("deliveredOrders")}</p>
                         </div>
-                        <p className="text-2xl font-bold text-purple-900">{courierStats.totalAmount.toFixed(2)} EGP</p>
-                      </div>
-                      <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <DollarSign className="w-5 h-5 text-orange-600" />
-                          <span className="text-sm font-medium text-orange-800">{translate("deliveredAmount")}</span>
+
+                        <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center">
+                              <DollarSign className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-purple-900">
+                                {courierStats.totalAmount.toFixed(0)}
+                              </p>
+                              <p className="text-xs text-purple-600 mt-1">ج.م</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-purple-800">{translate("totalAmount")}</p>
                         </div>
-                        <p className="text-2xl font-bold text-orange-900">
-                          {courierStats.deliveredAmount.toFixed(2)} EGP
-                        </p>
-                      </div>
-                      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <TrendingUp className="w-5 h-5 text-yellow-600" />
-                          <span className="text-sm font-medium text-yellow-800">{translate("averageOrderValue")}</span>
+
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
+                              <Target className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-orange-900">
+                                {courierStats.deliveredAmount.toFixed(0)}
+                              </p>
+                              <p className="text-xs text-orange-600 mt-1">ج.م مسلم</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-orange-800">{translate("deliveredAmount")}</p>
                         </div>
-                        <p className="text-2xl font-bold text-yellow-900">
-                          {courierStats.averageOrderValue.toFixed(2)} EGP
-                        </p>
-                      </div>
-                      <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <TrendingUp className="w-5 h-5 text-indigo-600" />
-                          <span className="text-sm font-medium text-indigo-800">{translate("completionRate")}</span>
+
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-yellow-600 rounded-xl flex items-center justify-center">
+                              <BarChart3 className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-yellow-900">
+                                {courierStats.averageOrderValue.toFixed(0)}
+                              </p>
+                              <p className="text-xs text-yellow-600 mt-1">ج.م متوسط</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-yellow-800">{translate("averageOrderValue")}</p>
                         </div>
-                        <p className="text-2xl font-bold text-indigo-900">{courierStats.completionRate.toFixed(1)}%</p>
+
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
+                              <Percent className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-indigo-900">
+                                {courierStats.completionRate.toFixed(1)}%
+                              </p>
+                              <p className="text-xs text-indigo-600 mt-1">معدل الإنجاز</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-indigo-800">{translate("completionRate")}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Filters and Export */}
-                <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <div className="flex flex-wrap items-center gap-4 mb-4">
-                    <div className="flex-1 min-w-64">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                {/* Filters and Export Section */}
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Filter className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900">البحث والتصفية</h3>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">البحث في الطلبات</label>
+                        <div className="relative">
+                          <Search className="w-4 h-4 text-gray-400 absolute right-3 top-3" />
+                          <input
+                            type="text"
+                            placeholder={translate("searchOrders")}
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">تصفية حسب الحالة</label>
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          <option value="">{translate("allStatuses")}</option>
+                          <option value="assigned">مكلف</option>
+                          <option value="delivered">تم التوصيل</option>
+                          <option value="canceled">ملغي</option>
+                          <option value="partial">جزئي</option>
+                          <option value="hand_to_hand">استبدال</option>
+                          <option value="return">مرتجع</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">من تاريخ</label>
                         <input
-                          type="text"
-                          placeholder={translate("searchOrders")}
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          type="date"
+                          value={dateRange.start}
+                          onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">إلى تاريخ</label>
+                        <input
+                          type="date"
+                          value={dateRange.end}
+                          onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
                     </div>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">{translate("allStatuses")}</option>
-                      <option value="assigned">Assigned / مكلف</option>
-                      <option value="delivered">Delivered / تم التوصيل</option>
-                      <option value="canceled">Canceled / ملغي</option>
-                      <option value="partial">Partial / جزئي</option>
-                      <option value="hand_to_hand">Hand to Hand / استبدال</option>
-                      <option value="return">Return / مرتجع</option>
-                    </select>
-                    <input
-                      type="date"
-                      value={dateRange.start}
-                      onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={translate("dateFrom")}
-                    />
-                    <input
-                      type="date"
-                      value={dateRange.end}
-                      onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
-                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={translate("dateTo")}
-                    />
-                    <button
-                      onClick={clearFilters}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                    >
-                      {translate("clearFilters")}
-                    </button>
-                    {filteredOrders.length > 0 && (
+
+                    <div className="flex flex-wrap gap-3">
                       <button
-                        onClick={exportOrdersCsv}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        onClick={clearFilters}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                       >
-                        <Download className="w-4 h-4" />
-                        {translate("exportCSV")}
+                        <X className="w-4 h-4" />
+                        {translate("clearFilters")}
                       </button>
-                    )}
+                      {filteredOrders.length > 0 && (
+                        <button
+                          onClick={exportOrdersCsv}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <Download className="w-4 h-4" />
+                          {translate("exportCSV")}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {/* Orders List */}
-                <div className="bg-white rounded-lg shadow-sm border">
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Package className="w-5 h-5 text-blue-600" />
-                      {translate("ordersOverview")} ({filteredOrders.length})
-                    </h3>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Package className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">{translate("ordersOverview")}</h3>
+                      </div>
+                      <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+                        {filteredOrders.length} طلب
+                      </div>
+                    </div>
                   </div>
                   <div className="p-6">
                     {loadingOrders ? (
-                      <div className="text-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-gray-600">{translate("loadingOrders")}</p>
+                      <div className="text-center py-16">
+                        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-lg font-medium text-gray-700">{translate("loadingOrders")}</p>
                       </div>
                     ) : filteredOrders.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-600">{translate("noOrders")}</p>
+                      <div className="text-center py-16">
+                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Package className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">{translate("noOrders")}</h3>
+                        <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
                       </div>
                     ) : (
-                      <div className="grid gap-4">
+                      <div className="space-y-4">
                         {filteredOrders.map((order) => (
                           <div
                             key={order.id}
-                            className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                            className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
                           >
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-gray-900">#{order.order_id}</span>
+                            <div className="flex justify-between items-start mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                  <Package className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold text-gray-900">#{order.order_id}</h4>
+                                  <p className="text-sm text-gray-600">{order.customer_name}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
                                 {getStatusBadge(order.status)}
+                                <button
+                                  onClick={() => openOrderModal(order)}
+                                  className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  {translate("viewDetails")}
+                                </button>
                               </div>
-                              <button
-                                onClick={() => openOrderModal(order)}
-                                className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-                              >
-                                <Eye className="w-3 h-3" />
-                                {translate("viewDetails")}
-                              </button>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                              <div className="flex items-center gap-2">
-                                <User className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{translate("customer")}:</span>
-                                <span className="font-medium">{order.customer_name}</span>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <Phone className="w-4 h-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">الهاتف</p>
+                                  <a
+                                    href={`tel:${order.mobile_number}`}
+                                    className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                                  >
+                                    {order.mobile_number}
+                                  </a>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{translate("phone")}:</span>
-                                <a href={`tel:${order.mobile_number}`} className="text-blue-600 hover:underline">
-                                  {order.mobile_number}
-                                </a>
+
+                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <DollarSign className="w-4 h-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">المبلغ</p>
+                                  <p className="text-sm font-medium text-green-600">
+                                    {order.total_order_fees.toFixed(2)} ج.م
+                                  </p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <DollarSign className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{translate("totalFees")}:</span>
-                                <span className="font-medium text-green-600">
-                                  {order.total_order_fees.toFixed(2)} EGP
-                                </span>
+
+                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <CreditCard className="w-4 h-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">طريقة الدفع</p>
+                                  <p className="text-sm font-medium text-gray-900">{order.payment_method}</p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <CreditCard className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{translate("paymentMethod")}:</span>
-                                <span>{order.payment_method}</span>
+
+                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <Calendar className="w-4 h-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">تاريخ الإنشاء</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {new Date(order.created_at).toLocaleDateString("ar-EG")}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{translate("createdAt")}:</span>
-                                <span>{new Date(order.created_at).toLocaleDateString()}</span>
-                              </div>
+
                               {order.order_proofs && order.order_proofs.length > 0 && (
-                                <div className="flex items-center gap-2">
-                                  <Camera className="w-4 h-4 text-gray-400" />
-                                  <span className="text-gray-600">{translate("proofImages")}:</span>
-                                  <span className="text-blue-600">{order.order_proofs.length} images</span>
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                  <Camera className="w-4 h-4 text-gray-500" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">صور الإثبات</p>
+                                    <p className="text-sm font-medium text-blue-600">
+                                      {order.order_proofs.length} صورة
+                                    </p>
+                                  </div>
                                 </div>
                               )}
+
+                              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                <MapPin className="w-4 h-4 text-gray-500 mt-0.5" />
+                                <div>
+                                  <p className="text-xs text-gray-600">العنوان</p>
+                                  <p className="text-sm font-medium text-gray-900 line-clamp-2">{order.address}</p>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -552,13 +736,18 @@ const Reports: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">{translate("selectCourier")}</h3>
-                <p className="text-gray-600">
-                  Choose a courier from the list to view their orders and performance / اختر مندوب من القائمة لعرض
-                  طلباته وأدائه
-                </p>
+              <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
+                <div className="space-y-4">
+                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                    <Users className="w-10 h-10 text-gray-400" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold text-gray-800">{translate("selectCourier")}</h3>
+                    <p className="text-gray-600 max-w-md mx-auto">
+                      اختر مندوب من القائمة الجانبية لعرض طلباته وأدائه التفصيلي
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -567,113 +756,127 @@ const Reports: React.FC = () => {
         {/* Order Details Modal */}
         {showOrderModal && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white rounded-t-2xl">
+            <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+              <div className="bg-blue-600 text-white p-6 rounded-t-xl">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-2xl font-bold">
-                    {translate("orderDetails")} #{selectedOrder.order_id}
-                  </h3>
+                  <div>
+                    <h3 className="text-xl font-bold">
+                      {translate("orderDetails")} #{selectedOrder.order_id}
+                    </h3>
+                    <p className="text-blue-100 mt-1">{selectedOrder.customer_name}</p>
+                  </div>
                   <button
                     onClick={() => setShowOrderModal(false)}
-                    className="text-white hover:text-gray-200 text-2xl font-bold"
+                    className="text-blue-100 hover:text-white transition-colors p-2"
                   >
-                    ×
+                    <X className="w-6 h-6" />
                   </button>
                 </div>
               </div>
+
               <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{translate("customer")}</label>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("customer")}</label>
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-900">{selectedOrder.customer_name}</span>
+                        <span className="text-gray-900 font-medium">{selectedOrder.customer_name}</span>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{translate("phone")}</label>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("phone")}</label>
                       <div className="flex items-center gap-2">
                         <Phone className="w-4 h-4 text-gray-400" />
-                        <a href={`tel:${selectedOrder.mobile_number}`} className="text-blue-600 hover:underline">
+                        <a
+                          href={`tel:${selectedOrder.mobile_number}`}
+                          className="text-blue-600 hover:text-blue-800 font-medium"
+                        >
                           {selectedOrder.mobile_number}
                         </a>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{translate("address")}</label>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("address")}</label>
                       <div className="flex items-start gap-2">
                         <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                         <span className="text-gray-900">{selectedOrder.address}</span>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{translate("status")}</label>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("status")}</label>
                       {getStatusBadge(selectedOrder.status)}
                     </div>
                   </div>
+
                   <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{translate("totalFees")}</label>
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                      <label className="block text-sm font-medium text-green-700 mb-2">{translate("totalFees")}</label>
                       <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-gray-400" />
-                        <span className="text-xl font-bold text-green-600">
-                          {selectedOrder.total_order_fees.toFixed(2)} EGP
+                        <DollarSign className="w-5 h-5 text-green-600" />
+                        <span className="text-2xl font-bold text-green-700">
+                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
                         </span>
                       </div>
                     </div>
+
                     {selectedOrder.delivery_fee && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           {translate("deliveryFee")}
                         </label>
-                        <span className="text-gray-900">{selectedOrder.delivery_fee.toFixed(2)} EGP</span>
+                        <span className="text-gray-900 font-medium">{selectedOrder.delivery_fee.toFixed(2)} ج.م</span>
                       </div>
                     )}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         {translate("paymentMethod")}
                       </label>
                       <div className="flex items-center gap-2">
                         <CreditCard className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-900">
+                        <span className="text-gray-900 font-medium">
                           {selectedOrder.payment_method}
                           {selectedOrder.payment_sub_type && ` (${selectedOrder.payment_sub_type})`}
                         </span>
                       </div>
                     </div>
+
                     {selectedOrder.collected_by && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           {translate("collectedBy")}
                         </label>
-                        <span className="text-gray-900">{selectedOrder.collected_by}</span>
+                        <span className="text-gray-900 font-medium">{selectedOrder.collected_by}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
                 {(selectedOrder.internal_comment || selectedOrder.notes) && (
-                  <div className="mt-6 space-y-4">
+                  <div className="space-y-4 mb-6">
                     {selectedOrder.internal_comment && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                        <label className="block text-sm font-medium text-yellow-700 mb-2">
                           {translate("internalComment")}
                         </label>
-                        <p className="text-gray-900 bg-gray-50 p-3 rounded-lg">{selectedOrder.internal_comment}</p>
+                        <p className="text-gray-900">{selectedOrder.internal_comment}</p>
                       </div>
                     )}
                     {selectedOrder.notes && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{translate("notes")}</label>
-                        <p className="text-gray-900 bg-gray-50 p-3 rounded-lg">{selectedOrder.notes}</p>
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <label className="block text-sm font-medium text-blue-700 mb-2">{translate("notes")}</label>
+                        <p className="text-gray-900">{selectedOrder.notes}</p>
                       </div>
                     )}
                   </div>
                 )}
 
                 {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
-                  <div className="mt-6">
+                  <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-3">{translate("proofImages")}</label>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                       {selectedOrder.order_proofs.map((proof) => {
@@ -696,18 +899,18 @@ const Reports: React.FC = () => {
                   </div>
                 )}
 
-                <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="pt-6 border-t border-gray-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
                       <span>
-                        {translate("createdAt")}: {new Date(selectedOrder.created_at).toLocaleString()}
+                        {translate("createdAt")}: {new Date(selectedOrder.created_at).toLocaleString("ar-EG")}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
                       <span>
-                        {translate("updatedAt")}: {new Date(selectedOrder.updated_at).toLocaleString()}
+                        {translate("updatedAt")}: {new Date(selectedOrder.updated_at).toLocaleString("ar-EG")}
                       </span>
                     </div>
                   </div>
