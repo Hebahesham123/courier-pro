@@ -117,7 +117,6 @@ const Sidebar: React.FC = () => {
       icon: Truck,
       label: t("طلباطي") || "طلباتي",
       color: "text-green-400",
-      badge: 5, // Example badge count
       description: "طلبات التوصيل المخصصة لي",
     },
    
