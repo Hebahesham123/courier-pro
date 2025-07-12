@@ -45,7 +45,7 @@ const Sidebar: React.FC = () => {
   const location = useLocation()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [notifications] = useState(3) // Example notification count
+  const [notifications] = useState() // Example notification count
 
   const isRTL = language === "ar"
 
