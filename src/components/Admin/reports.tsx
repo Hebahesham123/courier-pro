@@ -882,17 +882,23 @@ const Reports: React.FC = () => {
                       {selectedOrder.order_proofs.map((proof) => {
                         const src = proof.image_url || proof.image_data || ""
                         return (
-                          <div key={proof.id} className="relative group">
-                            <img
-                              src={src || "/placeholder.svg"}
-                              alt={translate("clickToOpen")}
-                              className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-                              onClick={() => window.open(src, "_blank")}
-                            />
-                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all flex items-center justify-center">
-                              <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                          </div>
+                         <a
+  key={proof.id}
+  href={src}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="relative group block"
+>
+  <img
+    src={src || "/placeholder.svg"}
+    alt={translate("clickToOpen")}
+    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+  />
+  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all flex items-center justify-center">
+    <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+  </div>
+</a>
+
                         )
                       })}
                     </div>
