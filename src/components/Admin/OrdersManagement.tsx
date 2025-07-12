@@ -1,4 +1,5 @@
 "use client"
+
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -21,6 +22,10 @@ import {
   RefreshCw,
   MapPin,
   Maximize2,
+  Settings,
+  Upload,
+  TrendingUp,
+  Activity,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -47,14 +52,45 @@ interface Courier {
   role: string
 }
 
-const statusColors: Record<string, string> = {
-  assigned: "bg-blue-100 text-blue-800 border-blue-200",
-  delivered: "bg-green-100 text-green-800 border-green-200",
-  canceled: "bg-red-100 text-red-800 border-red-200",
-  partial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  hand_to_hand: "bg-purple-100 text-purple-800 border-purple-200",
-  return: "bg-orange-100 text-orange-800 border-orange-200",
-}
+const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
+  {
+    assigned: {
+      label: "مكلف",
+      color: "text-blue-700",
+      bgColor: "bg-blue-50 border-blue-200",
+      icon: Activity,
+    },
+    delivered: {
+      label: "تم التوصيل",
+      color: "text-green-700",
+      bgColor: "bg-green-50 border-green-200",
+      icon: CheckCircle,
+    },
+    canceled: {
+      label: "ملغي",
+      color: "text-red-700",
+      bgColor: "bg-red-50 border-red-200",
+      icon: X,
+    },
+    partial: {
+      label: "جزئي",
+      color: "text-yellow-700",
+      bgColor: "bg-yellow-50 border-yellow-200",
+      icon: Activity,
+    },
+    hand_to_hand: {
+      label: "استبدال",
+      color: "text-purple-700",
+      bgColor: "bg-purple-50 border-purple-200",
+      icon: RefreshCw,
+    },
+    return: {
+      label: "مرتجع",
+      color: "text-orange-700",
+      bgColor: "bg-orange-50 border-orange-200",
+      icon: Upload,
+    },
+  }
 
 const OrdersManagement: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([])
@@ -79,6 +115,7 @@ const OrdersManagement: React.FC = () => {
     payment: "",
     orderId: "",
   })
+
   const { t } = useLanguage()
 
   useEffect(() => {
@@ -181,11 +218,9 @@ const OrdersManagement: React.FC = () => {
   const saveOrderEdit = async (orderId: string) => {
     const changes = orderEdits[orderId]
     if (!changes) return
-
     try {
       const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
       if (error) throw error
-
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
       setOrderEdits((prev) => {
         const copy = { ...prev }
@@ -201,11 +236,9 @@ const OrdersManagement: React.FC = () => {
 
   const updateNote = async (orderId: string) => {
     if (noteEdits[orderId] === undefined) return
-
     try {
       const { error } = await supabase.from("orders").update({ notes: noteEdits[orderId] }).eq("id", orderId)
       if (error) throw error
-
       setSuccessMessage("Note updated / تم تحديث الملاحظة")
       fetchOrders()
     } catch (error: any) {
@@ -218,10 +251,8 @@ const OrdersManagement: React.FC = () => {
       setError("Please select courier and orders / يرجى اختيار المندوب والطلبات")
       return
     }
-
     setAssignLoading(true)
     setError(null)
-
     try {
       const { error } = await supabase
         .from("orders")
@@ -230,9 +261,7 @@ const OrdersManagement: React.FC = () => {
           status: "assigned",
         })
         .in("id", selectedOrders)
-
       if (error) throw error
-
       await fetchOrders()
       setSelectedOrders([])
       setSelectedCourier("")
@@ -251,14 +280,11 @@ const OrdersManagement: React.FC = () => {
       setError("Please select orders to delete / يرجى اختيار طلبات للحذف")
       return
     }
-
     setDeleteLoading(true)
     setError(null)
-
     try {
       const { error } = await supabase.from("orders").delete().in("id", selectedOrders)
       if (error) throw error
-
       await fetchOrders()
       setSelectedOrders([])
       setShowDeleteConfirm(false)
@@ -295,183 +321,215 @@ const OrdersManagement: React.FC = () => {
   }
 
   const getStatusBadge = (status: string) => {
-    const colorClass = statusColors[status] || "bg-gray-100 text-gray-800 border-gray-200"
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colorClass}`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)} / {getStatusArabic(status)}
-      </span>
-    )
-  }
-
-  const getStatusArabic = (status: string) => {
-    const statusMap: Record<string, string> = {
-      assigned: "مكلف",
-      delivered: "تم التوصيل",
-      canceled: "ملغي",
-      partial: "جزئي",
-      hand_to_hand: "استبدال",
-      return: "مرتجع",
+    const config = statusConfig[status] || {
+      label: status,
+      color: "text-gray-700",
+      bgColor: "bg-gray-50 border-gray-200",
+      icon: Activity,
     }
-    return statusMap[status] || status
+    const StatusIcon = config.icon
+
+    return (
+      <div
+        className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
+      >
+        <StatusIcon className="w-3 h-3" />
+        <span>{config.label}</span>
+      </div>
+    )
   }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-xl text-gray-600">Loading orders... / جاري تحميل الطلبات...</p>
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-gray-800">جاري تحميل الطلبات</h2>
+            <p className="text-gray-600">Loading orders...</p>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
-      <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Orders Management / إدارة الطلبات</h1>
-              <p className="text-gray-600 mt-1">Manage and assign delivery orders / إدارة وتعيين طلبات التوصيل</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <Settings className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">إدارة الطلبات</h1>
+                <p className="text-gray-600">Orders Management</p>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                  showFilters
+                    ? "bg-blue-50 border-blue-200 text-blue-700"
+                    : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
               >
                 <Filter className="w-4 h-4" />
-                {showFilters ? "Hide Filters / إخفاء المرشحات" : "Show Filters / إظهار المرشحات"}
+                <span className="hidden sm:inline">{showFilters ? "إخفاء المرشحات" : "إظهار المرشحات"}</span>
               </button>
               <button
                 onClick={fetchOrders}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
-                Refresh / تحديث
+                <span className="hidden sm:inline">تحديث</span>
               </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="flex items-center gap-3">
-                <Package className="w-8 h-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Total Orders / إجمالي الطلبات</p>
-                  <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
-                </div>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">إجمالي الطلبات</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{orders.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Total Orders</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Package className="w-6 h-6 text-blue-600" />
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="flex items-center gap-3">
-                <Users className="w-8 h-8 text-green-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Available Couriers / المندوبين المتاحين</p>
-                  <p className="text-2xl font-bold text-gray-900">{couriers.length}</p>
-                </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">المندوبين المتاحين</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{couriers.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Available Couriers</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <Users className="w-6 h-6 text-green-600" />
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="w-8 h-8 text-purple-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Selected Orders / الطلبات المحددة</p>
-                  <p className="text-2xl font-bold text-gray-900">{selectedOrders.length}</p>
-                </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">الطلبات المحددة</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{selectedOrders.length}</p>
+                <p className="text-xs text-gray-500 mt-1">Selected Orders</p>
+              </div>
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-purple-600" />
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="flex items-center gap-3">
-                <CreditCard className="w-8 h-8 text-orange-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Total Value / القيمة الإجمالية</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {orders.reduce((sum, order) => sum + order.total_order_fees, 0).toFixed(2)} EGP
-                  </p>
-                </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">القيمة الإجمالية</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {orders.reduce((sum, order) => sum + order.total_order_fees, 0).toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">EGP Total Value</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </div>
         </div>
 
-        {/* Filters */}
+        {/* Filters Section */}
         {showFilters && (
-          <div className="bg-white p-6 rounded-lg shadow-sm border mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Search className="w-5 h-5" />
-              Search Filters / مرشحات البحث
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <User className="w-4 h-4 inline mr-1" />
-                  Search by Courier / البحث بالمندوب
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter courier name / أدخل اسم المندوب"
-                  value={filters.courier}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, courier: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Search className="w-4 h-4 text-blue-600" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Phone className="w-4 h-4 inline mr-1" />
-                  Search by Mobile / البحث بالهاتف
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter mobile number / أدخل رقم الهاتف"
-                  value={filters.mobile}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, mobile: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+              <h3 className="text-lg font-semibold text-gray-900">مرشحات البحث</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بالمندوب</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="اسم المندوب"
+                    value={filters.courier}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, courier: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <CreditCard className="w-4 h-4 inline mr-1" />
-                  Search by Payment / البحث بطريقة الدفع
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter payment method / أدخل طريقة الدفع"
-                  value={filters.payment}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, payment: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بالهاتف</label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="رقم الهاتف"
+                    value={filters.mobile}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, mobile: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Hash className="w-4 h-4 inline mr-1" />
-                  Search by Order ID / البحث برقم الطلب
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter order ID / أدخل رقم الطلب"
-                  value={filters.orderId}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, orderId: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث بطريقة الدفع</label>
+                <div className="relative">
+                  <CreditCard className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="طريقة الدفع"
+                    value={filters.payment}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, payment: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">البحث برقم الطلب</label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    placeholder="رقم الطلب"
+                    value={filters.orderId}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, orderId: e.target.value }))}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex gap-3 mt-4">
+            <div className="flex gap-3">
               <button
                 onClick={fetchOrders}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Search className="w-4 h-4" />
-                Apply Filters / تطبيق المرشحات
+                تطبيق المرشحات
               </button>
               <button
                 onClick={clearFilters}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
               >
                 <X className="w-4 h-4" />
-                Clear Filters / مسح المرشحات
+                مسح المرشحات
               </button>
             </div>
           </div>
@@ -479,19 +537,21 @@ const OrdersManagement: React.FC = () => {
 
         {/* Bulk Actions */}
         {selectedOrders.length > 0 && (
-          <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
             <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-gray-900">{selectedOrders.length} orders selected / طلب محدد</span>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="font-semibold text-gray-900">{selectedOrders.length} طلب محدد</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <select
                   value={selectedCourier}
                   onChange={(e) => setSelectedCourier(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="">Select Courier / اختر المندوب</option>
+                  <option value="">اختر المندوب</option>
                   {couriers.map((courier) => (
                     <option key={courier.id} value={courier.id}>
                       {courier.name}
@@ -504,11 +564,11 @@ const OrdersManagement: React.FC = () => {
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {assignLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   ) : (
                     <UserPlus className="w-4 h-4" />
                   )}
-                  Assign Selected / تعيين المحدد
+                  تعيين المحدد
                 </button>
               </div>
               <button
@@ -517,7 +577,7 @@ const OrdersManagement: React.FC = () => {
                 className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
-                Delete Selected / حذف المحدد
+                حذف المحدد
               </button>
             </div>
           </div>
@@ -525,30 +585,30 @@ const OrdersManagement: React.FC = () => {
 
         {/* Messages */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center gap-2 text-red-800">
-              <AlertCircle className="w-5 h-5" />
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="flex items-center gap-3 text-red-800">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <span>{error}</span>
             </div>
           </div>
         )}
 
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-2 text-green-800">
-              <CheckCircle className="w-5 h-5" />
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <div className="flex items-center gap-3 text-green-800">
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
               <span>{successMessage}</span>
             </div>
           </div>
         )}
 
         {/* Orders Table */}
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left">
+                  <th className="px-6 py-4 text-right">
                     <input
                       type="checkbox"
                       checked={selectedOrders.length === orders.length && orders.length > 0}
@@ -556,35 +616,35 @@ const OrdersManagement: React.FC = () => {
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Order ID / رقم الطلب
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    رقم الطلب
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer / العميل
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    العميل
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Address / العنوان
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    العنوان
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Mobile / الهاتف
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الهاتف
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount / المبلغ
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المبلغ
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Payment / الدفع
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    طريقة الدفع
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status / الحالة
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الحالة
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Courier / المندوب
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المندوب
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Notes / الملاحظات
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الملاحظات
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions / الإجراءات
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    الإجراءات
                   </th>
                 </tr>
               </thead>
@@ -602,10 +662,10 @@ const OrdersManagement: React.FC = () => {
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Hash className="w-4 h-4 text-gray-400 mr-2" />
-                          <span className="text-sm font-medium text-gray-900">{order.order_id}</span>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Hash className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -615,20 +675,20 @@ const OrdersManagement: React.FC = () => {
                               type="text"
                               value={edited.customer_name ?? order.customer_name}
                               onChange={(e) => handleEditChange(order.id, "customer_name", e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                             <button
                               onClick={() =>
                                 openExpandedEdit(order.id, "customer_name", edited.customer_name ?? order.customer_name)
                               }
-                              className="p-1 text-gray-400 hover:text-gray-600"
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                             >
                               <Maximize2 className="w-4 h-4" />
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center">
-                            <User className="w-4 h-4 text-gray-400 mr-2" />
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-gray-400" />
                             <span className="text-sm text-gray-900">{order.customer_name}</span>
                           </div>
                         )}
@@ -640,18 +700,18 @@ const OrdersManagement: React.FC = () => {
                               type="text"
                               value={edited.address ?? order.address}
                               onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             />
                             <button
                               onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
-                              className="p-1 text-gray-400 hover:text-gray-600"
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                             >
                               <Maximize2 className="w-4 h-4" />
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-start">
-                            <MapPin className="w-4 h-4 text-gray-400 mr-2 mt-0.5 flex-shrink-0" />
+                          <div className="flex items-start gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <span className="text-sm text-gray-900 break-words">{order.address}</span>
                           </div>
                         )}
@@ -662,14 +722,14 @@ const OrdersManagement: React.FC = () => {
                             type="text"
                             value={edited.mobile_number ?? order.mobile_number}
                             onChange={(e) => handleEditChange(order.id, "mobile_number", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                         ) : (
-                          <div className="flex items-center">
-                            <Phone className="w-4 h-4 text-gray-400 mr-2" />
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-gray-400" />
                             <a
                               href={`tel:${order.mobile_number}`}
-                              className="text-sm text-blue-600 hover:text-blue-800"
+                              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
                             >
                               {order.mobile_number}
                             </a>
@@ -684,13 +744,13 @@ const OrdersManagement: React.FC = () => {
                             step={0.01}
                             value={edited.total_order_fees ?? order.total_order_fees}
                             onChange={(e) => handleEditChange(order.id, "total_order_fees", Number(e.target.value))}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                         ) : (
-                          <div className="flex items-center">
-                            <CreditCard className="w-4 h-4 text-gray-400 mr-2" />
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-900">
-                              {order.total_order_fees.toFixed(2)} EGP
+                              {order.total_order_fees.toFixed(2)} ج.م
                             </span>
                           </div>
                         )}
@@ -701,7 +761,7 @@ const OrdersManagement: React.FC = () => {
                             type="text"
                             value={edited.payment_method ?? order.payment_method}
                             onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                         ) : (
                           <span className="text-sm text-gray-900">{order.payment_method}</span>
@@ -712,14 +772,14 @@ const OrdersManagement: React.FC = () => {
                           <select
                             value={edited.status ?? order.status}
                             onChange={(e) => handleEditChange(order.id, "status", e.target.value)}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           >
-                            <option value="assigned">Assigned / مكلف</option>
-                            <option value="delivered">Delivered / تم التوصيل</option>
-                            <option value="canceled">Canceled / ملغي</option>
-                            <option value="partial">Partial / جزئي</option>
-                            <option value="hand_to_hand">Hand to Hand / استبدال</option>
-                            <option value="return">Return / مرتجع</option>
+                            <option value="assigned">مكلف</option>
+                            <option value="delivered">تم التوصيل</option>
+                            <option value="canceled">ملغي</option>
+                            <option value="partial">جزئي</option>
+                            <option value="hand_to_hand">استبدال</option>
+                            <option value="return">مرتجع</option>
                           </select>
                         ) : (
                           getStatusBadge(order.status)
@@ -732,9 +792,9 @@ const OrdersManagement: React.FC = () => {
                             handleEditChange(order.id, "assigned_courier_id", e.target.value)
                             saveOrderEdit(order.id)
                           }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
-                          <option value="">Select Courier / اختر المندوب</option>
+                          <option value="">اختر المندوب</option>
                           {couriers.map((courier) => (
                             <option key={courier.id} value={courier.id}>
                               {courier.name}
@@ -750,15 +810,15 @@ const OrdersManagement: React.FC = () => {
                             value={noteEdits[order.id] ?? order.notes ?? ""}
                             onChange={(e) => setNoteEdits({ ...noteEdits, [order.id]: e.target.value })}
                             onBlur={() => updateNote(order.id)}
-                            placeholder="Add notes / أضف ملاحظات"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="أضف ملاحظات"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                           <button
                             onClick={() =>
                               openExpandedEdit(order.id, "notes", noteEdits[order.id] ?? order.notes ?? "")
                             }
-                            className="p-1 text-gray-400 hover:text-gray-600"
-                            title="Expand notes editor / توسيع محرر الملاحظات"
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="توسيع محرر الملاحظات"
                           >
                             <Maximize2 className="w-4 h-4" />
                           </button>
@@ -773,7 +833,7 @@ const OrdersManagement: React.FC = () => {
                                 className="flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                               >
                                 <Save className="w-3 h-3" />
-                                Save / حفظ
+                                حفظ
                               </button>
                               <button
                                 onClick={() => {
@@ -787,7 +847,7 @@ const OrdersManagement: React.FC = () => {
                                 className="flex items-center gap-1 px-3 py-1 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm"
                               >
                                 <X className="w-3 h-3" />
-                                Cancel / إلغاء
+                                إلغاء
                               </button>
                             </>
                           ) : (
@@ -797,7 +857,7 @@ const OrdersManagement: React.FC = () => {
                                 className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                               >
                                 <Edit3 className="w-3 h-3" />
-                                Edit / تعديل
+                                تعديل
                               </button>
                               <button
                                 onClick={() => {
@@ -807,7 +867,7 @@ const OrdersManagement: React.FC = () => {
                                 className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
                               >
                                 <Trash2 className="w-3 h-3" />
-                                Delete / حذف
+                                حذف
                               </button>
                             </>
                           )}
@@ -820,10 +880,16 @@ const OrdersManagement: React.FC = () => {
             </table>
           </div>
           {orders.length === 0 && (
-            <div className="text-center py-12">
-              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found / لا توجد طلبات</h3>
-              <p className="text-gray-500">Try adjusting your search filters / جرب تعديل مرشحات البحث</p>
+            <div className="text-center py-16">
+              <div className="space-y-4">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                  <Package className="w-8 h-8 text-gray-400" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-gray-800">لا توجد طلبات</h3>
+                  <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -831,28 +897,35 @@ const OrdersManagement: React.FC = () => {
         {/* Expanded Edit Modal */}
         {expandedField && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Edit3 className="w-5 h-5" />
-                  Edit {expandedField.field.replace("_", " ").toUpperCase()} / تعديل{" "}
-                  {expandedField.field === "address"
-                    ? "العنوان"
-                    : expandedField.field === "customer_name"
-                      ? "اسم العميل"
-                      : expandedField.field === "notes"
-                        ? "الملاحظات"
-                        : expandedField.field}
-                </h3>
-                <button onClick={() => setExpandedField(null)} className="p-2 text-gray-400 hover:text-gray-600">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Edit3 className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    تعديل{" "}
+                    {expandedField.field === "address"
+                      ? "العنوان"
+                      : expandedField.field === "customer_name"
+                        ? "اسم العميل"
+                        : expandedField.field === "notes"
+                          ? "الملاحظات"
+                          : expandedField.field}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setExpandedField(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="mb-6">
+              <div className="p-6">
                 <textarea
                   value={expandedValue}
                   onChange={(e) => setExpandedValue(e.target.value)}
-                  placeholder={`Enter ${expandedField.field.replace("_", " ")} / أدخل ${
+                  placeholder={`أدخل ${
                     expandedField.field === "address"
                       ? "العنوان"
                       : expandedField.field === "customer_name"
@@ -865,19 +938,19 @@ const OrdersManagement: React.FC = () => {
                   autoFocus
                 />
               </div>
-              <div className="flex gap-3 justify-end">
+              <div className="flex gap-3 justify-end p-6 border-t border-gray-200">
                 <button
                   onClick={() => setExpandedField(null)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cancel / إلغاء
+                  إلغاء
                 </button>
                 <button
                   onClick={closeExpandedEdit}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  Done / تم
+                  تم
                 </button>
               </div>
             </div>
@@ -887,44 +960,42 @@ const OrdersManagement: React.FC = () => {
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-100 rounded-full">
-                  <AlertCircle className="w-6 h-6 text-red-600" />
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">تأكيد الحذف</h3>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">Confirm Deletion / تأكيد الحذف</h3>
-              </div>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to delete {selectedOrders.length} order(s)? This action cannot be undone.
-                <br />
-                <span className="text-sm">
+                <p className="text-gray-600 mb-6">
                   هل أنت متأكد من حذف {selectedOrders.length} طلب؟ لا يمكن التراجع عن هذا الإجراء.
-                </span>
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel / إلغاء
-                </button>
-                <button
-                  onClick={handleDeleteOrders}
-                  disabled={deleteLoading}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {deleteLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Deleting... / جاري الحذف...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      Delete / حذف
-                    </>
-                  )}
-                </button>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleDeleteOrders}
+                    disabled={deleteLoading}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {deleteLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        جاري الحذف...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        حذف
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
