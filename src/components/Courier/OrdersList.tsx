@@ -24,9 +24,9 @@ import {
   Save,
   XCircle,
 } from "lucide-react"
-import { supabase } from "../lib/supabase" // Assuming this path is correct
-import { useAuth } from "../contexts/AuthContext" // Assuming this path is correct
-import { useLanguage } from "../contexts/LanguageContext" // Assuming this path is correct
+import { supabase } from "../../lib/supabase"
+import { useAuth } from "../../contexts/AuthContext"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface OrderProof {
   id: string
@@ -206,8 +206,8 @@ const OrdersList: React.FC = () => {
           img.crossOrigin = "anonymous" // Important for CORS issues when drawing images to canvas [^vercel_knowledge_base]
           img.onload = () => {
             const canvas = document.createElement("canvas")
-            const MAX_WIDTH = 1024 // Max width for the image
-            const MAX_HEIGHT = 768 // Max height for the image
+            const MAX_WIDTH = 720 // Further reduced max width for faster upload
+            const MAX_HEIGHT = 540 // Further reduced max height for faster upload
             let width = img.width
             let height = img.height
 
@@ -243,7 +243,7 @@ const OrdersList: React.FC = () => {
                 }
               },
               "image/jpeg",
-              0.7, // Compression quality (0.0 to 1.0)
+              0.5, // Further reduced compression quality (0.0 to 1.0)
             )
           }
           img.onerror = (err) => {
