@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -25,9 +24,9 @@ import {
   Save,
   XCircle,
 } from "lucide-react"
-import { supabase } from "../../lib/supabase"
-import { useAuth } from "../../contexts/AuthContext"
-import { useLanguage } from "../../contexts/LanguageContext"
+import { supabase } from "../lib/supabase" // Assuming this path is correct
+import { useAuth } from "../contexts/AuthContext" // Assuming this path is correct
+import { useLanguage } from "../contexts/LanguageContext" // Assuming this path is correct
 
 interface OrderProof {
   id: string
@@ -138,13 +137,14 @@ const OrdersList: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from("orders")
-        .select(`
+        .select(
+          `
           *,
           order_proofs (id, image_data)
-        `)
+        `,
+        )
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
         .order("created_at", { ascending: false })
-
       if (error) throw error
       setOrders(data || [])
     } catch (error) {
@@ -195,12 +195,72 @@ const OrdersList: React.FC = () => {
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !selectedOrder || !user) return
-    const file = e.target.files[0]
+    const originalFile = e.target.files[0]
     setImageUploading(true)
+
     try {
+      const compressedFile = await new Promise<File>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const img = new Image()
+          img.crossOrigin = "anonymous" // Important for CORS issues when drawing images to canvas [^vercel_knowledge_base]
+          img.onload = () => {
+            const canvas = document.createElement("canvas")
+            const MAX_WIDTH = 1024 // Max width for the image
+            const MAX_HEIGHT = 768 // Max height for the image
+            let width = img.width
+            let height = img.height
+
+            // Calculate new dimensions to fit within MAX_WIDTH and MAX_HEIGHT
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width
+                width = MAX_WIDTH
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height
+                height = MAX_HEIGHT
+              }
+            }
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext("2d")
+            if (!ctx) {
+              reject(new Error("Failed to get canvas context"))
+              return
+            }
+            ctx.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(new File([blob], originalFile.name, { type: "image/jpeg", lastModified: Date.now() }))
+                } else {
+                  // Fallback to original file if compression fails
+                  resolve(originalFile)
+                }
+              },
+              "image/jpeg",
+              0.7, // Compression quality (0.0 to 1.0)
+            )
+          }
+          img.onerror = (err) => {
+            reject(new Error("Failed to load image for compression"))
+          }
+          img.src = event.target?.result as string
+        }
+        reader.onerror = (err) => {
+          reject(new Error("Failed to read file"))
+        }
+        reader.readAsDataURL(originalFile)
+      })
+
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", compressedFile) // Use the compressed file
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
+
       const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
         method: "POST",
         body: formData,
@@ -250,13 +310,10 @@ const OrdersList: React.FC = () => {
         status: updateData.status,
         updated_at: new Date().toISOString(),
       }
-
       const fee = Number.parseFloat(updateData.delivery_fee)
       updatePayload.delivery_fee = isNaN(fee) ? 0 : fee
-
       const partial = Number.parseFloat(updateData.partial_paid_amount)
       updatePayload.partial_paid_amount = isNaN(partial) ? 0 : partial
-
       if (updateData.internal_comment?.trim()) updatePayload.internal_comment = updateData.internal_comment.trim()
 
       if (["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status)) {
@@ -352,7 +409,6 @@ const OrdersList: React.FC = () => {
           </div>
         </div>
       </div>
-
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {orders.length === 0 ? (
@@ -383,7 +439,6 @@ const OrdersList: React.FC = () => {
               const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
-
               return (
                 <div
                   key={order.id}
@@ -409,7 +464,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   {/* Card Content */}
                   <div className="p-6 space-y-6">
                     {/* Amount Section */}
@@ -439,7 +493,6 @@ const OrdersList: React.FC = () => {
                         </div>
                       </div>
                     </div>
-
                     {/* Contact Information */}
                     <div className="space-y-4">
                       {/* Phone */}
@@ -457,7 +510,6 @@ const OrdersList: React.FC = () => {
                           </button>
                         </div>
                       </div>
-
                       {/* Address */}
                       <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -469,7 +521,6 @@ const OrdersList: React.FC = () => {
                         </div>
                       </div>
                     </div>
-
                     {/* Additional Information */}
                     {(order.notes ||
                       order.payment_sub_type ||
@@ -516,7 +567,6 @@ const OrdersList: React.FC = () => {
                         </div>
                       </div>
                     )}
-
                     {/* Proof Images */}
                     {order.order_proofs && order.order_proofs.length > 0 && (
                       <div>
@@ -544,7 +594,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     )}
                   </div>
-
                   {/* Card Footer */}
                   <div className="px-6 pb-6">
                     <button
@@ -560,7 +609,6 @@ const OrdersList: React.FC = () => {
             })}
           </div>
         )}
-
         {/* Phone Options Modal */}
         {phoneOptionsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -599,7 +647,6 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Update Order Modal */}
         {modalOpen && selectedOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -619,7 +666,6 @@ const OrdersList: React.FC = () => {
                   </button>
                 </div>
               </div>
-
               {/* Modal Content */}
               <div className="p-6">
                 <form
@@ -647,7 +693,6 @@ const OrdersList: React.FC = () => {
                       ))}
                     </select>
                   </div>
-
                   {/* Delivery Fee */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">رسوم التوصيل</label>
@@ -663,7 +708,6 @@ const OrdersList: React.FC = () => {
                       <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                     </div>
                   </div>
-
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status) && (
                     <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -671,7 +715,6 @@ const OrdersList: React.FC = () => {
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
-
                       {/* Collected By */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
@@ -688,7 +731,6 @@ const OrdersList: React.FC = () => {
                           ))}
                         </select>
                       </div>
-
                       {/* Payment Sub-Type */}
                       {updateData.collected_by === "courier" && (
                         <div className="space-y-2">
@@ -707,7 +749,6 @@ const OrdersList: React.FC = () => {
                           </select>
                         </div>
                       )}
-
                       {/* Partial Amount */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">المبلغ المدفوع جزئياً</label>
@@ -725,7 +766,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   )}
-
                   {/* Internal Comment */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -740,7 +780,6 @@ const OrdersList: React.FC = () => {
                       placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
-
                   {/* Image Upload */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -779,7 +818,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   {/* Current Images */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div className="space-y-3">
@@ -803,7 +841,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   )}
-
                   {/* Action Buttons */}
                   <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button
