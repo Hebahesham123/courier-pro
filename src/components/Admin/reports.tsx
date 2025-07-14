@@ -25,8 +25,8 @@ import {
   X,
   Filter,
   ArrowUpRight,
-  Target,
   Percent,
+  Archive,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
@@ -62,6 +62,8 @@ interface Order {
   order_proofs?: OrderProof[]
   created_at: string
   updated_at: string
+  archived?: boolean
+  archived_at?: string
 }
 
 interface CourierStats {
@@ -71,6 +73,7 @@ interface CourierStats {
   deliveredAmount: number
   averageOrderValue: number
   completionRate: number
+  archivedOrders: number
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
@@ -126,6 +129,7 @@ const Reports: React.FC = () => {
   const [dateRange, setDateRange] = useState({ start: "", end: "" })
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active")
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
@@ -173,6 +177,11 @@ const Reports: React.FC = () => {
       ordersOverview: "نظرة عامة على الطلبات",
       noExportData: "لا توجد بيانات للتصدير",
       exportSuccess: "تم تصدير البيانات بنجاح",
+      archivedOrders: "الطلبات المؤرشفة",
+      activeOrders: "الطلبات النشطة",
+      archive: "أرشيف",
+      viewArchive: "عرض الأرشيف",
+      backToActive: "العودة للطلبات النشطة",
     }
     return translations[key] || key
   }
@@ -201,22 +210,39 @@ const Reports: React.FC = () => {
     setSelectedCourier(courier)
     setLoadingOrders(true)
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("orders")
         .select(`
-          *,
-          order_proofs (
-            id,
-            image_url,
-            image_data
-          )
-        `)
-        .eq("assigned_courier_id", courier.id)
+        *,
+        order_proofs (
+          id,
+          image_url,
+          image_data
+        ),
+        assigned_courier:users!orders_assigned_courier_id_fkey(id, name),
+        original_courier:users!orders_original_courier_id_fkey(id, name)
+      `)
         .order("created_at", { ascending: false })
 
+      if (viewMode === "active") {
+        query = query.eq("assigned_courier_id", courier.id).eq("archived", false)
+      } else {
+        query = query.eq("original_courier_id", courier.id).eq("archived", true)
+      }
+
+      const { data, error } = await query
+
       if (error) throw error
-      setOrders(data || [])
-      calculateStats(data || [])
+
+      // Add courier name based on view mode
+      const ordersWithCourierNames = (data || []).map((order: any) => ({
+        ...order,
+        courier_name: viewMode === "active" ? order.assigned_courier?.name : order.original_courier?.name,
+        courier_id: viewMode === "active" ? order.assigned_courier?.id : order.original_courier?.id,
+      }))
+
+      setOrders(ordersWithCourierNames)
+      calculateStats(ordersWithCourierNames, courier.id)
     } catch (error: any) {
       alert("Error loading orders / خطأ في تحميل الطلبات: " + error.message)
     } finally {
@@ -224,15 +250,32 @@ const Reports: React.FC = () => {
     }
   }
 
-  const calculateStats = (orderData: Order[]) => {
-    const totalOrders = orderData.length
-    const deliveredOrders = orderData.filter((order) => order.status === "delivered").length
-    const totalAmount = orderData.reduce((sum, order) => sum + order.total_order_fees, 0)
-    const deliveredAmount = orderData
+  const calculateStats = async (orderData: Order[], courierId: string) => {
+    // Get active orders stats
+    const { data: activeOrdersData } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("assigned_courier_id", courierId)
+      .eq("archived", false)
+
+    const activeOrders = activeOrdersData || []
+    const totalOrders = activeOrders.length
+    const deliveredOrders = activeOrders.filter((order) => order.status === "delivered").length
+    const totalAmount = activeOrders.reduce((sum, order) => sum + order.total_order_fees, 0)
+    const deliveredAmount = activeOrders
       .filter((order) => order.status === "delivered")
       .reduce((sum, order) => sum + order.total_order_fees, 0)
     const averageOrderValue = totalOrders > 0 ? totalAmount / totalOrders : 0
     const completionRate = totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0
+
+    // Get archived orders count using original_courier_id
+    const { data: archivedData } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("original_courier_id", courierId)
+      .eq("archived", true)
+
+    const archivedOrders = archivedData?.length || 0
 
     setCourierStats({
       totalOrders,
@@ -241,6 +284,7 @@ const Reports: React.FC = () => {
       deliveredAmount,
       averageOrderValue,
       completionRate,
+      archivedOrders,
     })
   }
 
@@ -292,13 +336,16 @@ const Reports: React.FC = () => {
       collected_by: order.collected_by || "",
       notes: order.notes || "",
       proof_images_count: order.order_proofs?.length || 0,
+      archived: order.archived || false,
+      archived_at: order.archived_at || "",
       created_at: new Date(order.created_at).toLocaleString(),
       updated_at: new Date(order.updated_at).toLocaleString(),
     }))
 
     const csv = Papa.unparse(dataToExport)
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    saveAs(blob, `courier-orders-${selectedCourier?.name || "unknown"}-${new Date().toISOString().split("T")[0]}.csv`)
+    const filename = `courier-orders-${selectedCourier?.name || "unknown"}-${viewMode}-${new Date().toISOString().split("T")[0]}.csv`
+    saveAs(blob, filename)
     alert(translate("exportSuccess"))
   }
 
@@ -418,6 +465,45 @@ const Reports: React.FC = () => {
           <div className="lg:col-span-3">
             {selectedCourier ? (
               <div className="space-y-8">
+                {/* View Mode Toggle */}
+                {selectedCourier && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">تقارير المندوب: {selectedCourier.name}</h3>
+                      <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                        <button
+                          onClick={() => {
+                            setViewMode("active")
+                            fetchOrdersForCourier(selectedCourier)
+                          }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                            viewMode === "active"
+                              ? "bg-white text-blue-600 shadow-sm"
+                              : "text-gray-600 hover:text-gray-800"
+                          }`}
+                        >
+                          <Package className="w-4 h-4" />
+                          <span className="hidden sm:inline">{translate("activeOrders")}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setViewMode("archived")
+                            fetchOrdersForCourier(selectedCourier)
+                          }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                            viewMode === "archived"
+                              ? "bg-white text-blue-600 shadow-sm"
+                              : "text-gray-600 hover:text-gray-800"
+                          }`}
+                        >
+                          <Archive className="w-4 h-4" />
+                          <span className="hidden sm:inline">{translate("archive")}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Performance Statistics */}
                 {courierStats && (
                   <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -440,7 +526,7 @@ const Reports: React.FC = () => {
                             </div>
                             <div className="text-right">
                               <p className="text-2xl font-bold text-blue-900">{courierStats.totalOrders}</p>
-                              <p className="text-xs text-blue-600 mt-1">طلب</p>
+                              <p className="text-xs text-blue-600 mt-1">طلب نشط</p>
                             </div>
                           </div>
                           <p className="text-sm font-medium text-blue-800">{translate("totalOrders")}</p>
@@ -459,6 +545,19 @@ const Reports: React.FC = () => {
                           <p className="text-sm font-medium text-green-800">{translate("deliveredOrders")}</p>
                         </div>
 
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
+                              <Archive className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-orange-900">{courierStats.archivedOrders}</p>
+                              <p className="text-xs text-orange-600 mt-1">طلب مؤرشف</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-orange-800">{translate("archivedOrders")}</p>
+                        </div>
+
                         <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center">
@@ -472,21 +571,6 @@ const Reports: React.FC = () => {
                             </div>
                           </div>
                           <p className="text-sm font-medium text-purple-800">{translate("totalAmount")}</p>
-                        </div>
-
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
-                              <Target className="w-6 h-6 text-white" />
-                            </div>
-                            <div className="text-right">
-                              <p className="text-2xl font-bold text-orange-900">
-                                {courierStats.deliveredAmount.toFixed(0)}
-                              </p>
-                              <p className="text-xs text-orange-600 mt-1">ج.م مسلم</p>
-                            </div>
-                          </div>
-                          <p className="text-sm font-medium text-orange-800">{translate("deliveredAmount")}</p>
                         </div>
 
                         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
@@ -614,9 +698,15 @@ const Reports: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Package className="w-4 h-4 text-blue-600" />
+                          {viewMode === "active" ? (
+                            <Package className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <Archive className="w-4 h-4 text-blue-600" />
+                          )}
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900">{translate("ordersOverview")}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {viewMode === "active" ? translate("ordersOverview") : translate("archivedOrders")}
+                        </h3>
                       </div>
                       <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
                         {filteredOrders.length} طلب
@@ -632,7 +722,11 @@ const Reports: React.FC = () => {
                     ) : filteredOrders.length === 0 ? (
                       <div className="text-center py-16">
                         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <Package className="w-8 h-8 text-gray-400" />
+                          {viewMode === "active" ? (
+                            <Package className="w-8 h-8 text-gray-400" />
+                          ) : (
+                            <Archive className="w-8 h-8 text-gray-400" />
+                          )}
                         </div>
                         <h3 className="text-lg font-semibold text-gray-800 mb-2">{translate("noOrders")}</h3>
                         <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
@@ -647,7 +741,11 @@ const Reports: React.FC = () => {
                             <div className="flex justify-between items-start mb-4">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                  <Package className="w-5 h-5 text-blue-600" />
+                                  {viewMode === "active" ? (
+                                    <Package className="w-5 h-5 text-blue-600" />
+                                  ) : (
+                                    <Archive className="w-5 h-5 text-blue-600" />
+                                  )}
                                 </div>
                                 <div>
                                   <h4 className="font-semibold text-gray-900">#{order.order_id}</h4>
@@ -701,9 +799,15 @@ const Reports: React.FC = () => {
                               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                 <Calendar className="w-4 h-4 text-gray-500" />
                                 <div>
-                                  <p className="text-xs text-gray-600">تاريخ الإنشاء</p>
+                                  <p className="text-xs text-gray-600">
+                                    {viewMode === "active" ? "تاريخ الإنشاء" : "تاريخ الأرشفة"}
+                                  </p>
                                   <p className="text-sm font-medium text-gray-900">
-                                    {new Date(order.created_at).toLocaleDateString("ar-EG")}
+                                    {viewMode === "active"
+                                      ? new Date(order.created_at).toLocaleDateString("ar-EG")
+                                      : order.archived_at
+                                        ? new Date(order.archived_at).toLocaleDateString("ar-EG")
+                                        : "-"}
                                   </p>
                                 </div>
                               </div>
@@ -727,6 +831,17 @@ const Reports: React.FC = () => {
                                   <p className="text-sm font-medium text-gray-900 line-clamp-2">{order.address}</p>
                                 </div>
                               </div>
+                              {viewMode === "archived" && (
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                  <User className="w-4 h-4 text-gray-500" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">المندوب الأصلي</p>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {order.courier_name || "غير محدد"}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -764,6 +879,12 @@ const Reports: React.FC = () => {
                       {translate("orderDetails")} #{selectedOrder.order_id}
                     </h3>
                     <p className="text-blue-100 mt-1">{selectedOrder.customer_name}</p>
+                    {selectedOrder.archived && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <Archive className="w-4 h-4" />
+                        <span className="text-sm">طلب مؤرشف</span>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => setShowOrderModal(false)}
@@ -882,23 +1003,22 @@ const Reports: React.FC = () => {
                       {selectedOrder.order_proofs.map((proof) => {
                         const src = proof.image_url || proof.image_data || ""
                         return (
-                         <a
-  key={proof.id}
-  href={src}
-  target="_blank"
-  rel="noopener noreferrer"
-  className="relative group block"
->
-  <img
-    src={src || "/placeholder.svg"}
-    alt={translate("clickToOpen")}
-    className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-  />
-  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all flex items-center justify-center">
-    <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-  </div>
-</a>
-
+                          <a
+                            key={proof.id}
+                            href={src}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative group block"
+                          >
+                            <img
+                              src={src || "/placeholder.svg"}
+                              alt={translate("clickToOpen")}
+                              className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                            />
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all flex items-center justify-center">
+                              <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </a>
                         )
                       })}
                     </div>
@@ -919,6 +1039,12 @@ const Reports: React.FC = () => {
                         {translate("updatedAt")}: {new Date(selectedOrder.updated_at).toLocaleString("ar-EG")}
                       </span>
                     </div>
+                    {selectedOrder.archived_at && (
+                      <div className="flex items-center gap-2">
+                        <Archive className="w-4 h-4" />
+                        <span>تاريخ الأرشفة: {new Date(selectedOrder.archived_at).toLocaleString("ar-EG")}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

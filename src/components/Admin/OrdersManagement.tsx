@@ -26,6 +26,8 @@ import {
   Upload,
   TrendingUp,
   Activity,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -40,9 +42,12 @@ interface Order {
   payment_method: string
   status: string
   assigned_courier_id: string | null
+  original_courier_id?: string | null
   courier_name?: string
   created_at?: string
   notes?: string
+  archived?: boolean
+  archived_at?: string
 }
 
 interface Courier {
@@ -100,7 +105,9 @@ const OrdersManagement: React.FC = () => {
   const [selectedCourier, setSelectedCourier] = useState("")
   const [assignLoading, setAssignLoading] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [archiveLoading, setArchiveLoading] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [noteEdits, setNoteEdits] = useState<{ [id: string]: string }>({})
@@ -109,6 +116,7 @@ const OrdersManagement: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false)
   const [expandedField, setExpandedField] = useState<{ orderId: string; field: string } | null>(null)
   const [expandedValue, setExpandedValue] = useState("")
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active")
   const [filters, setFilters] = useState({
     courier: "",
     mobile: "",
@@ -121,7 +129,7 @@ const OrdersManagement: React.FC = () => {
   useEffect(() => {
     fetchOrders()
     fetchCouriers()
-  }, [])
+  }, [viewMode])
 
   // Auto-hide messages after 5 seconds
   useEffect(() => {
@@ -142,9 +150,10 @@ const OrdersManagement: React.FC = () => {
         .from("orders")
         .select(`
           id, order_id, customer_name, address, mobile_number, total_order_fees,
-          payment_method, status, assigned_courier_id, created_at, notes,
+          payment_method, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
           users!orders_assigned_courier_id_fkey(name)
         `)
+        .eq("archived", viewMode === "archived")
         .order("created_at", { ascending: false })
 
       if (filters.courier) {
@@ -153,7 +162,14 @@ const OrdersManagement: React.FC = () => {
           .select("id")
           .ilike("name", `%${filters.courier}%`)
         const ids = matchedCouriers?.map((c) => c.id) || []
-        query = query.in("assigned_courier_id", ids.length > 0 ? ids : [""])
+
+        if (viewMode === "archived") {
+          // For archived orders, search in original_courier_id
+          query = query.in("original_courier_id", ids.length > 0 ? ids : [""])
+        } else {
+          // For active orders, search in assigned_courier_id
+          query = query.in("assigned_courier_id", ids.length > 0 ? ids : [""])
+        }
       }
 
       if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
@@ -204,7 +220,6 @@ const OrdersManagement: React.FC = () => {
   const closeExpandedEdit = () => {
     if (expandedField) {
       if (expandedField.field === "notes") {
-        // Handle notes separately since they update directly
         setNoteEdits((prev) => ({ ...prev, [expandedField.orderId]: expandedValue }))
         updateNote(expandedField.orderId)
       } else {
@@ -219,6 +234,11 @@ const OrdersManagement: React.FC = () => {
     const changes = orderEdits[orderId]
     if (!changes) return
     try {
+      // When assigning a courier, also update original_courier_id if it's not set
+      if (changes.assigned_courier_id && !orders.find((o) => o.id === orderId)?.original_courier_id) {
+        changes.original_courier_id = changes.assigned_courier_id
+      }
+
       const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
       if (error) throw error
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
@@ -254,14 +274,31 @@ const OrdersManagement: React.FC = () => {
     setAssignLoading(true)
     setError(null)
     try {
-      const { error } = await supabase
+      // Get current orders to check if original_courier_id needs to be set
+      const { data: currentOrders } = await supabase
         .from("orders")
-        .update({
+        .select("id, assigned_courier_id, original_courier_id")
+        .in("id", selectedOrders)
+
+      // Update each order individually
+      for (const order of currentOrders || []) {
+        const updateData: any = {
           assigned_courier_id: selectedCourier,
           status: "assigned",
-        })
-        .in("id", selectedOrders)
-      if (error) throw error
+        }
+
+        // Set original_courier_id if it's not already set
+        if (!order.original_courier_id && order.assigned_courier_id) {
+          updateData.original_courier_id = order.assigned_courier_id
+        } else if (!order.original_courier_id) {
+          updateData.original_courier_id = selectedCourier
+        }
+
+        const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+
+        if (error) throw error
+      }
+
       await fetchOrders()
       setSelectedOrders([])
       setSelectedCourier("")
@@ -272,6 +309,95 @@ const OrdersManagement: React.FC = () => {
       setError("Failed to assign orders / فشل تعيين الطلبات: " + error.message)
     } finally {
       setAssignLoading(false)
+    }
+  }
+
+  const handleArchiveOrders = async () => {
+    if (selectedOrders.length === 0) {
+      setError("Please select orders to archive / يرجى اختيار طلبات للأرشفة")
+      return
+    }
+    setArchiveLoading(true)
+    setError(null)
+    try {
+      // First, get the current orders to preserve original courier assignments
+      const { data: ordersToArchive, error: fetchError } = await supabase
+        .from("orders")
+        .select("id, assigned_courier_id, original_courier_id")
+        .in("id", selectedOrders)
+
+      if (fetchError) throw fetchError
+
+      // Update each order individually to preserve original courier assignment
+      for (const order of ordersToArchive || []) {
+        const updateData: any = {
+          archived: true,
+          archived_at: new Date().toISOString(),
+          assigned_courier_id: null, // Remove from active courier assignment
+        }
+
+        // Set original_courier_id if not already set
+        if (!order.original_courier_id && order.assigned_courier_id) {
+          updateData.original_courier_id = order.assigned_courier_id
+        }
+
+        const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+
+        if (error) throw error
+      }
+
+      await fetchOrders()
+      setSelectedOrders([])
+      setShowArchiveConfirm(false)
+      setSuccessMessage(
+        `Successfully archived ${selectedOrders.length} orders / تم أرشفة ${selectedOrders.length} طلبات بنجاح`,
+      )
+    } catch (error: any) {
+      setError("Failed to archive orders / فشل أرشفة الطلبات: " + error.message)
+    } finally {
+      setArchiveLoading(false)
+    }
+  }
+
+  const handleRestoreOrders = async () => {
+    if (selectedOrders.length === 0) {
+      setError("Please select orders to restore / يرجى اختيار طلبات للاستعادة")
+      return
+    }
+    setArchiveLoading(true)
+    setError(null)
+    try {
+      // Get the orders to restore and their original courier assignments
+      const { data: ordersToRestore, error: fetchError } = await supabase
+        .from("orders")
+        .select("id, original_courier_id")
+        .in("id", selectedOrders)
+
+      if (fetchError) throw fetchError
+
+      // Restore each order individually
+      for (const order of ordersToRestore || []) {
+        const { error } = await supabase
+          .from("orders")
+          .update({
+            archived: false,
+            archived_at: null,
+            assigned_courier_id: order.original_courier_id, // Restore to original courier
+          })
+          .eq("id", order.id)
+
+        if (error) throw error
+      }
+
+      await fetchOrders()
+      setSelectedOrders([])
+      setSuccessMessage(
+        `Successfully restored ${selectedOrders.length} orders / تم استعادة ${selectedOrders.length} طلبات بنجاح`,
+      )
+    } catch (error: any) {
+      setError("Failed to restore orders / فشل استعادة الطلبات: " + error.message)
+    } finally {
+      setArchiveLoading(false)
     }
   }
 
@@ -369,6 +495,27 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode("active")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                    viewMode === "active" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span className="hidden sm:inline">الطلبات النشطة</span>
+                </button>
+                <button
+                  onClick={() => setViewMode("archived")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                    viewMode === "archived" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-800"
+                  }`}
+                >
+                  <Archive className="w-4 h-4" />
+                  <span className="hidden sm:inline">الأرشيف</span>
+                </button>
+              </div>
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
@@ -398,12 +545,20 @@ const OrdersManagement: React.FC = () => {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">إجمالي الطلبات</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {viewMode === "active" ? "إجمالي الطلبات" : "الطلبات المؤرشفة"}
+                </p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">{orders.length}</p>
-                <p className="text-xs text-gray-500 mt-1">Total Orders</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {viewMode === "active" ? "Total Orders" : "Archived Orders"}
+                </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <Package className="w-6 h-6 text-blue-600" />
+                {viewMode === "active" ? (
+                  <Package className="w-6 h-6 text-blue-600" />
+                ) : (
+                  <Archive className="w-6 h-6 text-blue-600" />
+                )}
               </div>
             </div>
           </div>
@@ -546,39 +701,65 @@ const OrdersManagement: React.FC = () => {
                 <span className="font-semibold text-gray-900">{selectedOrders.length} طلب محدد</span>
               </div>
               <div className="flex items-center gap-3">
-                <select
-                  value={selectedCourier}
-                  onChange={(e) => setSelectedCourier(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">اختر المندوب</option>
-                  {couriers.map((courier) => (
-                    <option key={courier.id} value={courier.id}>
-                      {courier.name}
-                    </option>
-                  ))}
-                </select>
+                {viewMode === "active" && (
+                  <>
+                    <select
+                      value={selectedCourier}
+                      onChange={(e) => setSelectedCourier(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">اختر المندوب</option>
+                      {couriers.map((courier) => (
+                        <option key={courier.id} value={courier.id}>
+                          {courier.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAssignOrders}
+                      disabled={assignLoading || !selectedCourier}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {assignLoading ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <UserPlus className="w-4 h-4" />
+                      )}
+                      تعيين المحدد
+                    </button>
+                    <button
+                      onClick={() => setShowArchiveConfirm(true)}
+                      disabled={archiveLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Archive className="w-4 h-4" />
+                      أرشفة المحدد
+                    </button>
+                  </>
+                )}
+                {viewMode === "archived" && (
+                  <button
+                    onClick={handleRestoreOrders}
+                    disabled={archiveLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {archiveLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <ArchiveRestore className="w-4 h-4" />
+                    )}
+                    استعادة المحدد
+                  </button>
+                )}
                 <button
-                  onClick={handleAssignOrders}
-                  disabled={assignLoading || !selectedCourier}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={deleteLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {assignLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <UserPlus className="w-4 h-4" />
-                  )}
-                  تعيين المحدد
+                  <Trash2 className="w-4 h-4" />
+                  حذف المحدد
                 </button>
               </div>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={deleteLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                حذف المحدد
-              </button>
             </div>
           </div>
         )}
@@ -637,12 +818,19 @@ const OrdersManagement: React.FC = () => {
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الحالة
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    المندوب
-                  </th>
+                  {viewMode === "active" && (
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      المندوب
+                    </th>
+                  )}
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الملاحظات
                   </th>
+                  {viewMode === "archived" && (
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      تاريخ الأرشفة
+                    </th>
+                  )}
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الإجراءات
                   </th>
@@ -785,23 +973,25 @@ const OrdersManagement: React.FC = () => {
                           getStatusBadge(order.status)
                         )}
                       </td>
-                      <td className="px-6 py-4">
-                        <select
-                          value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
-                          onChange={(e) => {
-                            handleEditChange(order.id, "assigned_courier_id", e.target.value)
-                            saveOrderEdit(order.id)
-                          }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          <option value="">اختر المندوب</option>
-                          {couriers.map((courier) => (
-                            <option key={courier.id} value={courier.id}>
-                              {courier.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
+                      {viewMode === "active" && (
+                        <td className="px-6 py-4">
+                          <select
+                            value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
+                            onChange={(e) => {
+                              handleEditChange(order.id, "assigned_courier_id", e.target.value)
+                              saveOrderEdit(order.id)
+                            }}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="">اختر المندوب</option>
+                            {couriers.map((courier) => (
+                              <option key={courier.id} value={courier.id}>
+                                {courier.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <FileText className="w-4 h-4 text-gray-400" />
@@ -824,6 +1014,13 @@ const OrdersManagement: React.FC = () => {
                           </button>
                         </div>
                       </td>
+                      {viewMode === "archived" && (
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-600">
+                            {order.archived_at ? new Date(order.archived_at).toLocaleDateString("ar-EG") : "-"}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           {isEditing ? (
@@ -852,13 +1049,15 @@ const OrdersManagement: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <button
-                                onClick={() => setEditingOrder(order.id)}
-                                className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                                تعديل
-                              </button>
+                              {viewMode === "active" && (
+                                <button
+                                  onClick={() => setEditingOrder(order.id)}
+                                  className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  تعديل
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setSelectedOrders([order.id])
@@ -883,10 +1082,16 @@ const OrdersManagement: React.FC = () => {
             <div className="text-center py-16">
               <div className="space-y-4">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                  <Package className="w-8 h-8 text-gray-400" />
+                  {viewMode === "active" ? (
+                    <Package className="w-8 h-8 text-gray-400" />
+                  ) : (
+                    <Archive className="w-8 h-8 text-gray-400" />
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-gray-800">لا توجد طلبات</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {viewMode === "active" ? "لا توجد طلبات" : "لا توجد طلبات مؤرشفة"}
+                  </h3>
                   <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
                 </div>
               </div>
@@ -952,6 +1157,50 @@ const OrdersManagement: React.FC = () => {
                   <CheckCircle className="w-4 h-4" />
                   تم
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Archive Confirmation Modal */}
+        {showArchiveConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                    <Archive className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">تأكيد الأرشفة</h3>
+                </div>
+                <p className="text-gray-600 mb-6">
+                  هل أنت متأكد من أرشفة {selectedOrders.length} طلب؟ سيتم إزالة الطلبات من المندوبين المعينين لها.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowArchiveConfirm(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleArchiveOrders}
+                    disabled={archiveLoading}
+                    className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {archiveLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        جاري الأرشفة...
+                      </>
+                    ) : (
+                      <>
+                        <Archive className="w-4 h-4" />
+                        أرشفة
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
