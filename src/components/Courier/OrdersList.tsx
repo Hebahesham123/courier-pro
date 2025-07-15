@@ -23,6 +23,7 @@ import {
   Upload,
   Save,
   XCircle,
+  ImageIcon,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -787,33 +788,59 @@ const OrdersList: React.FC = () => {
                       رفع صورة إثبات
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
                           ) : (
-                            <Camera className="w-6 h-6 text-gray-400" />
+                            <Upload className="w-6 h-6 text-gray-400" />
                           )}
                         </div>
-                        <div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            onChange={handleImageChange}
-                            disabled={imageUploading}
-                            className="hidden"
-                            id="image-upload"
-                          />
-                          <label
-                            htmlFor="image-upload"
-                            className={`cursor-pointer text-blue-600 hover:text-blue-700 font-medium ${
-                              imageUploading ? "opacity-50 cursor-not-allowed" : ""
-                            }`}
-                          >
-                            {imageUploading ? "جاري رفع الصورة..." : "التقط صورة"}
-                          </label>
-                          <p className="text-xs text-gray-500 mt-1">اضغط لالتقاط صورة من الكاميرا</p>
+                        <div className="space-y-3">
+                          <p className="text-sm text-gray-600">اختر طريقة رفع الصورة</p>
+                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                            {/* Upload from Gallery */}
+                            <div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageChange}
+                                disabled={imageUploading}
+                                className="hidden"
+                                id="gallery-upload"
+                              />
+                              <label
+                                htmlFor="gallery-upload"
+                                className={`cursor-pointer inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors ${
+                                  imageUploading ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
+                              >
+                                <ImageIcon className="w-4 h-4" />
+                                {imageUploading ? "جاري الرفع..." : "رفع من المعرض"}
+                              </label>
+                            </div>
+                            {/* Take Photo */}
+                            <div>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handleImageChange}
+                                disabled={imageUploading}
+                                className="hidden"
+                                id="camera-upload"
+                              />
+                              <label
+                                htmlFor="camera-upload"
+                                className={`cursor-pointer inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-lg transition-colors ${
+                                  imageUploading ? "opacity-50 cursor-not-allowed" : ""
+                                }`}
+                              >
+                                <Camera className="w-4 h-4" />
+                                {imageUploading ? "جاري الرفع..." : "التقط صورة"}
+                              </label>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

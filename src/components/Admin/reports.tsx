@@ -44,6 +44,7 @@ interface OrderProof {
 }
 
 interface Order {
+  courier_name: string
   id: string
   order_id: string
   customer_name: string
