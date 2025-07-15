@@ -23,7 +23,9 @@ import {
   Upload,
   Save,
   XCircle,
-  ImageIcon,
+  Calculator,
+  Minus,
+  Plus,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -204,15 +206,14 @@ const OrdersList: React.FC = () => {
         const reader = new FileReader()
         reader.onload = (event) => {
           const img = new Image()
-          img.crossOrigin = "anonymous" // Important for CORS issues when drawing images to canvas [^vercel_knowledge_base]
+          img.crossOrigin = "anonymous"
           img.onload = () => {
             const canvas = document.createElement("canvas")
-            const MAX_WIDTH = 720 // Further reduced max width for faster upload
-            const MAX_HEIGHT = 540 // Further reduced max height for faster upload
+            const MAX_WIDTH = 720
+            const MAX_HEIGHT = 540
             let width = img.width
             let height = img.height
 
-            // Calculate new dimensions to fit within MAX_WIDTH and MAX_HEIGHT
             if (width > height) {
               if (width > MAX_WIDTH) {
                 height *= MAX_WIDTH / width
@@ -239,12 +240,11 @@ const OrdersList: React.FC = () => {
                 if (blob) {
                   resolve(new File([blob], originalFile.name, { type: "image/jpeg", lastModified: Date.now() }))
                 } else {
-                  // Fallback to original file if compression fails
                   resolve(originalFile)
                 }
               },
               "image/jpeg",
-              0.5, // Further reduced compression quality (0.0 to 1.0)
+              0.5,
             )
           }
           img.onerror = (err) => {
@@ -259,7 +259,7 @@ const OrdersList: React.FC = () => {
       })
 
       const formData = new FormData()
-      formData.append("file", compressedFile) // Use the compressed file
+      formData.append("file", compressedFile)
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
 
       const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
@@ -301,6 +301,30 @@ const OrdersList: React.FC = () => {
     }
   }
 
+  const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number) => {
+    // For canceled, returned, or hand_to_hand orders without any fees, return 0
+    if (["canceled", "return", "hand_to_hand"].includes(updateData.status)) {
+      if (deliveryFee === 0 && partialAmount === 0) {
+        return 0
+      }
+      // If there are fees, return the fees amount (not added to base order)
+      return deliveryFee + partialAmount
+    }
+    
+    // For partial orders, return only the partial amount (not added to base order)
+    if (updateData.status === "partial") {
+      return partialAmount > 0 ? partialAmount : 0
+    }
+    
+    // For delivered orders, return the base order amount (no addition of fees)
+    if (updateData.status === "delivered") {
+      return order.total_order_fees
+    }
+    
+    // For assigned status, return base order amount
+    return order.total_order_fees
+  }
+
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
     setSaving(true)
@@ -311,11 +335,16 @@ const OrdersList: React.FC = () => {
         status: updateData.status,
         updated_at: new Date().toISOString(),
       }
-      const fee = Number.parseFloat(updateData.delivery_fee)
-      updatePayload.delivery_fee = isNaN(fee) ? 0 : fee
-      const partial = Number.parseFloat(updateData.partial_paid_amount)
-      updatePayload.partial_paid_amount = isNaN(partial) ? 0 : partial
-      if (updateData.internal_comment?.trim()) updatePayload.internal_comment = updateData.internal_comment.trim()
+      
+      const fee = Number.parseFloat(updateData.delivery_fee) || 0
+      const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+      
+      updatePayload.delivery_fee = fee
+      updatePayload.partial_paid_amount = partial
+      
+      if (updateData.internal_comment?.trim()) {
+        updatePayload.internal_comment = updateData.internal_comment.trim()
+      }
 
       if (["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status)) {
         const collected = updateData.collected_by || (isPaid ? method : "")
@@ -373,6 +402,11 @@ const OrdersList: React.FC = () => {
     )
   }
 
+  const canEditOrder = (order: Order) => {
+    // Allow editing for assigned orders or if it's the assigned courier
+    return order.assigned_courier_id === user?.id || order.status === "assigned"
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -410,6 +444,7 @@ const OrdersList: React.FC = () => {
           </div>
         </div>
       </div>
+      
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {orders.length === 0 ? (
@@ -440,6 +475,10 @@ const OrdersList: React.FC = () => {
               const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
+              const deliveryFee = order.delivery_fee || 0
+              const partialAmount = order.partial_paid_amount || 0
+              const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount)
+              
               return (
                 <div
                   key={order.id}
@@ -465,35 +504,86 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                  
                   {/* Card Content */}
                   <div className="p-6 space-y-6">
                     {/* Amount Section */}
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                            <CoinsIcon className="w-4 h-4 text-white" />
+                    <div className="space-y-3">
+                      {/* Base Order Amount */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                              <Package className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-lg font-bold text-blue-700">{order.total_order_fees.toFixed(2)}</p>
+                              <p className="text-xs text-blue-600">قيمة الطلب الأساسية</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-2xl font-bold text-green-700">{order.total_order_fees.toFixed(2)}</p>
-                            <p className="text-xs text-green-600">جنيه مصري</p>
+                          {isPaid && (
+                            <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">مدفوع</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Additional Fees */}
+                      {(deliveryFee > 0 || partialAmount > 0) && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-amber-700">
+                              <Calculator className="w-4 h-4" />
+                              <span className="text-sm font-medium">معلومات الرسوم</span>
+                            </div>
+                            {deliveryFee > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-amber-600">رسوم التوصيل:</span>
+                                <span className="font-medium text-amber-700">{deliveryFee.toFixed(2)} ج.م</span>
+                              </div>
+                            )}
+                            {partialAmount > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-amber-600">مبلغ جزئي:</span>
+                                <span className="font-medium text-amber-700">{partialAmount.toFixed(2)} ج.م</span>
+                              </div>
+                            )}
+                            <div className="text-xs text-amber-600 mt-2 p-2 bg-amber-100 rounded">
+                              هذه الرسوم منفصلة عن إجمالي الطلب
+                            </div>
                           </div>
                         </div>
-                        {isPaid && (
-                          <span className="bg-green-600 text-white px-2 py-1 rounded text-xs font-medium">مدفوع</span>
-                        )}
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-green-200">
-                        <div className="flex items-center gap-2 text-sm text-green-700">
-                          <CreditCard className="w-4 h-4" />
-                          <span>
-                            {paymentSubTypes[order.payment_sub_type ?? ""] ||
-                              collectionMethods[normalizeMethod(order.payment_method)] ||
-                              order.payment_method}
-                          </span>
+                      )}
+
+                      {/* Total Amount */}
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                              <CoinsIcon className="w-4 h-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-green-700">{totalAmount.toFixed(2)}</p>
+                              <p className="text-xs text-green-600">
+                                {order.status === "partial" ? "المبلغ المحصل جزئياً" : 
+                                 ["canceled", "return", "hand_to_hand"].includes(order.status) ? "إجمالي الرسوم" :
+                                 "إجمالي الطلب"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                          <div className="flex items-center gap-2 text-sm text-green-700">
+                            <CreditCard className="w-4 h-4" />
+                            <span>
+                              {paymentSubTypes[order.payment_sub_type ?? ""] ||
+                                collectionMethods[normalizeMethod(order.payment_method)] ||
+                                order.payment_method}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
+
                     {/* Contact Information */}
                     <div className="space-y-4">
                       {/* Phone */}
@@ -511,6 +601,7 @@ const OrdersList: React.FC = () => {
                           </button>
                         </div>
                       </div>
+                      
                       {/* Address */}
                       <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -522,12 +613,11 @@ const OrdersList: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
                     {/* Additional Information */}
                     {(order.notes ||
                       order.payment_sub_type ||
                       order.collected_by ||
-                      order.delivery_fee ||
-                      order.partial_paid_amount ||
                       order.internal_comment) && (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-3">
@@ -535,22 +625,6 @@ const OrdersList: React.FC = () => {
                           <h4 className="text-sm font-medium text-gray-700">معلومات إضافية</h4>
                         </div>
                         <div className="space-y-2 text-sm">
-                          {order.delivery_fee && Number(order.delivery_fee) > 0 && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">رسوم التوصيل:</span>
-                              <span className="font-medium text-gray-900">
-                                {Number(order.delivery_fee).toFixed(2)} ج.م
-                              </span>
-                            </div>
-                          )}
-                          {order.partial_paid_amount && Number(order.partial_paid_amount) > 0 && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">المبلغ الجزئي:</span>
-                              <span className="font-medium text-gray-900">
-                                {Number(order.partial_paid_amount).toFixed(2)} ج.م
-                              </span>
-                            </div>
-                          )}
                           {order.notes && (
                             <div>
                               <span className="text-gray-600 block mb-1">ملاحظات:</span>
@@ -568,6 +642,7 @@ const OrdersList: React.FC = () => {
                         </div>
                       </div>
                     )}
+
                     {/* Proof Images */}
                     {order.order_proofs && order.order_proofs.length > 0 && (
                       <div>
@@ -595,21 +670,29 @@ const OrdersList: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  
                   {/* Card Footer */}
                   <div className="px-6 pb-6">
-                    <button
-                      onClick={() => openModal(order)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Edit className="w-4 h-4" />
-                      تحديث الطلب
-                    </button>
+                    {canEditOrder(order) ? (
+                      <button
+                        onClick={() => openModal(order)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Edit className="w-4 h-4" />
+                        تحديث الطلب
+                      </button>
+                    ) : (
+                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-3 px-4 rounded-lg text-center">
+                        لا يمكن تعديل هذا الطلب
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
         )}
+
         {/* Phone Options Modal */}
         {phoneOptionsOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -648,6 +731,7 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         )}
+
         {/* Update Order Modal */}
         {modalOpen && selectedOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -667,6 +751,7 @@ const OrdersList: React.FC = () => {
                   </button>
                 </div>
               </div>
+
               {/* Modal Content */}
               <div className="p-6">
                 <form
@@ -676,6 +761,49 @@ const OrdersList: React.FC = () => {
                     handleSaveUpdate()
                   }}
                 >
+                  {/* Order Summary */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calculator className="w-4 h-4 text-gray-600" />
+                      <h4 className="text-sm font-medium text-gray-700">ملخص الطلب</h4>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">قيمة الطلب الأساسية:</span>
+                        <span className="font-medium text-gray-900">{selectedOrder.total_order_fees.toFixed(2)} ج.م</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">رسوم التوصيل (منفصلة):</span>
+                        <span className="font-medium text-amber-600">
+                          {updateData.delivery_fee || "0.00"} ج.م
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">مبلغ جزئي (منفصل):</span>
+                        <span className="font-medium text-amber-600">
+                          {updateData.partial_paid_amount || "0.00"} ج.م
+                        </span>
+                      </div>
+                      <div className="border-t pt-2 flex justify-between font-medium">
+                        <span className="text-gray-700">
+                          {updateData.status === "partial" ? "المبلغ المحصل:" : 
+                           ["canceled", "return", "hand_to_hand"].includes(updateData.status) ? "إجمالي الرسوم:" :
+                           "إجمالي الطلب:"}
+                        </span>
+                        <span className="text-green-600">
+                          {calculateTotalAmount(
+                            selectedOrder,
+                            Number.parseFloat(updateData.delivery_fee) || 0,
+                            Number.parseFloat(updateData.partial_paid_amount) || 0
+                          ).toFixed(2)} ج.م
+                        </span>
+                      </div>
+                      <div className="bg-blue-50 p-2 rounded text-xs text-blue-700">
+                        <strong>ملاحظة:</strong> الرسوم منفصلة عن قيمة الطلب الأساسية ولا تُضاف إليها
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Status Selection */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">
@@ -694,6 +822,7 @@ const OrdersList: React.FC = () => {
                       ))}
                     </select>
                   </div>
+
                   {/* Delivery Fee */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">رسوم التوصيل</label>
@@ -708,7 +837,11 @@ const OrdersList: React.FC = () => {
                       />
                       <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                     </div>
+                    <p className="text-xs text-gray-500">
+                      رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
+                    </p>
                   </div>
+
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status) && (
                     <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -716,6 +849,7 @@ const OrdersList: React.FC = () => {
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
+                      
                       {/* Collected By */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
@@ -732,6 +866,7 @@ const OrdersList: React.FC = () => {
                           ))}
                         </select>
                       </div>
+
                       {/* Payment Sub-Type */}
                       {updateData.collected_by === "courier" && (
                         <div className="space-y-2">
@@ -750,6 +885,7 @@ const OrdersList: React.FC = () => {
                           </select>
                         </div>
                       )}
+
                       {/* Partial Amount */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">المبلغ المدفوع جزئياً</label>
@@ -764,9 +900,26 @@ const OrdersList: React.FC = () => {
                           />
                           <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                         </div>
+                        <p className="text-xs text-gray-500">
+                          للطلبات الجزئية - هذا المبلغ منفصل عن قيمة الطلب الأساسية
+                        </p>
                       </div>
+
+                      {/* Zero Amount Warning */}
+                      {["canceled", "return", "hand_to_hand"].includes(updateData.status) && (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-yellow-700">
+                            <AlertCircle className="w-4 h-4" />
+                            <span className="text-sm font-medium">تنبيه</span>
+                          </div>
+                          <p className="text-xs text-yellow-600 mt-1">
+                            إذا لم يتم وضع أي رسوم، سيتم حساب إجمالي الطلب كصفر (الرسوم منفصلة عن قيمة الطلب الأساسية)
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
+
                   {/* Internal Comment */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -781,6 +934,7 @@ const OrdersList: React.FC = () => {
                       placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
+
                   {/* Image Upload */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -788,63 +942,37 @@ const OrdersList: React.FC = () => {
                       رفع صورة إثبات
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
                           {imageUploading ? (
                             <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
                           ) : (
-                            <Upload className="w-6 h-6 text-gray-400" />
+                            <Camera className="w-6 h-6 text-gray-400" />
                           )}
                         </div>
-                        <div className="space-y-3">
-                          <p className="text-sm text-gray-600">اختر طريقة رفع الصورة</p>
-                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            {/* Upload from Gallery */}
-                            <div>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                disabled={imageUploading}
-                                className="hidden"
-                                id="gallery-upload"
-                              />
-                              <label
-                                htmlFor="gallery-upload"
-                                className={`cursor-pointer inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors ${
-                                  imageUploading ? "opacity-50 cursor-not-allowed" : ""
-                                }`}
-                              >
-                                <ImageIcon className="w-4 h-4" />
-                                {imageUploading ? "جاري الرفع..." : "رفع من المعرض"}
-                              </label>
-                            </div>
-                            {/* Take Photo */}
-                            <div>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={handleImageChange}
-                                disabled={imageUploading}
-                                className="hidden"
-                                id="camera-upload"
-                              />
-                              <label
-                                htmlFor="camera-upload"
-                                className={`cursor-pointer inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-lg transition-colors ${
-                                  imageUploading ? "opacity-50 cursor-not-allowed" : ""
-                                }`}
-                              >
-                                <Camera className="w-4 h-4" />
-                                {imageUploading ? "جاري الرفع..." : "التقط صورة"}
-                              </label>
-                            </div>
-                          </div>
+                        <div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            disabled={imageUploading}
+                            className="hidden"
+                            id="image-upload"
+                          />
+                          <label
+                            htmlFor="image-upload"
+                            className={`cursor-pointer text-blue-600 hover:text-blue-700 font-medium ${
+                              imageUploading ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                          >
+                            {imageUploading ? "جاري رفع الصورة..." : "اختر صورة من المعرض أو التقط صورة"}
+                          </label>
+                          <p className="text-xs text-gray-500 mt-1">يمكنك اختيار صورة من المعرض أو التقاط صورة جديدة</p>
                         </div>
                       </div>
                     </div>
                   </div>
+
                   {/* Current Images */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div className="space-y-3">
@@ -868,6 +996,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   )}
+
                   {/* Action Buttons */}
                   <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button

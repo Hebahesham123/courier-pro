@@ -312,7 +312,7 @@ const Summary: React.FC = () => {
   }
 
   const metrics: Metric[] = [
-    // ORDER STATUS METRICS
+    // ORDER STATUS METRICS (0-6)
     {
       label: "totalOrders",
       icon: Package,
@@ -376,7 +376,7 @@ const Summary: React.FC = () => {
       filter: (o) => o.status === "assigned",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // ELECTRONIC PAYMENT METHODS
+    // ELECTRONIC PAYMENT METHODS (7-8)
     {
       label: "visaOrders",
       icon: CreditCard,
@@ -399,7 +399,7 @@ const Summary: React.FC = () => {
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // CASH-BASED PAYMENT SUB-TYPES
+    // CASH-BASED PAYMENT SUB-TYPES (9-11)
     {
       label: "cashOnHandOrders",
       icon: Banknote,
@@ -427,7 +427,7 @@ const Summary: React.FC = () => {
       filter: (o) => o.payment_sub_type === "wallet" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // COLLECTION SUMMARY METRICS
+    // COLLECTION SUMMARY METRICS (12-16)
     {
       label: "totalCashOnHand",
       icon: DollarSign,
@@ -1392,9 +1392,9 @@ const Summary: React.FC = () => {
             </div>
             <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusSection")}</h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {metrics
-              .slice(0, 5)
+              .slice(0, 7)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1410,7 +1410,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {metrics
-              .slice(5, 7)
+              .slice(7, 9)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1426,7 +1426,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {metrics
-              .slice(7, 10)
+              .slice(9, 12)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1442,12 +1442,229 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {metrics
-              .slice(10)
+              .slice(12)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
         </div>
       </div>
+
+      {/* Orders Modal */}
+      {selectedOrders.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="bg-blue-600 text-white p-6 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                  <Filter className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold">{modalTitle}</h3>
+                  <p className="text-blue-100">
+                    {selectedOrders.length} {translate("ordersCount")}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedOrders([])}
+                className="text-blue-100 hover:text-white transition-colors p-2"
+                aria-label={translate("close")}
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-4">
+                {selectedOrders.map((order) => {
+                  const courierOrderAmount = getCourierOrderAmount(order)
+                  const deliveryFee = Number(order.delivery_fee || 0)
+                  const totalCourierAmount = getTotalCourierAmount(order)
+
+                  return (
+                    <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Order Information */}
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+                            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <Package className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900">طلب #{order.order_id}</h4>
+                              <p className="text-sm text-gray-600">{order.customer_name}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
+                                <User className="w-3 h-3 text-green-600" />
+                              </div>
+                              <span className="text-sm text-gray-600">العميل:</span>
+                              <span className="font-medium">{order.customer_name}</span>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
+                                <Smartphone className="w-3 h-3 text-blue-600" />
+                              </div>
+                              <span className="text-sm text-gray-600">الهاتف:</span>
+                              <a
+                                href={`tel:${order.mobile_number}`}
+                                className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                              >
+                                {order.mobile_number}
+                              </a>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                              <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center mt-0.5">
+                                <Package className="w-3 h-3 text-red-600" />
+                              </div>
+                              <span className="text-sm text-gray-600">العنوان:</span>
+                              <span className="text-sm text-gray-800 flex-1">{order.address}</span>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                  order.status === "delivered"
+                                    ? "bg-green-100 text-green-800"
+                                    : order.status === "canceled"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
+                                {translate(order.status)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Financial Information */}
+                        <div className="space-y-4">
+                          <div className="bg-white rounded-lg p-4 border border-gray-200">
+                            <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                              <DollarSign className="w-4 h-4" />
+                              المعلومات المالية
+                            </h5>
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600">{translate("orderTotalLabel")}:</span>
+                                <span className="font-medium">
+                                  {Number(order.total_order_fees).toFixed(2)} {translate("EGP")}
+                                </span>
+                              </div>
+
+                              {courierOrderAmount > 0 && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600">
+                                    {Number(order.partial_paid_amount || 0) > 0
+                                      ? translate("partialAmountLabel")
+                                      : translate("orderAmountCollectedLabel")}
+                                    :
+                                  </span>
+                                  <span className="font-semibold text-green-600">
+                                    {courierOrderAmount.toFixed(2)} {translate("EGP")}
+                                  </span>
+                                </div>
+                              )}
+
+                              {deliveryFee > 0 && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600">{translate("deliveryFee")}:</span>
+                                  <span className="font-semibold text-blue-600">
+                                    {deliveryFee.toFixed(2)} {translate("EGP")}
+                                  </span>
+                                </div>
+                              )}
+
+                              {totalCourierAmount > 0 && (
+                                <div className="flex justify-between items-center pt-3 border-t border-gray-200">
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    {translate("totalCourierHandledLabel")}:
+                                  </span>
+                                  <span className="font-bold text-purple-600">
+                                    {totalCourierAmount.toFixed(2)} {translate("EGP")}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Payment Information */}
+                          <div className="space-y-2">
+                            {order.payment_sub_type && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">{translate("paymentSubTypeLabel")}:</span>
+                                <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                  {translate(order.payment_sub_type)}
+                                </span>
+                              </div>
+                            )}
+
+                            {order.collected_by && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
+                                <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                  {translate(order.collected_by)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Comment */}
+                      {order.internal_comment && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex items-start gap-3">
+                            <div className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center mt-0.5">
+                              <Package className="w-3 h-3 text-gray-600" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-gray-700">{translate("comment")}:</span>
+                              <p className="text-sm text-gray-600 mt-1">{order.internal_comment}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Proof Images */}
+                      {order.order_proofs && order.order_proofs.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
+                              <Eye className="w-3 h-3 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700">
+                              {translate("proofImagesLabel")} ({order.order_proofs.length})
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-3">
+                            {order.order_proofs.map((proof) => (
+                              <img
+                                key={proof.id}
+                                src={proof.image_data || "/placeholder.svg"}
+                                alt="إثبات"
+                                className="h-20 w-full rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity"
+                                onClick={() => window.open(proof.image_data, "_blank")}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

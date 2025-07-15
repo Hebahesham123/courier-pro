@@ -28,6 +28,10 @@ import {
   Activity,
   Archive,
   ArchiveRestore,
+  Wallet,
+  Banknote,
+  CreditCard as CreditCardIcon,
+  DollarSign,
   UserCheck,
   Eye,
 } from "lucide-react"
@@ -459,6 +463,41 @@ const OrdersManagement: React.FC = () => {
     fetchOrders()
   }
 
+  // Calculate payment method totals
+  const getPaymentMethodTotals = () => {
+    const totals = {
+      cash: 0,
+      wallet: 0,
+      instapay: 0,
+      cod: 0,
+      other: 0,
+      cashOnHand: 0
+    }
+
+    orders.forEach(order => {
+      const amount = order.total_order_fees
+      const paymentMethod = order.payment_method?.toLowerCase() || ''
+      
+      if (paymentMethod.includes('cash') || paymentMethod.includes('نقد') || paymentMethod.includes('كاش')) {
+        totals.cash += amount
+        totals.cashOnHand += amount
+      } else if (paymentMethod.includes('wallet') || paymentMethod.includes('محفظة') || paymentMethod.includes('فودافون')) {
+        totals.wallet += amount
+      } else if (paymentMethod.includes('instapay') || paymentMethod.includes('انستاباي')) {
+        totals.instapay += amount
+      } else if (paymentMethod.includes('cod') || paymentMethod.includes('عند الاستلام')) {
+        totals.cod += amount
+      } else {
+        totals.other += amount
+      }
+    })
+
+    return totals
+  }
+
+  const paymentTotals = getPaymentMethodTotals()
+  const codTotal = paymentTotals.cod
+
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || {
       label: status,
@@ -616,6 +655,85 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Collection Summary */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">ملخص التحصيل</h3>
+            <span className="text-sm text-gray-500">Collection Summary</span>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Cash on Hand */}
+            <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-700">نقد</p>
+                  <p className="text-xl font-bold text-blue-900 mt-1">{paymentTotals.cashOnHand.toFixed(2)}</p>
+                  <p className="text-xs text-blue-600 mt-1">Cash on Hand</p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Banknote className="w-5 h-5 text-blue-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* Wallet */}
+            <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-purple-700">محفظة</p>
+                  <p className="text-xl font-bold text-purple-900 mt-1">{paymentTotals.wallet.toFixed(2)}</p>
+                  <p className="text-xs text-purple-600 mt-1">Wallet</p>
+                </div>
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Wallet className="w-5 h-5 text-purple-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* InstaPay */}
+            <div className="bg-orange-50 rounded-xl border border-orange-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-orange-700">انستاباي</p>
+                  <p className="text-xl font-bold text-orange-900 mt-1">{paymentTotals.instapay.toFixed(2)}</p>
+                  <p className="text-xs text-orange-600 mt-1">InstaPay</p>
+                </div>
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <CreditCardIcon className="w-5 h-5 text-orange-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* COD Total */}
+            <div className="bg-green-50 rounded-xl border border-green-200 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-700">إجمالي COD</p>
+                  <p className="text-xl font-bold text-green-900 mt-1">{codTotal.toFixed(2)}</p>
+                  <p className="text-xs text-green-600 mt-1">COD Total</p>
+                </div>
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Additional Info */}
+          {paymentTotals.other > 0 && (
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">طرق دفع أخرى (Other Payment Methods)</span>
+                <span className="text-sm font-medium text-gray-900">{paymentTotals.other.toFixed(2)} ج.م</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Filters Section */}
