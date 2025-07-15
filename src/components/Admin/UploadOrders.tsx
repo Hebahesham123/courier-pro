@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useRef } from "react"
 import {
@@ -28,6 +27,7 @@ interface OrderData {
   order_id: string
   customer_name: string
   address: string
+  billing_city: string // Added billing_city
   mobile_number: string
   total_order_fees: number
   payment_method: "cash" | "card" | "valu" | "partial"
@@ -66,6 +66,7 @@ const UploadOrders: React.FC = () => {
       customerName: "Customer Name / اسم العميل",
       mobile: "Mobile / الهاتف",
       address: "Address / العنوان",
+      billingCity: "Billing City / مدينة الفاتورة", // Added translation for billing city
       totalAmount: "Total Amount / المبلغ الكلي",
       paymentMethod: "Payment Method / طريقة الدفع",
       notes: "Notes / ملاحظات",
@@ -109,6 +110,7 @@ const UploadOrders: React.FC = () => {
       if (!order.customer_name) errors.push(`Row ${index + 1}: Missing customer name`)
       if (!order.mobile_number) errors.push(`Row ${index + 1}: Missing mobile number`)
       if (order.total_order_fees <= 0) errors.push(`Row ${index + 1}: Invalid total amount`)
+      // billing_city is optional, so no validation needed unless specified
     })
     return errors
   }
@@ -118,6 +120,7 @@ const UploadOrders: React.FC = () => {
       order_id: String(row["Name"] || ""),
       customer_name: String(row["Shipping Name"] || row["Billing Name"] || "Unknown"),
       address: String(row["Shipping Address1"] || row["Shipping Street"] || row["Billing Address1"] || "N/A"),
+      billing_city: String(row["Billing City"] || "N/A"), // Extracting Billing City
       mobile_number: String(row["Phone"] || row["Shipping Phone"] || row["Billing Phone"] || "N/A"),
       total_order_fees: Number(row["Total"] || 0),
       payment_method: normalizePayment(row["Payment Method"] || "cash"),
@@ -151,7 +154,6 @@ const UploadOrders: React.FC = () => {
     setMessage(null)
     setValidationErrors([])
     setUploadProgress(0)
-
     try {
       setMessage({ type: "info", text: translate("processing") })
       const data = await selectedFile.arrayBuffer()
@@ -159,10 +161,8 @@ const UploadOrders: React.FC = () => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
       const orders = parseOrders(jsonData)
-
       const errors = validateOrders(orders)
       setValidationErrors(errors)
-
       setPreview(orders.slice(0, 5))
       setMessage(null)
     } catch (error) {
@@ -181,7 +181,6 @@ const UploadOrders: React.FC = () => {
     setLoading(true)
     setMessage(null)
     setUploadProgress(0)
-
     try {
       const data = await file.arrayBuffer()
       const workbook = XLSX.read(data)
@@ -445,46 +444,38 @@ const UploadOrders: React.FC = () => {
               </div>
             )}
 
-          {/* Instructions */}
-<div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
-  <div className="flex items-center gap-2 mb-4">
-    <Info className="w-5 h-5 text-blue-600" />
-    <h3 className="text-lg font-semibold text-blue-900">
-      {translate("instructions", "") || "Instructions / التعليمات"}
-    </h3>
-  </div>
-  <div className="space-y-3 text-sm text-blue-800">
-    <div className="flex items-start gap-2">
-      <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-      <span>
-        Export orders from Shopify as Excel (.xlsx) /
-        قم بتصدير الطلبات من Shopify كملف Excel (.xlsx)
-      </span>
-    </div>
-    <div className="flex items-start gap-2">
-      <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-      <span>
-        Ensure columns include: Name, Customer, Phone, Total, Payment Method /
-        تأكد من وجود الأعمدة: الاسم، العميل، الهاتف، الإجمالي، طريقة الدفع
-      </span>
-    </div>
-    <div className="flex items-start gap-2">
-      <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-      <span>
-        Review the preview before uploading /
-        راجع المعاينة قبل الرفع
-      </span>
-    </div>
-    <div className="flex items-start gap-2">
-      <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-      <span>
-        Fix any validation errors before proceeding /
-        قم بإصلاح أي أخطاء تحقق قبل المتابعة
-      </span>
-    </div>
-  </div>
-</div>
-
+            {/* Instructions */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Info className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold text-blue-900">
+                  {translate("instructions", "") || "Instructions / التعليمات"}
+                </h3>
+              </div>
+              <div className="space-y-3 text-sm text-blue-800">
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>
+                    Export orders from Shopify as Excel (.xlsx) / قم بتصدير الطلبات من Shopify كملف Excel (.xlsx)
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>
+                    Ensure columns include: Name, Customer, Phone, Total, Payment Method, **Billing City** / تأكد من
+                    وجود الأعمدة: الاسم، العميل، الهاتف، الإجمالي، طريقة الدفع، **مدينة الفاتورة**
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>Review the preview before uploading / راجع المعاينة قبل الرفع</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>Fix any validation errors before proceeding / قم بإصلاح أي أخطاء تحقق قبل المتابعة</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -533,6 +524,12 @@ const UploadOrders: React.FC = () => {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        {translate("billingCity")} {/* New column header */}
+                      </div>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <div className="flex items-center gap-2">
                         <CreditCard className="w-4 h-4" />
                         {translate("totalAmount")}
                       </div>
@@ -565,6 +562,9 @@ const UploadOrders: React.FC = () => {
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-gray-900 line-clamp-2">{order.address}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-900">{order.billing_city}</span> {/* Display billing_city */}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-semibold text-green-600">

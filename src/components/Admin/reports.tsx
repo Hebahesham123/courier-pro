@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Download,
   Users,
@@ -27,6 +27,12 @@ import {
   ArrowUpRight,
   Percent,
   Archive,
+  Bell,
+  Volume2,
+  VolumeX,
+  HandMetal,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
@@ -59,6 +65,7 @@ interface Order {
   internal_comment: string | null
   collected_by: string | null
   assigned_courier_id: string | null
+  original_courier_id?: string | null
   notes?: string | null
   order_proofs?: OrderProof[]
   created_at: string
@@ -70,6 +77,8 @@ interface Order {
 interface CourierStats {
   totalOrders: number
   deliveredOrders: number
+  returnedOrders: number
+  canceledOrders: number
   totalAmount: number
   deliveredAmount: number
   averageOrderValue: number
@@ -77,42 +86,57 @@ interface CourierStats {
   archivedOrders: number
 }
 
-const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
+interface Notification {
+  id: string
+  message: string
+  timestamp: Date
+  type: 'update' | 'new' | 'status_change'
+  orderId?: string
+  courierName?: string
+}
+
+const statusConfig: Record<string, { label: string; color: string; bgColor: string; cardBg: string; icon: React.ComponentType<any> }> =
   {
     assigned: {
       label: "مكلف",
       color: "text-blue-700",
       bgColor: "bg-blue-50 border-blue-200",
+      cardBg: "bg-blue-50 border-blue-300 shadow-blue-100",
       icon: Activity,
     },
     delivered: {
       label: "تم التوصيل",
       color: "text-green-700",
       bgColor: "bg-green-50 border-green-200",
+      cardBg: "bg-green-50 border-green-300 shadow-green-100",
       icon: CheckCircle,
     },
     canceled: {
       label: "ملغي",
       color: "text-red-700",
       bgColor: "bg-red-50 border-red-200",
-      icon: X,
+      cardBg: "bg-red-50 border-red-300 shadow-red-100",
+      icon: XCircle,
     },
     partial: {
       label: "جزئي",
       color: "text-yellow-700",
       bgColor: "bg-yellow-50 border-yellow-200",
+      cardBg: "bg-yellow-50 border-yellow-300 shadow-yellow-100",
       icon: Activity,
     },
     hand_to_hand: {
       label: "استبدال",
       color: "text-purple-700",
       bgColor: "bg-purple-50 border-purple-200",
-      icon: RefreshCw,
+      cardBg: "bg-purple-50 border-purple-300 shadow-purple-100",
+      icon: HandMetal,
     },
     return: {
       label: "مرتجع",
       color: "text-orange-700",
       bgColor: "bg-orange-50 border-orange-200",
+      cardBg: "bg-orange-50 border-orange-300 shadow-orange-100",
       icon: TrendingUp,
     },
   }
@@ -131,6 +155,130 @@ const Reports: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [viewMode, setViewMode] = useState<"active" | "archived">("active")
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const audioContextRef = useRef<AudioContext | null>(null)
+
+  // Debug function
+  const addDebugInfo = (info: string) => {
+    console.log(`[DEBUG] ${info}`)
+    setDebugInfo(prev => [`${new Date().toLocaleTimeString()}: ${info}`, ...prev.slice(0, 9)])
+  }
+
+  // Initialize audio context
+  useEffect(() => {
+    const initAudio = () => {
+      try {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+        addDebugInfo("Audio context initialized successfully")
+      } catch (error) {
+        console.error("Failed to initialize audio context:", error)
+        addDebugInfo("Failed to initialize audio context")
+      }
+    }
+    
+    // Initialize on user interaction
+    const handleUserInteraction = () => {
+      if (!audioContextRef.current) {
+        initAudio()
+      }
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
+    }
+    
+    document.addEventListener('click', handleUserInteraction)
+    document.addEventListener('keydown', handleUserInteraction)
+    
+    return () => {
+      document.removeEventListener('click', handleUserInteraction)
+      document.removeEventListener('keydown', handleUserInteraction)
+    }
+  }, [])
+
+  const playNotificationSound = () => {
+    if (!soundEnabled) {
+      addDebugInfo("Sound disabled, skipping notification sound")
+      return
+    }
+
+    try {
+      if (!audioContextRef.current) {
+        addDebugInfo("Audio context not available")
+        return
+      }
+
+      const ctx = audioContextRef.current
+      
+      // Resume context if suspended
+      if (ctx.state === 'suspended') {
+        ctx.resume()
+      }
+
+      // Create a simple beep sound
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      
+      oscillator.frequency.setValueAtTime(800, ctx.currentTime)
+      oscillator.frequency.setValueAtTime(600, ctx.currentTime + 0.1)
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+      
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.3)
+      
+      addDebugInfo("Notification sound played successfully")
+    } catch (error) {
+      console.error("Error playing notification sound:", error)
+      addDebugInfo(`Error playing sound: ${error}`)
+    }
+  }
+
+  const getCourierName = async (courierId: string | null): Promise<string> => {
+    if (!courierId) return "غير محدد"
+    
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("name")
+        .eq("id", courierId)
+        .single()
+      
+      if (error) throw error
+      return data?.name || "غير محدد"
+    } catch (error) {
+      console.error("Error fetching courier name:", error)
+      return "غير محدد"
+    }
+  }
+
+  const addNotification = async (message: string, type: 'update' | 'new' | 'status_change', orderId?: string, courierId?: string | null) => {
+    const courierName = courierId ? await getCourierName(courierId) : "غير محدد"
+    
+    const notification: Notification = {
+      id: Date.now().toString(),
+      message,
+      timestamp: new Date(),
+      type,
+      orderId,
+      courierName
+    }
+    
+    addDebugInfo(`Adding notification: ${message} (Courier: ${courierName})`)
+    
+    setNotifications(prev => [notification, ...prev.slice(0, 9)])
+    playNotificationSound()
+    
+    // Auto remove notification after 8 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== notification.id))
+    }, 8000)
+  }
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
@@ -160,6 +308,8 @@ const Reports: React.FC = () => {
       noImages: "لا توجد صور",
       totalOrders: "إجمالي الطلبات",
       deliveredOrders: "الطلبات المسلمة",
+      returnedOrders: "الطلبات المرتجعة",
+      canceledOrders: "الطلبات الملغاة",
       totalAmount: "المبلغ الإجمالي",
       deliveredAmount: "المبلغ المسلم",
       averageOrderValue: "متوسط قيمة الطلب",
@@ -183,6 +333,12 @@ const Reports: React.FC = () => {
       archive: "أرشيف",
       viewArchive: "عرض الأرشيف",
       backToActive: "العودة للطلبات النشطة",
+      notifications: "الإشعارات",
+      soundOn: "تشغيل الصوت",
+      soundOff: "إيقاف الصوت",
+      newOrder: "طلب جديد",
+      orderUpdated: "تم تحديث الطلب",
+      statusChanged: "تغيير حالة الطلب",
     }
     return translations[key] || key
   }
@@ -194,14 +350,110 @@ const Reports: React.FC = () => {
         const { data, error } = await supabase.from("users").select("id, name").eq("role", "courier")
         if (error) throw error
         setCouriers(data || [])
+        addDebugInfo(`Loaded ${data?.length || 0} couriers`)
       } catch (error: any) {
         console.error("Error fetching couriers:", error)
+        addDebugInfo(`Error fetching couriers: ${error.message}`)
       } finally {
         setLoadingCouriers(false)
       }
     }
     fetchCouriers()
   }, [])
+
+  // Global subscription for all order changes (for notifications)
+  useEffect(() => {
+    addDebugInfo("Setting up global order subscription for notifications")
+    
+    const globalSubscription = supabase
+      .channel('global_orders_changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'orders'
+        }, 
+        async (payload: any) => {
+          addDebugInfo(`Global order change detected: ${payload.eventType} for order ${payload.new?.order_id || payload.old?.order_id}`)
+          
+          try {
+            if (payload.eventType === 'INSERT') {
+              await addNotification(
+                `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
+                'new',
+                payload.new.order_id,
+                payload.new.assigned_courier_id
+              )
+            } else if (payload.eventType === 'UPDATE') {
+              const oldStatus = payload.old?.status as string
+              const newStatus = payload.new?.status as string
+              
+              if (oldStatus !== newStatus) {
+                const oldLabel = statusConfig[oldStatus]?.label || oldStatus
+                const newLabel = statusConfig[newStatus]?.label || newStatus
+                await addNotification(
+                  `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
+                  'status_change',
+                  payload.new.order_id,
+                  payload.new.assigned_courier_id
+                )
+              } else {
+                await addNotification(
+                  `تم تحديث الطلب #${payload.new.order_id} - ${payload.new.customer_name}`,
+                  'update',
+                  payload.new.order_id,
+                  payload.new.assigned_courier_id
+                )
+              }
+            }
+          } catch (error) {
+            console.error("Error processing notification:", error)
+            addDebugInfo(`Error processing notification: ${error}`)
+          }
+        }
+      )
+      .subscribe((status) => {
+        addDebugInfo(`Global subscription status: ${status}`)
+      })
+
+    return () => {
+      addDebugInfo("Unsubscribing from global order changes")
+      globalSubscription.unsubscribe()
+    }
+  }, [soundEnabled])
+
+  // Selected courier subscription (for data refresh)
+  useEffect(() => {
+    if (!selectedCourier) return
+
+    addDebugInfo(`Setting up subscription for courier: ${selectedCourier.name}`)
+
+    const courierSubscription = supabase
+      .channel(`courier_${selectedCourier.id}_orders`)
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'orders',
+          filter: viewMode === 'active' 
+            ? `assigned_courier_id=eq.${selectedCourier.id}` 
+            : `original_courier_id=eq.${selectedCourier.id}`
+        }, 
+        (payload: any) => {
+          addDebugInfo(`Courier-specific order change detected for ${selectedCourier.name}`)
+          // Refresh orders data for selected courier
+          fetchOrdersForCourier(selectedCourier)
+        }
+      )
+      .subscribe((status) => {
+        addDebugInfo(`Courier subscription status: ${status}`)
+      })
+
+    return () => {
+      addDebugInfo(`Unsubscribing from courier ${selectedCourier.name} orders`)
+      courierSubscription.unsubscribe()
+    }
+  }, [selectedCourier, viewMode])
 
   useEffect(() => {
     filterOrders()
@@ -210,6 +462,8 @@ const Reports: React.FC = () => {
   const fetchOrdersForCourier = async (courier: Courier) => {
     setSelectedCourier(courier)
     setLoadingOrders(true)
+    addDebugInfo(`Fetching orders for courier: ${courier.name}`)
+    
     try {
       let query = supabase
         .from("orders")
@@ -244,8 +498,10 @@ const Reports: React.FC = () => {
 
       setOrders(ordersWithCourierNames)
       calculateStats(ordersWithCourierNames, courier.id)
+      addDebugInfo(`Loaded ${ordersWithCourierNames.length} orders for ${courier.name}`)
     } catch (error: any) {
       alert("Error loading orders / خطأ في تحميل الطلبات: " + error.message)
+      addDebugInfo(`Error loading orders: ${error.message}`)
     } finally {
       setLoadingOrders(false)
     }
@@ -262,6 +518,8 @@ const Reports: React.FC = () => {
     const activeOrders = activeOrdersData || []
     const totalOrders = activeOrders.length
     const deliveredOrders = activeOrders.filter((order) => order.status === "delivered").length
+    const returnedOrders = activeOrders.filter((order) => order.status === "return").length
+    const canceledOrders = activeOrders.filter((order) => order.status === "canceled").length
     const totalAmount = activeOrders.reduce((sum, order) => sum + order.total_order_fees, 0)
     const deliveredAmount = activeOrders
       .filter((order) => order.status === "delivered")
@@ -281,6 +539,8 @@ const Reports: React.FC = () => {
     setCourierStats({
       totalOrders,
       deliveredOrders,
+      returnedOrders,
+      canceledOrders,
       totalAmount,
       deliveredAmount,
       averageOrderValue,
@@ -356,11 +616,17 @@ const Reports: React.FC = () => {
     setDateRange({ start: "", end: "" })
   }
 
+  const clearAllNotifications = () => {
+    setNotifications([])
+    addDebugInfo("All notifications cleared")
+  }
+
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || {
       label: status,
       color: "text-gray-700",
       bgColor: "bg-gray-50 border-gray-200",
+      cardBg: "bg-gray-50 border-gray-300",
       icon: Activity,
     }
     const StatusIcon = config.icon
@@ -380,6 +646,22 @@ const Reports: React.FC = () => {
     setShowOrderModal(true)
   }
 
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'new': return <Package className="w-4 h-4 text-blue-600" />
+      case 'status_change': return <RefreshCw className="w-4 h-4 text-orange-600" />
+      default: return <Bell className="w-4 h-4 text-gray-600" />
+    }
+  }
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'new': return 'border-l-blue-500 bg-blue-50'
+      case 'status_change': return 'border-l-orange-500 bg-orange-50'
+      default: return 'border-l-gray-500 bg-gray-50'
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -395,13 +677,137 @@ const Reports: React.FC = () => {
                 <p className="text-gray-600">تقارير أداء المندوبين والطلبات</p>
               </div>
             </div>
-            <button
-              onClick={() => selectedCourier && fetchOrdersForCourier(selectedCourier)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:inline">{translate("refresh")}</span>
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Debug Info Toggle */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="hidden sm:inline">Debug</span>
+                </button>
+                
+                {showNotifications && (
+                  <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50">
+                    <div className="p-4 border-b border-gray-200">
+                      <h3 className="font-semibold text-gray-900">Debug Information</h3>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {debugInfo.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500">
+                          No debug info yet
+                        </div>
+                      ) : (
+                        debugInfo.map((info, index) => (
+                          <div key={index} className="p-3 border-b border-gray-100 text-xs font-mono">
+                            {info}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Notifications */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <Bell className="w-4 h-4" />
+                  {notifications.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                      {notifications.length}
+                    </span>
+                  )}
+                </button>
+                
+                {showNotifications && (
+                  <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50">
+                    <div className="p-4 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-gray-900">{translate("notifications")}</h3>
+                        {notifications.length > 0 && (
+                          <button
+                            onClick={clearAllNotifications}
+                            className="text-sm text-red-600 hover:text-red-800"
+                          >
+                            مسح الكل
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500">
+                          لا توجد إشعارات جديدة
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
+                          <div key={notification.id} className={`p-3 border-b border-gray-100 border-l-4 ${getNotificationColor(notification.type)}`}>
+                            <div className="flex items-start gap-3">
+                              {getNotificationIcon(notification.type)}
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-900">{notification.message}</p>
+                                {notification.courierName && (
+                                  <p className="text-xs text-gray-600 mt-1">
+                                    المندوب: {notification.courierName}
+                                  </p>
+                                )}
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {notification.timestamp.toLocaleTimeString('ar-EG')}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sound Toggle */}
+              <button
+                onClick={() => {
+                  setSoundEnabled(!soundEnabled)
+                  addDebugInfo(`Sound ${!soundEnabled ? 'enabled' : 'disabled'}`)
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  soundEnabled 
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                <span className="hidden sm:inline">
+                  {soundEnabled ? translate("soundOn") : translate("soundOff")}
+                </span>
+              </button>
+
+              {/* Test Sound Button */}
+              <button
+                onClick={() => {
+                  addDebugInfo("Testing notification sound")
+                  playNotificationSound()
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
+              >
+                <Volume2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Test Sound</span>
+              </button>
+
+              {/* Refresh Button */}
+              <button
+                onClick={() => selectedCourier && fetchOrdersForCourier(selectedCourier)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="hidden sm:inline">{translate("refresh")}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -519,7 +925,7 @@ const Reports: React.FC = () => {
                       </div>
                     </div>
                     <div className="p-6">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
@@ -549,14 +955,40 @@ const Reports: React.FC = () => {
                         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
+                              <TrendingUp className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-orange-900">{courierStats.returnedOrders}</p>
+                              <p className="text-xs text-orange-600 mt-1">طلب مرتجع</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-orange-800">{translate("returnedOrders")}</p>
+                        </div>
+
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center">
+                              <XCircle className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-red-900">{courierStats.canceledOrders}</p>
+                              <p className="text-xs text-red-600 mt-1">طلب ملغي</p>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-red-800">{translate("canceledOrders")}</p>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="w-12 h-12 bg-gray-600 rounded-xl flex items-center justify-center">
                               <Archive className="w-6 h-6 text-white" />
                             </div>
                             <div className="text-right">
-                              <p className="text-2xl font-bold text-orange-900">{courierStats.archivedOrders}</p>
-                              <p className="text-xs text-orange-600 mt-1">طلب مؤرشف</p>
+                              <p className="text-2xl font-bold text-gray-900">{courierStats.archivedOrders}</p>
+                              <p className="text-xs text-gray-600 mt-1">طلب مؤرشف</p>
                             </div>
                           </div>
-                          <p className="text-sm font-medium text-orange-800">{translate("archivedOrders")}</p>
+                          <p className="text-sm font-medium text-gray-800">{translate("archivedOrders")}</p>
                         </div>
 
                         <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
@@ -734,118 +1166,121 @@ const Reports: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {filteredOrders.map((order) => (
-                          <div
-                            key={order.id}
-                            className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-all duration-200"
-                          >
-                            <div className="flex justify-between items-start mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                  {viewMode === "active" ? (
-                                    <Package className="w-5 h-5 text-blue-600" />
-                                  ) : (
-                                    <Archive className="w-5 h-5 text-blue-600" />
-                                  )}
+                        {filteredOrders.map((order) => {
+                          const statusStyle = statusConfig[order.status] || statusConfig.assigned
+                          return (
+                            <div
+                              key={order.id}
+                              className={`border-2 rounded-xl p-6 hover:shadow-lg transition-all duration-200 ${statusStyle.cardBg}`}
+                            >
+                              <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${statusStyle.bgColor}`}>
+                                    {viewMode === "active" ? (
+                                      <Package className={`w-5 h-5 ${statusStyle.color}`} />
+                                    ) : (
+                                      <Archive className={`w-5 h-5 ${statusStyle.color}`} />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <h4 className={`font-semibold ${statusStyle.color}`}>#{order.order_id}</h4>
+                                    <p className={`text-sm ${statusStyle.color} opacity-80`}>{order.customer_name}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">#{order.order_id}</h4>
-                                  <p className="text-sm text-gray-600">{order.customer_name}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {getStatusBadge(order.status)}
-                                <button
-                                  onClick={() => openOrderModal(order)}
-                                  className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-                                >
-                                  <Eye className="w-3 h-3" />
-                                  {translate("viewDetails")}
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                <Phone className="w-4 h-4 text-gray-500" />
-                                <div>
-                                  <p className="text-xs text-gray-600">الهاتف</p>
-                                  <a
-                                    href={`tel:${order.mobile_number}`}
-                                    className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                                <div className="flex items-center gap-3">
+                                  {getStatusBadge(order.status)}
+                                  <button
+                                    onClick={() => openOrderModal(order)}
+                                    className={`flex items-center gap-2 px-3 py-1 text-sm rounded-lg transition-colors ${statusStyle.bgColor} ${statusStyle.color} hover:opacity-80`}
                                   >
-                                    {order.mobile_number}
-                                  </a>
+                                    <Eye className="w-3 h-3" />
+                                    {translate("viewDetails")}
+                                  </button>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                <DollarSign className="w-4 h-4 text-gray-500" />
-                                <div>
-                                  <p className="text-xs text-gray-600">المبلغ</p>
-                                  <p className="text-sm font-medium text-green-600">
-                                    {order.total_order_fees.toFixed(2)} ج.م
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                <CreditCard className="w-4 h-4 text-gray-500" />
-                                <div>
-                                  <p className="text-xs text-gray-600">طريقة الدفع</p>
-                                  <p className="text-sm font-medium text-gray-900">{order.payment_method}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                <Calendar className="w-4 h-4 text-gray-500" />
-                                <div>
-                                  <p className="text-xs text-gray-600">
-                                    {viewMode === "active" ? "تاريخ الإنشاء" : "تاريخ الأرشفة"}
-                                  </p>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {viewMode === "active"
-                                      ? new Date(order.created_at).toLocaleDateString("ar-EG")
-                                      : order.archived_at
-                                        ? new Date(order.archived_at).toLocaleDateString("ar-EG")
-                                        : "-"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {order.order_proofs && order.order_proofs.length > 0 && (
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                  <Camera className="w-4 h-4 text-gray-500" />
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <Phone className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
-                                    <p className="text-xs text-gray-600">صور الإثبات</p>
-                                    <p className="text-sm font-medium text-blue-600">
-                                      {order.order_proofs.length} صورة
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>الهاتف</p>
+                                    <a
+                                      href={`tel:${order.mobile_number}`}
+                                      className={`text-sm font-medium ${statusStyle.color} hover:opacity-80`}
+                                    >
+                                      {order.mobile_number}
+                                    </a>
+                                  </div>
+                                </div>
+
+                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <DollarSign className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
+                                  <div>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>المبلغ</p>
+                                    <p className={`text-sm font-medium ${statusStyle.color}`}>
+                                      {order.total_order_fees.toFixed(2)} ج.م
                                     </p>
                                   </div>
                                 </div>
-                              )}
 
-                              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                                <MapPin className="w-4 h-4 text-gray-500 mt-0.5" />
-                                <div>
-                                  <p className="text-xs text-gray-600">العنوان</p>
-                                  <p className="text-sm font-medium text-gray-900 line-clamp-2">{order.address}</p>
-                                </div>
-                              </div>
-                              {viewMode === "archived" && (
-                                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                  <User className="w-4 h-4 text-gray-500" />
+                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <CreditCard className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
-                                    <p className="text-xs text-gray-600">المندوب الأصلي</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                      {order.courier_name || "غير محدد"}
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>طريقة الدفع</p>
+                                    <p className={`text-sm font-medium ${statusStyle.color}`}>{order.payment_method}</p>
+                                  </div>
+                                </div>
+
+                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <Calendar className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
+                                  <div>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>
+                                      {viewMode === "active" ? "تاريخ الإنشاء" : "تاريخ الأرشفة"}
+                                    </p>
+                                    <p className={`text-sm font-medium ${statusStyle.color}`}>
+                                      {viewMode === "active"
+                                        ? new Date(order.created_at).toLocaleDateString("ar-EG")
+                                        : order.archived_at
+                                          ? new Date(order.archived_at).toLocaleDateString("ar-EG")
+                                          : "-"}
                                     </p>
                                   </div>
                                 </div>
-                              )}
+
+                                {order.order_proofs && order.order_proofs.length > 0 && (
+                                  <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                    <Camera className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
+                                    <div>
+                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>صور الإثبات</p>
+                                      <p className={`text-sm font-medium ${statusStyle.color}`}>
+                                        {order.order_proofs.length} صورة
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className={`flex items-start gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <MapPin className={`w-4 h-4 ${statusStyle.color} opacity-70 mt-0.5`} />
+                                  <div>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>العنوان</p>
+                                    <p className={`text-sm font-medium ${statusStyle.color} line-clamp-2`}>{order.address}</p>
+                                  </div>
+                                </div>
+                                {viewMode === "archived" && (
+                                  <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                    <User className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
+                                    <div>
+                                      <p className={`text-xs ${statusStyle.color} opacity-70`}>المندوب الأصلي</p>
+                                      <p className={`text-sm font-medium ${statusStyle.color}`}>
+                                        {order.courier_name || "غير محدد"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -873,7 +1308,7 @@ const Reports: React.FC = () => {
         {showOrderModal && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-              <div className="bg-blue-600 text-white p-6 rounded-t-xl">
+              <div className={`text-white p-6 rounded-t-xl ${statusConfig[selectedOrder.status]?.bgColor.replace('bg-', 'bg-').replace('-50', '-600') || 'bg-blue-600'}`}>
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-bold">

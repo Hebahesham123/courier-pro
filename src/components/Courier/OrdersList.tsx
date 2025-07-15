@@ -24,8 +24,6 @@ import {
   Save,
   XCircle,
   Calculator,
-  Minus,
-  Plus,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -144,10 +142,11 @@ const OrdersList: React.FC = () => {
           `
           *,
           order_proofs (id, image_data)
-        `,
+          `,
         )
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
         .order("created_at", { ascending: false })
+
       if (error) throw error
       setOrders(data || [])
     } catch (error) {
@@ -200,7 +199,6 @@ const OrdersList: React.FC = () => {
     if (!e.target.files || !selectedOrder || !user) return
     const originalFile = e.target.files[0]
     setImageUploading(true)
-
     try {
       const compressedFile = await new Promise<File>((resolve, reject) => {
         const reader = new FileReader()
@@ -225,16 +223,15 @@ const OrdersList: React.FC = () => {
                 height = MAX_HEIGHT
               }
             }
+
             canvas.width = width
             canvas.height = height
-
             const ctx = canvas.getContext("2d")
             if (!ctx) {
               reject(new Error("Failed to get canvas context"))
               return
             }
             ctx.drawImage(img, 0, 0, width, height)
-
             canvas.toBlob(
               (blob) => {
                 if (blob) {
@@ -267,6 +264,7 @@ const OrdersList: React.FC = () => {
         body: formData,
       })
       const data = await res.json()
+
       if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
       const { error } = await supabase.from("order_proofs").insert({
@@ -301,27 +299,25 @@ const OrdersList: React.FC = () => {
     }
   }
 
-  const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number) => {
-    // For canceled, returned, or hand_to_hand orders without any fees, return 0
-    if (["canceled", "return", "hand_to_hand"].includes(updateData.status)) {
+  const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
+    // For canceled, returned, or hand_to_hand orders
+    if (["canceled", "return", "hand_to_hand"].includes(currentStatus)) {
+      // If no fees are entered, the total is 0
       if (deliveryFee === 0 && partialAmount === 0) {
         return 0
       }
-      // If there are fees, return the fees amount (not added to base order)
+      // If fees are entered, the total is the sum of those fees
       return deliveryFee + partialAmount
     }
-    
-    // For partial orders, return only the partial amount (not added to base order)
-    if (updateData.status === "partial") {
+
+    // For partial orders
+    if (currentStatus === "partial") {
+      // The total is the partial amount if greater than 0, otherwise 0
       return partialAmount > 0 ? partialAmount : 0
     }
-    
-    // For delivered orders, return the base order amount (no addition of fees)
-    if (updateData.status === "delivered") {
-      return order.total_order_fees
-    }
-    
-    // For assigned status, return base order amount
+
+    // For delivered, assigned, or any other status not explicitly handled above
+    // The total is the original total_order_fees
     return order.total_order_fees
   }
 
@@ -331,17 +327,18 @@ const OrdersList: React.FC = () => {
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
       const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
+
       const updatePayload: any = {
         status: updateData.status,
         updated_at: new Date().toISOString(),
       }
-      
+
       const fee = Number.parseFloat(updateData.delivery_fee) || 0
       const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
-      
+
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
-      
+
       if (updateData.internal_comment?.trim()) {
         updatePayload.internal_comment = updateData.internal_comment.trim()
       }
@@ -444,7 +441,7 @@ const OrdersList: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {orders.length === 0 ? (
@@ -477,8 +474,9 @@ const OrdersList: React.FC = () => {
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
               const partialAmount = order.partial_paid_amount || 0
-              const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount)
-              
+              // Pass the actual order.status to calculateTotalAmount for display in the list
+              const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
+
               return (
                 <div
                   key={order.id}
@@ -504,7 +502,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Card Content */}
                   <div className="p-6 space-y-6">
                     {/* Amount Section */}
@@ -564,9 +562,11 @@ const OrdersList: React.FC = () => {
                             <div>
                               <p className="text-2xl font-bold text-green-700">{totalAmount.toFixed(2)}</p>
                               <p className="text-xs text-green-600">
-                                {order.status === "partial" ? "المبلغ المحصل جزئياً" : 
-                                 ["canceled", "return", "hand_to_hand"].includes(order.status) ? "إجمالي الرسوم" :
-                                 "إجمالي الطلب"}
+                                {order.status === "partial"
+                                  ? "المبلغ المحصل جزئياً"
+                                  : ["canceled", "return", "hand_to_hand"].includes(order.status)
+                                    ? "إجمالي الرسوم"
+                                    : "إجمالي الطلب"}
                               </p>
                             </div>
                           </div>
@@ -601,7 +601,7 @@ const OrdersList: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      
+
                       {/* Address */}
                       <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                         <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -615,10 +615,7 @@ const OrdersList: React.FC = () => {
                     </div>
 
                     {/* Additional Information */}
-                    {(order.notes ||
-                      order.payment_sub_type ||
-                      order.collected_by ||
-                      order.internal_comment) && (
+                    {(order.notes || order.payment_sub_type || order.collected_by || order.internal_comment) && (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-3">
                           <AlertCircle className="w-4 h-4 text-gray-600" />
@@ -670,7 +667,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Card Footer */}
                   <div className="px-6 pb-6">
                     {canEditOrder(order) ? (
@@ -770,13 +767,13 @@ const OrdersList: React.FC = () => {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">قيمة الطلب الأساسية:</span>
-                        <span className="font-medium text-gray-900">{selectedOrder.total_order_fees.toFixed(2)} ج.م</span>
+                        <span className="font-medium text-gray-900">
+                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">رسوم التوصيل (منفصلة):</span>
-                        <span className="font-medium text-amber-600">
-                          {updateData.delivery_fee || "0.00"} ج.م
-                        </span>
+                        <span className="font-medium text-amber-600">{updateData.delivery_fee || "0.00"} ج.م</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">مبلغ جزئي (منفصل):</span>
@@ -786,16 +783,20 @@ const OrdersList: React.FC = () => {
                       </div>
                       <div className="border-t pt-2 flex justify-between font-medium">
                         <span className="text-gray-700">
-                          {updateData.status === "partial" ? "المبلغ المحصل:" : 
-                           ["canceled", "return", "hand_to_hand"].includes(updateData.status) ? "إجمالي الرسوم:" :
-                           "إجمالي الطلب:"}
+                          {updateData.status === "partial"
+                            ? "المبلغ المحصل:"
+                            : ["canceled", "return", "hand_to_hand"].includes(updateData.status)
+                              ? "إجمالي الرسوم:"
+                              : "إجمالي الطلب:"}
                         </span>
                         <span className="text-green-600">
                           {calculateTotalAmount(
                             selectedOrder,
                             Number.parseFloat(updateData.delivery_fee) || 0,
-                            Number.parseFloat(updateData.partial_paid_amount) || 0
-                          ).toFixed(2)} ج.م
+                            Number.parseFloat(updateData.partial_paid_amount) || 0,
+                            updateData.status, // Pass the status from updateData for modal calculations
+                          ).toFixed(2)}{" "}
+                          ج.م
                         </span>
                       </div>
                       <div className="bg-blue-50 p-2 rounded text-xs text-blue-700">
@@ -849,7 +850,7 @@ const OrdersList: React.FC = () => {
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
-                      
+
                       {/* Collected By */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>

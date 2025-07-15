@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -28,12 +27,7 @@ import {
   Activity,
   Archive,
   ArchiveRestore,
-  Wallet,
-  Banknote,
-  CreditCard as CreditCardIcon,
-  DollarSign,
   UserCheck,
-  Eye,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -43,6 +37,7 @@ interface Order {
   order_id: string
   customer_name: string
   address: string
+  billing_city: string // Added billing_city
   mobile_number: string
   total_order_fees: number
   payment_method: string
@@ -128,7 +123,6 @@ const OrdersManagement: React.FC = () => {
     payment: "",
     orderId: "",
   })
-
   const { t } = useLanguage()
 
   useEffect(() => {
@@ -154,7 +148,7 @@ const OrdersManagement: React.FC = () => {
       let query = supabase
         .from("orders")
         .select(`
-          id, order_id, customer_name, address, mobile_number, total_order_fees,
+          id, order_id, customer_name, address, billing_city, mobile_number, total_order_fees,
           payment_method, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
           users!orders_assigned_courier_id_fkey(name)
         `)
@@ -167,7 +161,6 @@ const OrdersManagement: React.FC = () => {
           .select("id")
           .ilike("name", `%${filters.courier}%`)
         const ids = matchedCouriers?.map((c) => c.id) || []
-
         if (viewMode === "archived") {
           // For archived orders, search in original_courier_id
           query = query.in("original_courier_id", ids.length > 0 ? ids : [""])
@@ -176,13 +169,11 @@ const OrdersManagement: React.FC = () => {
           query = query.in("assigned_courier_id", ids.length > 0 ? ids : [""])
         }
       }
-
       if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
       if (filters.payment) query = query.ilike("payment_method", `%${filters.payment}%`)
       if (filters.orderId) query = query.ilike("order_id", `%${filters.orderId}%`)
 
       const { data, error } = await query
-
       if (error) throw error
 
       const ordersWithCourierNames =
@@ -190,7 +181,6 @@ const OrdersManagement: React.FC = () => {
           ...order,
           courier_name: order.users?.name || null,
         })) || []
-
       setOrders(ordersWithCourierNames)
     } catch (error: any) {
       setError("Failed to fetch orders / فشل تحميل الطلبات: " + error.message)
@@ -238,6 +228,7 @@ const OrdersManagement: React.FC = () => {
         [orderId]: {
           customer_name: order.customer_name,
           address: order.address,
+          billing_city: order.billing_city, // Added billing_city
           mobile_number: order.mobile_number,
           total_order_fees: order.total_order_fees,
           payment_method: order.payment_method,
@@ -262,12 +253,12 @@ const OrdersManagement: React.FC = () => {
   const saveOrderEdit = async (orderId: string) => {
     const changes = orderEdits[orderId]
     if (!changes) return
+
     try {
       // When assigning a courier, also update original_courier_id if it's not set
       if (changes.assigned_courier_id && !orders.find((o) => o.id === orderId)?.original_courier_id) {
         changes.original_courier_id = changes.assigned_courier_id
       }
-
       const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
       if (error) throw error
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
@@ -303,19 +294,15 @@ const OrdersManagement: React.FC = () => {
           assigned_courier_id: selectedCourier,
           status: "assigned",
         }
-
         // Set original_courier_id if it's not already set
         if (!order.original_courier_id && order.assigned_courier_id) {
           updateData.original_courier_id = order.assigned_courier_id
         } else if (!order.original_courier_id) {
           updateData.original_courier_id = selectedCourier
         }
-
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
-
         if (error) throw error
       }
-
       await fetchOrders()
       setSelectedOrders([])
       setSelectedCourier("")
@@ -342,7 +329,6 @@ const OrdersManagement: React.FC = () => {
         .from("orders")
         .select("id, assigned_courier_id, original_courier_id")
         .in("id", selectedOrders)
-
       if (fetchError) throw fetchError
 
       // Update each order individually to preserve original courier assignment
@@ -352,17 +338,13 @@ const OrdersManagement: React.FC = () => {
           archived_at: new Date().toISOString(),
           assigned_courier_id: null, // Remove from active courier assignment
         }
-
         // Set original_courier_id if not already set
         if (!order.original_courier_id && order.assigned_courier_id) {
           updateData.original_courier_id = order.assigned_courier_id
         }
-
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
-
         if (error) throw error
       }
-
       await fetchOrders()
       setSelectedOrders([])
       setShowArchiveConfirm(false)
@@ -389,7 +371,6 @@ const OrdersManagement: React.FC = () => {
         .from("orders")
         .select("id, original_courier_id")
         .in("id", selectedOrders)
-
       if (fetchError) throw fetchError
 
       // Restore each order individually
@@ -402,10 +383,8 @@ const OrdersManagement: React.FC = () => {
             assigned_courier_id: order.original_courier_id, // Restore to original courier
           })
           .eq("id", order.id)
-
         if (error) throw error
       }
-
       await fetchOrders()
       setSelectedOrders([])
       setSuccessMessage(
@@ -463,41 +442,6 @@ const OrdersManagement: React.FC = () => {
     fetchOrders()
   }
 
-  // Calculate payment method totals
-  const getPaymentMethodTotals = () => {
-    const totals = {
-      cash: 0,
-      wallet: 0,
-      instapay: 0,
-      cod: 0,
-      other: 0,
-      cashOnHand: 0
-    }
-
-    orders.forEach(order => {
-      const amount = order.total_order_fees
-      const paymentMethod = order.payment_method?.toLowerCase() || ''
-      
-      if (paymentMethod.includes('cash') || paymentMethod.includes('نقد') || paymentMethod.includes('كاش')) {
-        totals.cash += amount
-        totals.cashOnHand += amount
-      } else if (paymentMethod.includes('wallet') || paymentMethod.includes('محفظة') || paymentMethod.includes('فودافون')) {
-        totals.wallet += amount
-      } else if (paymentMethod.includes('instapay') || paymentMethod.includes('انستاباي')) {
-        totals.instapay += amount
-      } else if (paymentMethod.includes('cod') || paymentMethod.includes('عند الاستلام')) {
-        totals.cod += amount
-      } else {
-        totals.other += amount
-      }
-    })
-
-    return totals
-  }
-
-  const paymentTotals = getPaymentMethodTotals()
-  const codTotal = paymentTotals.cod
-
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || {
       label: status,
@@ -506,7 +450,6 @@ const OrdersManagement: React.FC = () => {
       icon: Activity,
     }
     const StatusIcon = config.icon
-
     return (
       <div
         className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
@@ -590,7 +533,6 @@ const OrdersManagement: React.FC = () => {
           </div>
         </div>
       </div>
-
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -614,7 +556,6 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
-
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -627,7 +568,6 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
-
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -640,7 +580,6 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
-
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -656,86 +595,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {/* Collection Summary */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-4 h-4 text-green-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900">ملخص التحصيل</h3>
-            <span className="text-sm text-gray-500">Collection Summary</span>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Cash on Hand */}
-            <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-blue-700">نقد</p>
-                  <p className="text-xl font-bold text-blue-900 mt-1">{paymentTotals.cashOnHand.toFixed(2)}</p>
-                  <p className="text-xs text-blue-600 mt-1">Cash on Hand</p>
-                </div>
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Banknote className="w-5 h-5 text-blue-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* Wallet */}
-            <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-purple-700">محفظة</p>
-                  <p className="text-xl font-bold text-purple-900 mt-1">{paymentTotals.wallet.toFixed(2)}</p>
-                  <p className="text-xs text-purple-600 mt-1">Wallet</p>
-                </div>
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Wallet className="w-5 h-5 text-purple-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* InstaPay */}
-            <div className="bg-orange-50 rounded-xl border border-orange-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-orange-700">انستاباي</p>
-                  <p className="text-xl font-bold text-orange-900 mt-1">{paymentTotals.instapay.toFixed(2)}</p>
-                  <p className="text-xs text-orange-600 mt-1">InstaPay</p>
-                </div>
-                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <CreditCardIcon className="w-5 h-5 text-orange-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* COD Total */}
-            <div className="bg-green-50 rounded-xl border border-green-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-green-700">إجمالي COD</p>
-                  <p className="text-xl font-bold text-green-900 mt-1">{codTotal.toFixed(2)}</p>
-                  <p className="text-xs text-green-600 mt-1">COD Total</p>
-                </div>
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Info */}
-          {paymentTotals.other > 0 && (
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">طرق دفع أخرى (Other Payment Methods)</span>
-                <span className="text-sm font-medium text-gray-900">{paymentTotals.other.toFixed(2)} ج.م</span>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* Filters Section */}
         {showFilters && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
@@ -759,7 +618,6 @@ const OrdersManagement: React.FC = () => {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">البحث بالهاتف</label>
                 <div className="relative">
@@ -773,7 +631,6 @@ const OrdersManagement: React.FC = () => {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">البحث بطريقة الدفع</label>
                 <div className="relative">
@@ -787,7 +644,6 @@ const OrdersManagement: React.FC = () => {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">البحث برقم الطلب</label>
                 <div className="relative">
@@ -820,7 +676,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Bulk Actions */}
         {selectedOrders.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
@@ -894,7 +749,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Messages */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -904,7 +758,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {successMessage && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
             <div className="flex items-center gap-3 text-green-800">
@@ -913,7 +766,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Orders Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -937,6 +789,10 @@ const OrdersManagement: React.FC = () => {
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     العنوان
                   </th>
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المدينة
+                  </th>{" "}
+                  {/* New column header */}
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الهاتف
                   </th>
@@ -1034,6 +890,30 @@ const OrdersManagement: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-4">
+                        {" "}
+                        {/* New column for Billing City */}
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={edited.billing_city ?? order.billing_city}
+                              onChange={(e) => handleEditChange(order.id, "billing_city", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <button
+                              onClick={() =>
+                                openExpandedEdit(order.id, "billing_city", edited.billing_city ?? order.billing_city)
+                              }
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-900">{order.billing_city}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
                         {isEditing ? (
                           <input
                             type="text"
@@ -1119,9 +999,7 @@ const OrdersManagement: React.FC = () => {
                         ) : (
                           <div className="flex items-center gap-2">
                             <UserCheck className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-900">
-                              {order.courier_name || "غير مخصص"}
-                            </span>
+                            <span className="text-sm text-gray-900">{order.courier_name || "غير مخصص"}</span>
                           </div>
                         )}
                       </td>
@@ -1136,9 +1014,7 @@ const OrdersManagement: React.FC = () => {
                               rows={2}
                             />
                             <button
-                              onClick={() =>
-                                openExpandedEdit(order.id, "notes", edited.notes ?? order.notes ?? "")
-                              }
+                              onClick={() => openExpandedEdit(order.id, "notes", edited.notes ?? order.notes ?? "")}
                               className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                               title="توسيع محرر الملاحظات"
                             >
@@ -1231,7 +1107,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           )}
         </div>
-
         {/* Expanded Edit Modal */}
         {expandedField && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1247,9 +1122,11 @@ const OrdersManagement: React.FC = () => {
                       ? "العنوان"
                       : expandedField.field === "customer_name"
                         ? "اسم العميل"
-                        : expandedField.field === "notes"
-                          ? "الملاحظات"
-                          : expandedField.field}
+                        : expandedField.field === "billing_city" // Added billing_city to modal title
+                          ? "المدينة"
+                          : expandedField.field === "notes"
+                            ? "الملاحظات"
+                            : expandedField.field}
                   </h3>
                 </div>
                 <button
@@ -1268,9 +1145,11 @@ const OrdersManagement: React.FC = () => {
                       ? "العنوان"
                       : expandedField.field === "customer_name"
                         ? "اسم العميل"
-                        : expandedField.field === "notes"
-                          ? "الملاحظات"
-                          : expandedField.field
+                        : expandedField.field === "billing_city" // Added billing_city to modal placeholder
+                          ? "المدينة"
+                          : expandedField.field === "notes"
+                            ? "الملاحظات"
+                            : expandedField.field
                   }`}
                   className="w-full h-40 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   autoFocus
@@ -1294,7 +1173,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Archive Confirmation Modal */}
         {showArchiveConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1338,7 +1216,6 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
-
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useEffect, useState, type KeyboardEvent } from "react"
 import {
@@ -27,6 +26,7 @@ import {
   Activity,
   Target,
   Zap,
+  HandCoins,
 } from "lucide-react"
 import {
   BarChart,
@@ -93,7 +93,6 @@ const normalizePaymentMethod = (method = ""): "cash" | "visa" | "valu" | "other"
 const Summary: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
-
   const translate = (key: string) => {
     const translations: Record<string, string> = {
       loading: "جاري التحميل...",
@@ -148,6 +147,8 @@ const Summary: React.FC = () => {
       totalRevenue: "إجمالي الإيرادات",
       averageOrderValue: "متوسط قيمة الطلب",
       successRate: "معدل النجاح",
+      // COD Total
+      totalCOD: "إجمالي الدفع عند التسليم",
       orderId: "رقم الطلب",
       customer: "العميل",
       total: "الإجمالي",
@@ -207,6 +208,7 @@ const Summary: React.FC = () => {
         fetchSummary()
       })
       .subscribe()
+
     return () => {
       subscription.unsubscribe().catch(console.error)
     }
@@ -278,8 +280,12 @@ const Summary: React.FC = () => {
     if (Number(order.partial_paid_amount || 0) > 0) {
       return Number(order.partial_paid_amount || 0)
     }
-    if (["delivered", "partial", "hand_to_hand", "return"].includes(order.status)) {
+    if (["delivered", "partial", "hand_to_hand"].includes(order.status)) {
       return Number(order.total_order_fees || 0)
+    }
+    // For return orders, don't count the full order amount as collected
+    if (order.status === "return") {
+      return 0
     }
     return 0
   }
@@ -288,11 +294,16 @@ const Summary: React.FC = () => {
   const getTotalCourierAmount = (order: Order): number => {
     let orderAmount = 0
     const deliveryAmount = Number(order.delivery_fee || 0)
+
     if (order.status === "canceled") {
+      orderAmount = 0
+    } else if (order.status === "return") {
+      // For return orders, only count delivery fees if any, not the order amount
       orderAmount = 0
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
+
     return orderAmount + deliveryAmount
   }
 
@@ -427,7 +438,19 @@ const Summary: React.FC = () => {
       filter: (o) => o.payment_sub_type === "wallet" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // COLLECTION SUMMARY METRICS (12-16)
+    // NEW COD TOTAL METRIC (12)
+    {
+      label: "totalCOD",
+      icon: HandCoins,
+      isMoney: true,
+      color: "text-amber-700",
+      bgColor: "bg-amber-50 border-amber-200",
+      filter: (o) => 
+        ["on_hand", "instapay", "wallet"].includes(o.payment_sub_type || "") && 
+        shouldIncludeOrder(o),
+      calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
+    },
+    // COLLECTION SUMMARY METRICS (13-17)
     {
       label: "totalCashOnHand",
       icon: DollarSign,
@@ -514,7 +537,7 @@ const Summary: React.FC = () => {
     const endDate = new Date()
     const startDate = new Date()
     startDate.setDate(endDate.getDate() - days + 1)
-    
+        
     setDateRange({
       startDate: startDate.toISOString().split("T")[0],
       endDate: endDate.toISOString().split("T")[0],
@@ -818,7 +841,6 @@ const Summary: React.FC = () => {
                   {metrics.slice(0, 7).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
-
                     return (
                       <div
                         key={metric.label}
@@ -868,7 +890,6 @@ const Summary: React.FC = () => {
                   {metrics.slice(7, 9).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
-
                     return (
                       <div
                         key={metric.label}
@@ -914,11 +935,11 @@ const Summary: React.FC = () => {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {/* Individual COD components */}
                   {metrics.slice(9, 12).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
-
                     return (
                       <div
                         key={metric.label}
@@ -953,6 +974,45 @@ const Summary: React.FC = () => {
                       </div>
                     )
                   })}
+                  {/* COD Total */}
+                  {(() => {
+                    const codMetric = metrics[12]; // totalCOD metric
+                    const { count, amount } = calcCountAmount(codMetric)
+                    if (count === 0) return null
+                    return (
+                      <div
+                        key={codMetric.label}
+                        onClick={() => openOrders(codMetric.filter, translate(codMetric.label))}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${codMetric.bgColor} col-span-full sm:col-span-1`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${codMetric.bgColor}`}>
+                                <codMetric.icon className={`w-5 h-5 ${codMetric.color}`} />
+                              </div>
+                              <h4 className={`text-sm font-semibold ${codMetric.color}`}>{translate(codMetric.label)}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+                              </div>
+                              {codMetric.isMoney && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xl font-bold ${codMetric.color}`}>{amount.toFixed(2)}</span>
+                                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -965,10 +1025,9 @@ const Summary: React.FC = () => {
                   <h3 className="text-lg font-semibold text-gray-800">{translate("collectionSummarySection")}</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                  {metrics.slice(12).map((metric) => {
+                  {metrics.slice(13).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
-
                     return (
                       <div
                         key={metric.label}
@@ -1082,7 +1141,6 @@ const Summary: React.FC = () => {
                   <X className="w-6 h-6" />
                 </button>
               </div>
-
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
@@ -1090,7 +1148,6 @@ const Summary: React.FC = () => {
                     const courierOrderAmount = getCourierOrderAmount(order)
                     const deliveryFee = Number(order.delivery_fee || 0)
                     const totalCourierAmount = getTotalCourierAmount(order)
-
                     return (
                       <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1105,7 +1162,6 @@ const Summary: React.FC = () => {
                                 <p className="text-sm text-gray-600">{order.customer_name}</p>
                               </div>
                             </div>
-
                             <div className="space-y-3">
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
@@ -1114,7 +1170,6 @@ const Summary: React.FC = () => {
                                 <span className="text-sm text-gray-600">العميل:</span>
                                 <span className="font-medium">{order.customer_name}</span>
                               </div>
-
                               <div className="flex items-center gap-3">
                                 <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
                                   <Smartphone className="w-3 h-3 text-blue-600" />
@@ -1127,7 +1182,6 @@ const Summary: React.FC = () => {
                                   {order.mobile_number}
                                 </a>
                               </div>
-
                               <div className="flex items-start gap-3">
                                 <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center mt-0.5">
                                   <Package className="w-3 h-3 text-red-600" />
@@ -1135,7 +1189,6 @@ const Summary: React.FC = () => {
                                 <span className="text-sm text-gray-600">العنوان:</span>
                                 <span className="text-sm text-gray-800 flex-1">{order.address}</span>
                               </div>
-
                               <div className="flex items-center gap-3">
                                 <div
                                   className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -1151,7 +1204,6 @@ const Summary: React.FC = () => {
                               </div>
                             </div>
                           </div>
-
                           {/* Financial Information */}
                           <div className="space-y-4">
                             <div className="bg-white rounded-lg p-4 border border-gray-200">
@@ -1166,7 +1218,6 @@ const Summary: React.FC = () => {
                                     {Number(order.total_order_fees).toFixed(2)} {translate("EGP")}
                                   </span>
                                 </div>
-
                                 {courierOrderAmount > 0 && (
                                   <div className="flex justify-between items-center">
                                     <span className="text-sm text-gray-600">
@@ -1180,7 +1231,6 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-
                                 {deliveryFee > 0 && (
                                   <div className="flex justify-between items-center">
                                     <span className="text-sm text-gray-600">{translate("deliveryFee")}:</span>
@@ -1189,7 +1239,6 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-
                                 {totalCourierAmount > 0 && (
                                   <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                                     <span className="text-sm font-semibold text-gray-700">
@@ -1202,7 +1251,6 @@ const Summary: React.FC = () => {
                                 )}
                               </div>
                             </div>
-
                             {/* Payment Information */}
                             <div className="space-y-2">
                               {order.payment_sub_type && (
@@ -1213,7 +1261,6 @@ const Summary: React.FC = () => {
                                   </span>
                                 </div>
                               )}
-
                               {order.collected_by && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
@@ -1225,7 +1272,6 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-
                         {/* Comment */}
                         {order.internal_comment && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1240,7 +1286,6 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
-
                         {/* Proof Images */}
                         {order.order_proofs && order.order_proofs.length > 0 && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1424,11 +1469,17 @@ const Summary: React.FC = () => {
             </div>
             <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {/* Individual COD components */}
             {metrics
               .slice(9, 12)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
+            {/* COD Total */}
+            {(() => {
+              const codMetric = metrics[12]; // totalCOD metric
+              return renderMetric(codMetric, currentCourier.courierId)
+            })()}
           </div>
         </div>
 
@@ -1442,7 +1493,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {metrics
-              .slice(12)
+              .slice(13)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1474,7 +1525,6 @@ const Summary: React.FC = () => {
                 <X className="w-6 h-6" />
               </button>
             </div>
-
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="space-y-4">
@@ -1482,7 +1532,6 @@ const Summary: React.FC = () => {
                   const courierOrderAmount = getCourierOrderAmount(order)
                   const deliveryFee = Number(order.delivery_fee || 0)
                   const totalCourierAmount = getTotalCourierAmount(order)
-
                   return (
                     <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1497,7 +1546,6 @@ const Summary: React.FC = () => {
                               <p className="text-sm text-gray-600">{order.customer_name}</p>
                             </div>
                           </div>
-
                           <div className="space-y-3">
                             <div className="flex items-center gap-3">
                               <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
@@ -1506,7 +1554,6 @@ const Summary: React.FC = () => {
                               <span className="text-sm text-gray-600">العميل:</span>
                               <span className="font-medium">{order.customer_name}</span>
                             </div>
-
                             <div className="flex items-center gap-3">
                               <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
                                 <Smartphone className="w-3 h-3 text-blue-600" />
@@ -1519,7 +1566,6 @@ const Summary: React.FC = () => {
                                 {order.mobile_number}
                               </a>
                             </div>
-
                             <div className="flex items-start gap-3">
                               <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center mt-0.5">
                                 <Package className="w-3 h-3 text-red-600" />
@@ -1527,7 +1573,6 @@ const Summary: React.FC = () => {
                               <span className="text-sm text-gray-600">العنوان:</span>
                               <span className="text-sm text-gray-800 flex-1">{order.address}</span>
                             </div>
-
                             <div className="flex items-center gap-3">
                               <div
                                 className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -1543,7 +1588,6 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
-
                         {/* Financial Information */}
                         <div className="space-y-4">
                           <div className="bg-white rounded-lg p-4 border border-gray-200">
@@ -1558,7 +1602,6 @@ const Summary: React.FC = () => {
                                   {Number(order.total_order_fees).toFixed(2)} {translate("EGP")}
                                 </span>
                               </div>
-
                               {courierOrderAmount > 0 && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-sm text-gray-600">
@@ -1572,7 +1615,6 @@ const Summary: React.FC = () => {
                                   </span>
                                 </div>
                               )}
-
                               {deliveryFee > 0 && (
                                 <div className="flex justify-between items-center">
                                   <span className="text-sm text-gray-600">{translate("deliveryFee")}:</span>
@@ -1581,7 +1623,6 @@ const Summary: React.FC = () => {
                                   </span>
                                 </div>
                               )}
-
                               {totalCourierAmount > 0 && (
                                 <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                                   <span className="text-sm font-semibold text-gray-700">
@@ -1594,7 +1635,6 @@ const Summary: React.FC = () => {
                               )}
                             </div>
                           </div>
-
                           {/* Payment Information */}
                           <div className="space-y-2">
                             {order.payment_sub_type && (
@@ -1605,7 +1645,6 @@ const Summary: React.FC = () => {
                                 </span>
                               </div>
                             )}
-
                             {order.collected_by && (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
@@ -1617,7 +1656,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       </div>
-
                       {/* Comment */}
                       {order.internal_comment && (
                         <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1632,7 +1670,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Proof Images */}
                       {order.order_proofs && order.order_proofs.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-gray-200">
