@@ -28,6 +28,8 @@ import {
   Activity,
   Archive,
   ArchiveRestore,
+  UserCheck,
+  Eye,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -110,7 +112,6 @@ const OrdersManagement: React.FC = () => {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [noteEdits, setNoteEdits] = useState<{ [id: string]: string }>({})
   const [orderEdits, setOrderEdits] = useState<{ [id: string]: Partial<Order> }>({})
   const [editingOrder, setEditingOrder] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -219,15 +220,39 @@ const OrdersManagement: React.FC = () => {
 
   const closeExpandedEdit = () => {
     if (expandedField) {
-      if (expandedField.field === "notes") {
-        setNoteEdits((prev) => ({ ...prev, [expandedField.orderId]: expandedValue }))
-        updateNote(expandedField.orderId)
-      } else {
-        handleEditChange(expandedField.orderId, expandedField.field as keyof Order, expandedValue)
-      }
+      handleEditChange(expandedField.orderId, expandedField.field as keyof Order, expandedValue)
     }
     setExpandedField(null)
     setExpandedValue("")
+  }
+
+  const startEdit = (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId)
+    if (order) {
+      setOrderEdits((prev) => ({
+        ...prev,
+        [orderId]: {
+          customer_name: order.customer_name,
+          address: order.address,
+          mobile_number: order.mobile_number,
+          total_order_fees: order.total_order_fees,
+          payment_method: order.payment_method,
+          status: order.status,
+          assigned_courier_id: order.assigned_courier_id,
+          notes: order.notes,
+        },
+      }))
+      setEditingOrder(orderId)
+    }
+  }
+
+  const cancelEdit = (orderId: string) => {
+    setOrderEdits((prev) => {
+      const copy = { ...prev }
+      delete copy[orderId]
+      return copy
+    })
+    setEditingOrder(null)
   }
 
   const saveOrderEdit = async (orderId: string) => {
@@ -251,18 +276,6 @@ const OrdersManagement: React.FC = () => {
       fetchOrders()
     } catch (error: any) {
       setError("Failed to save changes / فشل حفظ التغييرات: " + error.message)
-    }
-  }
-
-  const updateNote = async (orderId: string) => {
-    if (noteEdits[orderId] === undefined) return
-    try {
-      const { error } = await supabase.from("orders").update({ notes: noteEdits[orderId] }).eq("id", orderId)
-      if (error) throw error
-      setSuccessMessage("Note updated / تم تحديث الملاحظة")
-      fetchOrders()
-    } catch (error: any) {
-      setError("Failed to update note / فشل تحديث الملاحظة: " + error.message)
     }
   }
 
@@ -818,11 +831,9 @@ const OrdersManagement: React.FC = () => {
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الحالة
                   </th>
-                  {viewMode === "active" && (
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      المندوب
-                    </th>
-                  )}
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    المندوب
+                  </th>
                   <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     الملاحظات
                   </th>
@@ -973,46 +984,57 @@ const OrdersManagement: React.FC = () => {
                           getStatusBadge(order.status)
                         )}
                       </td>
-                      {viewMode === "active" && (
-                        <td className="px-6 py-4">
+                      <td className="px-6 py-4">
+                        {isEditing ? (
                           <select
                             value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
-                            onChange={(e) => {
-                              handleEditChange(order.id, "assigned_courier_id", e.target.value)
-                              saveOrderEdit(order.id)
-                            }}
+                            onChange={(e) => handleEditChange(order.id, "assigned_courier_id", e.target.value)}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           >
-                            <option value="">اختر المندوب</option>
+                            <option value="">غير مخصص</option>
                             {couriers.map((courier) => (
                               <option key={courier.id} value={courier.id}>
                                 {courier.name}
                               </option>
                             ))}
                           </select>
-                        </td>
-                      )}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-gray-400" />
-                          <input
-                            type="text"
-                            value={noteEdits[order.id] ?? order.notes ?? ""}
-                            onChange={(e) => setNoteEdits({ ...noteEdits, [order.id]: e.target.value })}
-                            onBlur={() => updateNote(order.id)}
-                            placeholder="أضف ملاحظات"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                          <button
-                            onClick={() =>
-                              openExpandedEdit(order.id, "notes", noteEdits[order.id] ?? order.notes ?? "")
-                            }
-                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                            title="توسيع محرر الملاحظات"
-                          >
-                            <Maximize2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-900">
+                              {order.courier_name || "غير مخصص"}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <textarea
+                              value={edited.notes ?? order.notes ?? ""}
+                              onChange={(e) => handleEditChange(order.id, "notes", e.target.value)}
+                              placeholder="أضف ملاحظات"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                              rows={2}
+                            />
+                            <button
+                              onClick={() =>
+                                openExpandedEdit(order.id, "notes", edited.notes ?? order.notes ?? "")
+                              }
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                              title="توسيع محرر الملاحظات"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 break-words">
+                              {order.notes || "لا توجد ملاحظات"}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       {viewMode === "archived" && (
                         <td className="px-6 py-4">
@@ -1033,14 +1055,7 @@ const OrdersManagement: React.FC = () => {
                                 حفظ
                               </button>
                               <button
-                                onClick={() => {
-                                  setEditingOrder(null)
-                                  setOrderEdits((prev) => {
-                                    const copy = { ...prev }
-                                    delete copy[order.id]
-                                    return copy
-                                  })
-                                }}
+                                onClick={() => cancelEdit(order.id)}
                                 className="flex items-center gap-1 px-3 py-1 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition-colors text-sm"
                               >
                                 <X className="w-3 h-3" />
@@ -1051,7 +1066,7 @@ const OrdersManagement: React.FC = () => {
                             <>
                               {viewMode === "active" && (
                                 <button
-                                  onClick={() => setEditingOrder(order.id)}
+                                  onClick={() => startEdit(order.id)}
                                   className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                                 >
                                   <Edit3 className="w-3 h-3" />

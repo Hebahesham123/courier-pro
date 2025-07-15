@@ -23,7 +23,26 @@ import {
   BarChart3,
   ArrowLeft,
   Users,
+  PieChart,
+  Activity,
+  Target,
+  Zap,
 } from "lucide-react"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Cell,
+  LineChart,
+  Line,
+  Legend,
+  Pie,
+} from "recharts"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -58,6 +77,11 @@ interface CourierSummary {
   courierName: string
 }
 
+interface DateRange {
+  startDate: string
+  endDate: string
+}
+
 const normalizePaymentMethod = (method = ""): "cash" | "visa" | "valu" | "other" => {
   const m = method.toLowerCase().trim()
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
@@ -84,12 +108,30 @@ const Summary: React.FC = () => {
       backToCouriers: "العودة للمندوبين",
       selectCourier: "اختر مندوب لعرض تفاصيله",
       couriersList: "قائمة المندوبين",
+      // Date Range
+      today: "اليوم",
+      yesterday: "أمس",
+      last7Days: "آخر 7 أيام",
+      last30Days: "آخر 30 يوم",
+      customRange: "فترة مخصصة",
+      from: "من",
+      to: "إلى",
+      apply: "تطبيق",
+      // Analytics
+      totalAnalytics: "إجمالي التحليلات",
+      overallPerformance: "الأداء العام",
+      orderStatusBreakdown: "توزيع حالة الطلبات",
+      paymentMethodsAnalysis: "تحليل طرق الدفع",
+      courierPerformance: "أداء المندوبين",
+      dailyTrends: "الاتجاهات اليومية",
       // Order Status Metrics
       deliveredOrders: "الطلبات المسلمة",
       partialOrders: "الطلبات الجزئية",
       handToHandOrders: "الطلبات يد بيد",
       returnOrders: "الطلبات المرتجعة",
       canceledOrders: "الطلبات الملغاة",
+      assignedOrders: "الطلبات المكلفة",
+      totalOrders: "إجمالي الطلبات",
       // Electronic Payment Methods
       visaOrders: "طلبات فيزا",
       valuOrders: "طلبات فاليو",
@@ -103,6 +145,9 @@ const Summary: React.FC = () => {
       totalValuCollected: "إجمالي فاليو محصل",
       deliveryFeesCollected: "رسوم التوصيل المحصلة",
       totalCollected: "إجمالي المحصل",
+      totalRevenue: "إجمالي الإيرادات",
+      averageOrderValue: "متوسط قيمة الطلب",
+      successRate: "معدل النجاح",
       orderId: "رقم الطلب",
       customer: "العميل",
       total: "الإجمالي",
@@ -147,8 +192,12 @@ const Summary: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [selectedOrders, setSelectedOrders] = useState<Order[]>([])
   const [modalTitle, setModalTitle] = useState("")
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0])
+  const [dateRange, setDateRange] = useState<DateRange>({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+  })
   const [selectedCourier, setSelectedCourier] = useState<CourierSummary | null>(null)
+  const [showAnalytics, setShowAnalytics] = useState(true)
 
   useEffect(() => {
     fetchSummary()
@@ -161,7 +210,7 @@ const Summary: React.FC = () => {
     return () => {
       subscription.unsubscribe().catch(console.error)
     }
-  }, [user, selectedDate, selectedCourier])
+  }, [user, dateRange, selectedCourier])
 
   const fetchSummary = async () => {
     if (!user?.id) return
@@ -177,8 +226,8 @@ const Summary: React.FC = () => {
             order_proofs (id, image_data)
           `)
           .eq("assigned_courier_id", user.id)
-          .gte("updated_at", `${selectedDate}T00:00:00`)
-          .lte("updated_at", `${selectedDate}T23:59:59`)
+          .gte("updated_at", `${dateRange.startDate}T00:00:00`)
+          .lte("updated_at", `${dateRange.endDate}T23:59:59`)
         orders = (data ?? []) as Order[]
         setSummaryList([{ courierId: user.id, courierName: user.name || translate("courier") }])
         setAllOrders(orders)
@@ -196,11 +245,21 @@ const Summary: React.FC = () => {
               order_proofs (id, image_data)
             `)
             .eq("assigned_courier_id", selectedCourier.courierId)
-            .gte("updated_at", `${selectedDate}T00:00:00`)
-            .lte("updated_at", `${selectedDate}T23:59:59`)
+            .gte("updated_at", `${dateRange.startDate}T00:00:00`)
+            .lte("updated_at", `${dateRange.endDate}T23:59:59`)
+          orders = (data ?? []) as Order[]
+        } else if (showAnalytics) {
+          // If showing analytics, fetch ALL orders from ALL couriers
+          const { data } = await supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data)
+            `)
+            .gte("updated_at", `${dateRange.startDate}T00:00:00`)
+            .lte("updated_at", `${dateRange.endDate}T23:59:59`)
           orders = (data ?? []) as Order[]
         } else {
-          // If no courier selected, don't fetch any orders (show courier selection)
           orders = []
         }
         setAllOrders(orders)
@@ -216,15 +275,12 @@ const Summary: React.FC = () => {
 
   // Helper function to get the actual order amount the courier handled
   const getCourierOrderAmount = (order: Order): number => {
-    // If courier put partial_paid_amount, use that
     if (Number(order.partial_paid_amount || 0) > 0) {
       return Number(order.partial_paid_amount || 0)
     }
-    // If no partial amount but order is processed (not just assigned), use total order amount
     if (["delivered", "partial", "hand_to_hand", "return"].includes(order.status)) {
       return Number(order.total_order_fees || 0)
     }
-    // For canceled orders, only count if there's delivery fee (handled below)
     return 0
   }
 
@@ -232,10 +288,8 @@ const Summary: React.FC = () => {
   const getTotalCourierAmount = (order: Order): number => {
     let orderAmount = 0
     const deliveryAmount = Number(order.delivery_fee || 0)
-    // For canceled orders, only count delivery fee if courier put it
     if (order.status === "canceled") {
-      orderAmount = 0 // No order amount for canceled
-      // But keep delivery fee if courier put it
+      orderAmount = 0
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
@@ -244,7 +298,6 @@ const Summary: React.FC = () => {
 
   // Helper function to check if order should be included in calculations
   const shouldIncludeOrder = (order: Order): boolean => {
-    // Include if courier handled any amount (order amount or delivery fee)
     return getTotalCourierAmount(order) > 0
   }
 
@@ -254,19 +307,28 @@ const Summary: React.FC = () => {
     isMoney: boolean
     color: string
     bgColor: string
-    filter: (order: Order, courierId: string) => boolean
+    filter: (order: Order) => boolean
     calculateAmount?: (orders: Order[]) => number
   }
 
   const metrics: Metric[] = [
     // ORDER STATUS METRICS
     {
+      label: "totalOrders",
+      icon: Package,
+      isMoney: true,
+      color: "text-gray-700",
+      bgColor: "bg-gray-50 border-gray-200",
+      filter: (o) => !!o.assigned_courier_id,
+      calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
+    },
+    {
       label: "deliveredOrders",
       icon: CheckCircle,
       isMoney: true,
       color: "text-green-700",
       bgColor: "bg-green-50 border-green-200",
-      filter: (o, courierId) => o.status === "delivered" && o.assigned_courier_id === courierId,
+      filter: (o) => o.status === "delivered",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -275,7 +337,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-yellow-700",
       bgColor: "bg-yellow-50 border-yellow-200",
-      filter: (o, courierId) => o.status === "partial" && o.assigned_courier_id === courierId,
+      filter: (o) => o.status === "partial",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -284,7 +346,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-purple-700",
       bgColor: "bg-purple-50 border-purple-200",
-      filter: (o, courierId) => o.status === "hand_to_hand" && o.assigned_courier_id === courierId,
+      filter: (o) => o.status === "hand_to_hand",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -293,7 +355,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-orange-700",
       bgColor: "bg-orange-50 border-orange-200",
-      filter: (o, courierId) => o.status === "return" && o.assigned_courier_id === courierId,
+      filter: (o) => o.status === "return",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -302,7 +364,16 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-red-700",
       bgColor: "bg-red-50 border-red-200",
-      filter: (o, courierId) => o.status === "canceled" && o.assigned_courier_id === courierId,
+      filter: (o) => o.status === "canceled",
+      calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
+    },
+    {
+      label: "assignedOrders",
+      icon: User,
+      isMoney: true,
+      color: "text-blue-700",
+      bgColor: "bg-blue-50 border-blue-200",
+      filter: (o) => o.status === "assigned",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     // ELECTRONIC PAYMENT METHODS
@@ -312,9 +383,8 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-blue-700",
       bgColor: "bg-blue-50 border-blue-200",
-      filter: (o, courierId) =>
+      filter: (o) =>
         (normalizePaymentMethod(o.payment_method) === "visa" || o.collected_by === "visa") &&
-        o.assigned_courier_id === courierId &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -324,9 +394,8 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
-      filter: (o, courierId) =>
+      filter: (o) =>
         (normalizePaymentMethod(o.payment_method) === "valu" || o.collected_by === "valu") &&
-        o.assigned_courier_id === courierId &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -337,8 +406,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-emerald-700",
       bgColor: "bg-emerald-50 border-emerald-200",
-      filter: (o, courierId) =>
-        o.payment_sub_type === "on_hand" && o.assigned_courier_id === courierId && shouldIncludeOrder(o),
+      filter: (o) => o.payment_sub_type === "on_hand" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -347,8 +415,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-cyan-700",
       bgColor: "bg-cyan-50 border-cyan-200",
-      filter: (o, courierId) =>
-        o.payment_sub_type === "instapay" && o.assigned_courier_id === courierId && shouldIncludeOrder(o),
+      filter: (o) => o.payment_sub_type === "instapay" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -357,8 +424,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-teal-700",
       bgColor: "bg-teal-50 border-teal-200",
-      filter: (o, courierId) =>
-        o.payment_sub_type === "wallet" && o.assigned_courier_id === courierId && shouldIncludeOrder(o),
+      filter: (o) => o.payment_sub_type === "wallet" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     // COLLECTION SUMMARY METRICS
@@ -368,8 +434,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-green-700",
       bgColor: "bg-green-50 border-green-200",
-      filter: (o, courierId) =>
-        o.payment_sub_type === "on_hand" && o.assigned_courier_id === courierId && shouldIncludeOrder(o),
+      filter: (o) => o.payment_sub_type === "on_hand" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
@@ -378,9 +443,8 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-blue-700",
       bgColor: "bg-blue-50 border-blue-200",
-      filter: (o, courierId) =>
+      filter: (o) =>
         (normalizePaymentMethod(o.payment_method) === "visa" || o.collected_by === "visa") &&
-        o.assigned_courier_id === courierId &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -390,9 +454,8 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
-      filter: (o, courierId) =>
+      filter: (o) =>
         (normalizePaymentMethod(o.payment_method) === "valu" || o.collected_by === "valu") &&
-        o.assigned_courier_id === courierId &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -402,7 +465,7 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-purple-700",
       bgColor: "bg-purple-50 border-purple-200",
-      filter: (o, courierId) => Number(o.delivery_fee || 0) > 0 && o.assigned_courier_id === courierId,
+      filter: (o) => Number(o.delivery_fee || 0) > 0,
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0),
     },
     {
@@ -411,13 +474,13 @@ const Summary: React.FC = () => {
       isMoney: true,
       color: "text-gray-700",
       bgColor: "bg-gray-50 border-gray-200",
-      filter: (o, courierId) => o.assigned_courier_id === courierId && shouldIncludeOrder(o),
+      filter: (o) => shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
   ]
 
-  const calcCountAmount = (metric: Metric, courierId: string) => {
-    const filtered = allOrders.filter((o) => metric.filter(o, courierId))
+  const calcCountAmount = (metric: Metric) => {
+    const filtered = allOrders.filter(metric.filter)
     const count = filtered.length
     let amount = 0
     if (metric.calculateAmount) {
@@ -433,12 +496,62 @@ const Summary: React.FC = () => {
 
   const handleCourierSelect = (courier: CourierSummary) => {
     setSelectedCourier(courier)
+    setShowAnalytics(false)
   }
 
   const handleBackToCouriers = () => {
     setSelectedCourier(null)
+    setShowAnalytics(false)
     setAllOrders([])
   }
+
+  const handleShowAnalytics = () => {
+    setSelectedCourier(null)
+    setShowAnalytics(true)
+  }
+
+  const setQuickDateRange = (days: number) => {
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(endDate.getDate() - days + 1)
+    
+    setDateRange({
+      startDate: startDate.toISOString().split("T")[0],
+      endDate: endDate.toISOString().split("T")[0],
+    })
+  }
+
+  // Calculate KPIs
+  const totalRevenue = allOrders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
+  const totalOrdersCount = allOrders.filter(o => !!o.assigned_courier_id).length
+  const deliveredOrdersCount = allOrders.filter(o => o.status === "delivered").length
+  const successRate = totalOrdersCount > 0 ? (deliveredOrdersCount / totalOrdersCount) * 100 : 0
+  const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0
+  const totalDeliveryFees = allOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0)
+
+  // Prepare chart data
+  const orderStatusData = [
+    { name: translate("delivered"), value: allOrders.filter(o => o.status === "delivered").length, color: "#10b981" },
+    { name: translate("partial"), value: allOrders.filter(o => o.status === "partial").length, color: "#f59e0b" },
+    { name: translate("hand_to_hand"), value: allOrders.filter(o => o.status === "hand_to_hand").length, color: "#8b5cf6" },
+    { name: translate("return"), value: allOrders.filter(o => o.status === "return").length, color: "#f97316" },
+    { name: translate("canceled"), value: allOrders.filter(o => o.status === "canceled").length, color: "#ef4444" },
+    { name: translate("assigned"), value: allOrders.filter(o => o.status === "assigned").length, color: "#3b82f6" },
+  ].filter(item => item.value > 0)
+
+  const paymentMethodData = [
+    { name: translate("cash"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "cash").length, color: "#10b981" },
+    { name: translate("visa"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "visa").length, color: "#3b82f6" },
+    { name: translate("valu"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "valu").length, color: "#8b5cf6" },
+  ].filter(item => item.value > 0)
+
+  const statusAmountData = [
+    { name: translate("delivered"), amount: allOrders.filter(o => o.status === "delivered").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+    { name: translate("partial"), amount: allOrders.filter(o => o.status === "partial").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+    { name: translate("hand_to_hand"), amount: allOrders.filter(o => o.status === "hand_to_hand").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+    { name: translate("return"), amount: allOrders.filter(o => o.status === "return").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+    { name: translate("canceled"), amount: allOrders.filter(o => o.status === "canceled").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+  ].filter(item => item.amount > 0)
 
   if (loading) {
     return (
@@ -464,7 +577,7 @@ const Summary: React.FC = () => {
     )
   }
 
-  // For admin users, show courier selection if no courier is selected
+  // For admin users, show analytics or courier selection
   if (user.role !== "courier" && !selectedCourier) {
     return (
       <div className="min-h-screen bg-gray-50" dir="rtl">
@@ -477,246 +590,472 @@ const Summary: React.FC = () => {
                   <BarChart3 className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{translate("todaySummary")}</h1>
-                  <p className="text-gray-600">تقرير شامل لأداء المندوبين</p>
+                  <h1 className="text-2xl font-bold text-gray-900">{translate("totalAnalytics")}</h1>
+                  <p className="text-gray-600">تحليل شامل لجميع العمليات</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Calendar className="w-5 h-5 text-gray-400" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  dir="ltr"
-                  aria-label={translate("selectDate")}
-                />
+              <div className="flex items-center gap-4">
+                {/* Quick Date Filters */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setQuickDateRange(1)}
+                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                  >
+                    {translate("today")}
+                  </button>
+                  <button
+                    onClick={() => setQuickDateRange(7)}
+                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                  >
+                    {translate("last7Days")}
+                  </button>
+                  <button
+                    onClick={() => setQuickDateRange(30)}
+                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                  >
+                    {translate("last30Days")}
+                  </button>
+                </div>
+                {/* Date Range Picker */}
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-gray-400" />
+                  <input
+                    type="date"
+                    value={dateRange.startDate}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    dir="ltr"
+                  />
+                  <span className="text-gray-500">-</span>
+                  <input
+                    type="date"
+                    value={dateRange.endDate}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    dir="ltr"
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Courier Selection */}
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-4 h-4 text-blue-600" />
+        {/* Navigation Tabs */}
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleShowAnalytics}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                showAnalytics
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>{translate("totalAnalytics")}</span>
+            </button>
+            <button
+              onClick={() => setShowAnalytics(false)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                !showAnalytics
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>{translate("couriersList")}</span>
+            </button>
+          </div>
+        </div>
+
+        {showAnalytics ? (
+          /* Analytics Dashboard */
+          <div className="max-w-7xl mx-auto px-6 pb-8">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{translate("totalOrders")}</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalOrdersCount}</p>
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{translate("couriersList")}</h3>
+              </div>
+              
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                    <DollarSign className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{translate("totalRevenue")}</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalRevenue.toFixed(2)} {translate("EGP")}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <Target className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{translate("successRate")}</p>
+                    <p className="text-2xl font-bold text-gray-900">{successRate.toFixed(1)}%</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{translate("averageOrderValue")}</p>
+                    <p className="text-2xl font-bold text-gray-900">{averageOrderValue.toFixed(2)} {translate("EGP")}</p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="p-6">
-              {summaryList.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Users className="w-8 h-8 text-gray-400" />
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+              {/* Order Status Distribution */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <PieChart className="w-5 h-5 text-blue-600" />
                   </div>
-                  <p className="text-lg font-medium text-gray-700">{translate("noDataForDate")}</p>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusBreakdown")}</h3>
                 </div>
-              ) : (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={orderStatusData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {orderStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Payment Methods Distribution */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("paymentMethodsAnalysis")}</h3>
+                </div>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={paymentMethodData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {paymentMethodData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Revenue by Status */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-purple-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800">الإيرادات حسب حالة الطلب</h3>
+              </div>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusAmountData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} ${translate("EGP")}`, translate("amount")]} />
+                    <Bar dataKey="amount" fill="#8b5cf6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Detailed Metrics Grid */}
+            <div className="space-y-8">
+              {/* Order Status Section */}
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusSection")}</h3>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {summaryList.map((courier) => (
-                    <button
-                      key={courier.courierId}
-                      onClick={() => handleCourierSelect(courier)}
-                      className="bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl p-6 text-right transition-all duration-200 group"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-200 rounded-xl flex items-center justify-center transition-colors">
-                          <User className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-lg font-semibold text-gray-900 group-hover:text-blue-900 transition-colors">
-                            {courier.courierName}
-                          </h4>
-                          <p className="text-sm text-gray-600 group-hover:text-blue-700 transition-colors">
-                            اضغط لعرض التفاصيل
-                          </p>
+                  {metrics.slice(0, 7).map((metric) => {
+                    const { count, amount } = calcCountAmount(metric)
+                    if (count === 0) return null
+
+                    return (
+                      <div
+                        key={metric.label}
+                        onClick={() => openOrders(metric.filter, translate(metric.label))}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
+                                <metric.icon className={`w-5 h-5 ${metric.color}`} />
+                              </div>
+                              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+                              </div>
+                              {metric.isMoney && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
+                                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-5 h-5 text-gray-400" />
+                          </div>
                         </div>
                       </div>
-                    </button>
-                  ))}
+                    )
+                  })}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const renderMetric = (metric: Metric, courierId: string) => {
-    const { count, amount } = calcCountAmount(metric, courierId)
-    if (count === 0) return null // Don't show metrics with 0 count
-
-    return (
-      <div
-        key={metric.label}
-        onClick={() => openOrders((o) => metric.filter(o, courierId), translate(metric.label))}
-        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
-        role="button"
-        tabIndex={0}
-        onKeyPress={(e: KeyboardEvent<HTMLDivElement>) => {
-          if (e.key === "Enter") openOrders((o) => metric.filter(o, courierId), translate(metric.label))
-        }}
-        aria-label={`${translate(metric.label)}: ${count} ${translate("ordersCount")}${
-          metric.isMoney ? `، ${translate("amount")}: ${amount.toFixed(2)}` : ""
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-3">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
-                <metric.icon className={`w-5 h-5 ${metric.color}`} />
               </div>
-              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-gray-900">{count}</span>
-                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
-              </div>
-              {metric.isMoney && (
-                <div className="flex items-center gap-2">
-                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
-                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <Eye className="w-5 h-5 text-gray-400" />
-          </div>
-        </div>
-      </div>
-    )
-  }
 
-  // Get the current courier to display (either selected courier for admin or current user for courier)
-  const currentCourier =
-    user.role === "courier" ? { courierId: user.id, courierName: user.name || translate("courier") } : selectedCourier
-
-  if (!currentCourier) return null
-
-  return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {user.role !== "courier" && (
-                <button
-                  onClick={handleBackToCouriers}
-                  className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span className="text-sm">{translate("backToCouriers")}</span>
-                </button>
-              )}
-              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
+              {/* Electronic Payment Methods Section */}
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{translate("todaySummary")}</h1>
-                <p className="text-gray-600">تقرير شامل لأداء المندوبين</p>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <CreditCard className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("electronicPaymentsSection")}</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {metrics.slice(7, 9).map((metric) => {
+                    const { count, amount } = calcCountAmount(metric)
+                    if (count === 0) return null
+
+                    return (
+                      <div
+                        key={metric.label}
+                        onClick={() => openOrders(metric.filter, translate(metric.label))}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
+                                <metric.icon className={`w-5 h-5 ${metric.color}`} />
+                              </div>
+                              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+                              </div>
+                              {metric.isMoney && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
+                                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Cash-based Payment Methods Section */}
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                    <Banknote className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {metrics.slice(9, 12).map((metric) => {
+                    const { count, amount } = calcCountAmount(metric)
+                    if (count === 0) return null
+
+                    return (
+                      <div
+                        key={metric.label}
+                        onClick={() => openOrders(metric.filter, translate(metric.label))}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
+                                <metric.icon className={`w-5 h-5 ${metric.color}`} />
+                              </div>
+                              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+                              </div>
+                              {metric.isMoney && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
+                                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Collection Summary Section */}
+              <div>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-800">{translate("collectionSummarySection")}</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                  {metrics.slice(12).map((metric) => {
+                    const { count, amount } = calcCountAmount(metric)
+                    if (count === 0) return null
+
+                    return (
+                      <div
+                        key={metric.label}
+                        onClick={() => openOrders(metric.filter, translate(metric.label))}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
+                                <metric.icon className={`w-5 h-5 ${metric.color}`} />
+                              </div>
+                              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+                              </div>
+                              {metric.isMoney && (
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
+                                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Eye className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-gray-400" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                dir="ltr"
-                aria-label={translate("selectDate")}
-              />
+          </div>
+        ) : (
+          /* Courier Selection */
+          <div className="max-w-7xl mx-auto px-6 pb-8">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Users className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900">{translate("couriersList")}</h3>
+                </div>
+              </div>
+              <div className="p-6">
+                {summaryList.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Users className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <p className="text-lg font-medium text-gray-700">{translate("noDataForDate")}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {summaryList.map((courier) => (
+                      <button
+                        key={courier.courierId}
+                        onClick={() => handleCourierSelect(courier)}
+                        className="bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl p-6 text-right transition-all duration-200 group"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-200 rounded-xl flex items-center justify-center transition-colors">
+                            <User className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-lg font-semibold text-gray-900 group-hover:text-blue-900 transition-colors">
+                              {courier.courierName}
+                            </h4>
+                            <p className="text-sm text-gray-600 group-hover:text-blue-700 transition-colors">
+                              اضغط لعرض التفاصيل
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Courier Header */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <User className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">{currentCourier.courierName}</h2>
-              <p className="text-gray-600">تقرير الأداء اليومي</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Order Status Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusSection")}</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {metrics
-              .slice(0, 5)
-              .map((metric) => renderMetric(metric, currentCourier.courierId))
-              .filter(Boolean)}
-          </div>
-        </div>
-
-        {/* Electronic Payment Methods Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-blue-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800">{translate("electronicPaymentsSection")}</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {metrics
-              .slice(5, 7)
-              .map((metric) => renderMetric(metric, currentCourier.courierId))
-              .filter(Boolean)}
-          </div>
-        </div>
-
-        {/* Cash-based Payment Methods Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <Banknote className="w-5 h-5 text-emerald-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {metrics
-              .slice(7, 10)
-              .map((metric) => renderMetric(metric, currentCourier.courierId))
-              .filter(Boolean)}
-          </div>
-        </div>
-
-        {/* Collection Summary Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-purple-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800">{translate("collectionSummarySection")}</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {metrics
-              .slice(10)
-              .map((metric) => renderMetric(metric, currentCourier.courierId))
-              .filter(Boolean)}
-          </div>
-        </div>
+        )}
 
         {/* Orders Modal */}
         {selectedOrders.length > 0 && (
@@ -934,6 +1273,180 @@ const Summary: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  const renderMetric = (metric: Metric, courierId: string) => {
+    const { count, amount } = calcCountAmount(metric)
+    if (count === 0) return null
+
+    return (
+      <div
+        key={metric.label}
+        onClick={() => openOrders((o) => metric.filter(o) && o.assigned_courier_id === courierId, translate(metric.label))}
+        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${metric.bgColor}`}
+        role="button"
+        tabIndex={0}
+        onKeyPress={(e: KeyboardEvent<HTMLDivElement>) => {
+          if (e.key === "Enter") openOrders((o) => metric.filter(o) && o.assigned_courier_id === courierId, translate(metric.label))
+        }}
+        aria-label={`${translate(metric.label)}: ${count} ${translate("ordersCount")}${
+          metric.isMoney ? `، ${translate("amount")}: ${amount.toFixed(2)}` : ""
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${metric.bgColor}`}>
+                <metric.icon className={`w-5 h-5 ${metric.color}`} />
+              </div>
+              <h4 className={`text-sm font-semibold ${metric.color}`}>{translate(metric.label)}</h4>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                <span className="text-sm text-gray-600">{translate("ordersCount")}</span>
+              </div>
+              {metric.isMoney && (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xl font-bold ${metric.color}`}>{amount.toFixed(2)}</span>
+                  <span className="text-sm text-gray-600">{translate("EGP")}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <Eye className="w-5 h-5 text-gray-400" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Get the current courier to display (either selected courier for admin or current user for courier)
+  const currentCourier =
+    user.role === "courier" ? { courierId: user.id, courierName: user.name || translate("courier") } : selectedCourier
+
+  if (!currentCourier) return null
+
+  return (
+    <div className="min-h-screen bg-gray-50" dir="rtl">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {user.role !== "courier" && (
+                <button
+                  onClick={handleBackToCouriers}
+                  className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="text-sm">{translate("backToCouriers")}</span>
+                </button>
+              )}
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{translate("todaySummary")}</h1>
+                <p className="text-gray-600">تقرير شامل لأداء المندوبين</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-gray-400" />
+              <input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                dir="ltr"
+                aria-label={translate("selectDate")}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Courier Header */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+              <User className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{currentCourier.courierName}</h2>
+              <p className="text-gray-600">تقرير الأداء اليومي</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Order Status Section */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusSection")}</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {metrics
+              .slice(0, 5)
+              .map((metric) => renderMetric(metric, currentCourier.courierId))
+              .filter(Boolean)}
+          </div>
+        </div>
+
+        {/* Electronic Payment Methods Section */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">{translate("electronicPaymentsSection")}</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {metrics
+              .slice(5, 7)
+              .map((metric) => renderMetric(metric, currentCourier.courierId))
+              .filter(Boolean)}
+          </div>
+        </div>
+
+        {/* Cash-based Payment Methods Section */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+              <Banknote className="w-5 h-5 text-emerald-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {metrics
+              .slice(7, 10)
+              .map((metric) => renderMetric(metric, currentCourier.courierId))
+              .filter(Boolean)}
+          </div>
+        </div>
+
+        {/* Collection Summary Section */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-purple-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">{translate("collectionSummarySection")}</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {metrics
+              .slice(10)
+              .map((metric) => renderMetric(metric, currentCourier.courierId))
+              .filter(Boolean)}
+          </div>
+        </div>
       </div>
     </div>
   )
