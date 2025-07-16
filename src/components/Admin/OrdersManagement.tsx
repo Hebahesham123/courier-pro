@@ -544,6 +544,11 @@ const OrdersManagement: React.FC = () => {
     )
   }
 
+  // Helper function to determine if an order is assigned
+  const isOrderAssigned = (order: Order) => {
+    return order.assigned_courier_id !== null && order.assigned_courier_id !== undefined
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -563,9 +568,14 @@ const OrdersManagement: React.FC = () => {
     const edited = orderEdits[order.id] || {}
     const isEditing = editingOrder === order.id
     const isExpanded = expandedRows.includes(order.id)
+    const assigned = isOrderAssigned(order)
 
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+      <div className={`rounded-lg border p-4 space-y-4 ${
+        assigned 
+          ? 'bg-green-50 border-green-200 shadow-sm' 
+          : 'bg-white border-gray-200'
+      }`}>
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -579,6 +589,9 @@ const OrdersManagement: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Hash className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
+                {assigned && (
+                  <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <User className="w-4 h-4 text-gray-400" />
@@ -611,7 +624,9 @@ const OrdersManagement: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-900">{order.courier_name || "غير مخصص"}</span>
+            <span className={`${assigned ? 'text-green-700 font-medium' : 'text-gray-900'}`}>
+              {order.courier_name || "غير مخصص"}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
@@ -798,6 +813,38 @@ const OrdersManagement: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Custom CSS for always visible scrollbars */}
+      <style >{`
+        .scrollbar-always {
+          scrollbar-width: thin;
+          scrollbar-color: #CBD5E0 #F7FAFC;
+        }
+        
+        .scrollbar-always::-webkit-scrollbar {
+          width: 12px;
+          height: 12px;
+        }
+        
+        .scrollbar-always::-webkit-scrollbar-track {
+          background: #F7FAFC;
+          border-radius: 6px;
+        }
+        
+        .scrollbar-always::-webkit-scrollbar-thumb {
+          background: #CBD5E0;
+          border-radius: 6px;
+          border: 2px solid #F7FAFC;
+        }
+        
+        .scrollbar-always::-webkit-scrollbar-thumb:hover {
+          background: #A0AEC0;
+        }
+        
+        .scrollbar-always::-webkit-scrollbar-corner {
+          background: #F7FAFC;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -979,12 +1026,14 @@ const OrdersManagement: React.FC = () => {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">الطلبات المحددة</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{selectedOrders.length}</p>
-                <p className="text-xs text-gray-500 mt-1">Selected Orders</p>
+                <p className="text-sm font-medium text-gray-600">الطلبات المخصصة</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {orders.filter(order => isOrderAssigned(order)).length}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Assigned Orders</p>
               </div>
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-purple-600" />
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <UserCheck className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </div>
@@ -1187,9 +1236,9 @@ const OrdersManagement: React.FC = () => {
             ))}
           </div>
         ) : (
-          /* Desktop Table Layout with Sticky Columns */
+          /* Desktop Table Layout with Sticky Columns and Always Visible Scrollbars */
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="relative overflow-x-auto">
+            <div className="relative overflow-x-auto scrollbar-always">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
@@ -1243,23 +1292,40 @@ const OrdersManagement: React.FC = () => {
                   {orders.map((order) => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
+                    const assigned = isOrderAssigned(order)
+                    
                     return (
-                      <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="sticky left-0 z-10 bg-white px-6 py-4 border-r border-gray-200">
-                          <input
-                            type="checkbox"
-                            checked={selectedOrders.includes(order.id)}
-                            onChange={() => toggleOrderSelection(order.id)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
+                      <tr key={order.id} className={`transition-colors ${
+                        assigned 
+                          ? 'bg-green-50 hover:bg-green-100' 
+                          : 'hover:bg-gray-50'
+                      }`}>
+                        <td className={`sticky left-0 z-10 px-6 py-4 border-r border-gray-200 ${
+                          assigned ? 'bg-green-50' : 'bg-white'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrders.includes(order.id)}
+                              onChange={() => toggleOrderSelection(order.id)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            {assigned && (
+                              <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>
+                            )}
+                          </div>
                         </td>
-                        <td className="sticky left-12 z-10 bg-white px-6 py-4 border-r border-gray-200">
+                        <td className={`sticky left-12 z-10 px-6 py-4 border-r border-gray-200 ${
+                          assigned ? 'bg-green-50' : 'bg-white'
+                        }`}>
                           <div className="flex items-center gap-2">
                             <Hash className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
                           </div>
                         </td>
-                        <td className="sticky left-40 z-10 bg-white px-6 py-4 border-r border-gray-200">
+                        <td className={`sticky left-40 z-10 px-6 py-4 border-r border-gray-200 ${
+                          assigned ? 'bg-green-50' : 'bg-white'
+                        }`}>
                           {isEditing ? (
                             <div className="flex items-center gap-2">
                               <input
@@ -1423,7 +1489,11 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex items-center gap-2">
                               <UserCheck className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-900">{order.courier_name || "غير مخصص"}</span>
+                              <span className={`text-sm ${
+                                assigned ? 'text-green-700 font-medium' : 'text-gray-900'
+                              }`}>
+                                {order.courier_name || "غير مخصص"}
+                              </span>
                             </div>
                           )}
                         </td>
