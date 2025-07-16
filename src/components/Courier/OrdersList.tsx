@@ -24,6 +24,10 @@ import {
   Save,
   XCircle,
   Calculator,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -50,6 +54,7 @@ interface Order {
   collected_by: string | null
   assigned_courier_id: string | null
   notes?: string | null
+  created_at: string
   order_proofs?: OrderProof[]
 }
 
@@ -116,6 +121,7 @@ const OrdersList: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
   const [updateData, setUpdateData] = useState({
     status: "",
     delivery_fee: "",
@@ -131,11 +137,77 @@ const OrdersList: React.FC = () => {
 
   useEffect(() => {
     if (user?.id) fetchOrders()
-  }, [user])
+  }, [user, selectedDate])
+
+  // Helper function to format date in Arabic
+  const formatDateInArabic = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    // Check if it's today
+    if (date.toDateString() === today.toDateString()) {
+      return "اليوم"
+    }
+
+    // Check if it's yesterday
+    if (date.toDateString() === yesterday.toDateString()) {
+      return "أمس"
+    }
+
+    // Arabic day names
+    const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+    const arabicMonths = [
+      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+    ]
+
+    const dayName = arabicDays[date.getDay()]
+    const day = date.getDate()
+    const month = arabicMonths[date.getMonth()]
+    const year = date.getFullYear()
+
+    return `${dayName} ${day} ${month} ${year}`
+  }
+
+  // Helper function to format time
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+  }
+
+  // Navigation functions
+  const goToPreviousDay = () => {
+    const currentDate = new Date(selectedDate)
+    currentDate.setDate(currentDate.getDate() - 1)
+    setSelectedDate(currentDate.toISOString().split('T')[0])
+  }
+
+  const goToNextDay = () => {
+    const currentDate = new Date(selectedDate)
+    currentDate.setDate(currentDate.getDate() + 1)
+    setSelectedDate(currentDate.toISOString().split('T')[0])
+  }
+
+  const goToToday = () => {
+    setSelectedDate(new Date().toISOString().split('T')[0])
+  }
 
   const fetchOrders = async () => {
     setLoading(true)
     try {
+      // Create date range for the selected day
+      const startDate = new Date(selectedDate)
+      startDate.setHours(0, 0, 0, 0)
+      
+      const endDate = new Date(selectedDate)
+      endDate.setHours(23, 59, 59, 999)
+
       const { data, error } = await supabase
         .from("orders")
         .select(
@@ -145,6 +217,8 @@ const OrdersList: React.FC = () => {
           `,
         )
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
         .order("created_at", { ascending: false })
 
       if (error) throw error
@@ -434,9 +508,66 @@ const OrdersList: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-900">طلبياتي</h1>
               <p className="text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
             </div>
+            
+            {/* Date Navigation */}
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <button
+                onClick={goToPreviousDay}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+                <span className="hidden sm:inline">السابق</span>
+              </button>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200">
+                  <Calendar className="w-4 h-4" />
+                  <span className="font-medium">{formatDateInArabic(selectedDate)}</span>
+                </div>
+                
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  title="اختر تاريخ"
+                />
+              </div>
+              
+              <button
+                onClick={goToNextDay}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+              >
+                <span className="hidden sm:inline">التالي</span>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <button
+                onClick={goToToday}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+              >
+                <CalendarDays className="w-4 h-4" />
+                اليوم
+              </button>
+              
+              <button
+                onClick={fetchOrders}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
+              >
+                <RefreshCw className="w-4 h-4" />
+                تحديث
+              </button>
+            </div>
+            
             <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
               <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-sm font-medium">{orders.length} طلب</span>
+              <span className="text-sm font-medium">
+                {orders.length} {orders.length === 1 ? 'طلب' : 'طلب'}
+                {selectedDate === new Date().toISOString().split('T')[0] ? ' اليوم' : ` في ${formatDateInArabic(selectedDate)}`}
+              </span>
             </div>
           </div>
         </div>
@@ -452,16 +583,29 @@ const OrdersList: React.FC = () => {
                 <Package className="w-10 h-10 text-gray-400" />
               </div>
               <div className="space-y-3">
-                <h3 className="text-xl font-semibold text-gray-800">لا توجد طلبات متاحة</h3>
-                <p className="text-gray-600 max-w-md mx-auto">لم يتم العثور على أي طلبات مخصصة لك في الوقت الحالي</p>
+                <h3 className="text-xl font-semibold text-gray-800">
+                  لا توجد طلبات {selectedDate === new Date().toISOString().split('T')[0] ? 'اليوم' : `في ${formatDateInArabic(selectedDate)}`}
+                </h3>
+                <p className="text-gray-600 max-w-md mx-auto">
+                  لم يتم العثور على أي طلبات مخصصة لك في هذا التاريخ
+                </p>
               </div>
-              <button
-                onClick={fetchOrders}
-                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" />
-                تحديث
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={goToToday}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+                >
+                  <CalendarDays className="w-4 h-4" />
+                  عرض طلبات اليوم
+                </button>
+                <button
+                  onClick={fetchOrders}
+                  className="inline-flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  تحديث
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -490,6 +634,11 @@ const OrdersList: React.FC = () => {
                         <div className="flex items-center gap-2 text-gray-600">
                           <User className="w-4 h-4" />
                           <span className="text-sm">{order.customer_name}</span>
+                        </div>
+                        {/* Order Time */}
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <Clock className="w-3 h-3" />
+                          <span className="text-xs">{formatTime(order.created_at)}</span>
                         </div>
                       </div>
                       <div
@@ -739,6 +888,9 @@ const OrdersList: React.FC = () => {
                   <div>
                     <h3 className="text-xl font-semibold">تحديث الطلب #{selectedOrder.order_id}</h3>
                     <p className="text-blue-100 mt-1">العميل: {selectedOrder.customer_name}</p>
+                    <p className="text-blue-100 text-sm mt-1">
+                      وقت الطلب: {formatTime(selectedOrder.created_at)}
+                    </p>
                   </div>
                   <button
                     onClick={() => setModalOpen(false)}

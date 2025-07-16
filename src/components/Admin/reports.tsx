@@ -141,6 +141,12 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
     },
   }
 
+// Get today's date in YYYY-MM-DD format
+const getTodayDate = () => {
+  const today = new Date()
+  return today.toISOString().split('T')[0]
+}
+
 const Reports: React.FC = () => {
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null)
@@ -151,7 +157,8 @@ const Reports: React.FC = () => {
   const [courierStats, setCourierStats] = useState<CourierStats | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
-  const [dateRange, setDateRange] = useState({ start: "", end: "" })
+  // Set default date range to today
+  const [dateRange, setDateRange] = useState({ start: getTodayDate(), end: getTodayDate() })
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [viewMode, setViewMode] = useState<"active" | "archived">("active")
@@ -320,6 +327,7 @@ const Reports: React.FC = () => {
       dateFrom: "من تاريخ",
       dateTo: "إلى تاريخ",
       clearFilters: "مسح المرشحات",
+      resetToToday: "العودة لليوم",
       viewDetails: "عرض التفاصيل",
       orderDetails: "تفاصيل الطلب",
       close: "إغلاق",
@@ -339,6 +347,8 @@ const Reports: React.FC = () => {
       newOrder: "طلب جديد",
       orderUpdated: "تم تحديث الطلب",
       statusChanged: "تغيير حالة الطلب",
+      showingToday: "عرض طلبات اليوم",
+      showingDateRange: "عرض النطاق المحدد",
     }
     return translations[key] || key
   }
@@ -566,11 +576,17 @@ const Reports: React.FC = () => {
     }
 
     if (dateRange.start) {
-      filtered = filtered.filter((order) => new Date(order.created_at) >= new Date(dateRange.start))
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(order.created_at).toISOString().split('T')[0]
+        return orderDate >= dateRange.start
+      })
     }
 
     if (dateRange.end) {
-      filtered = filtered.filter((order) => new Date(order.created_at) <= new Date(dateRange.end))
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(order.created_at).toISOString().split('T')[0]
+        return orderDate <= dateRange.end
+      })
     }
 
     setFilteredOrders(filtered)
@@ -605,7 +621,7 @@ const Reports: React.FC = () => {
 
     const csv = Papa.unparse(dataToExport)
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const filename = `courier-orders-${selectedCourier?.name || "unknown"}-${viewMode}-${new Date().toISOString().split("T")[0]}.csv`
+    const filename = `courier-orders-${selectedCourier?.name || "unknown"}-${viewMode}-${dateRange.start || getTodayDate()}.csv`
     saveAs(blob, filename)
     alert(translate("exportSuccess"))
   }
@@ -614,6 +630,13 @@ const Reports: React.FC = () => {
     setSearchTerm("")
     setStatusFilter("")
     setDateRange({ start: "", end: "" })
+  }
+
+  const resetToToday = () => {
+    const today = getTodayDate()
+    setDateRange({ start: today, end: today })
+    setSearchTerm("")
+    setStatusFilter("")
   }
 
   const clearAllNotifications = () => {
@@ -660,6 +683,17 @@ const Reports: React.FC = () => {
       case 'status_change': return 'border-l-orange-500 bg-orange-50'
       default: return 'border-l-gray-500 bg-gray-50'
     }
+  }
+
+  const getDateRangeText = () => {
+    const today = getTodayDate()
+    if (dateRange.start === today && dateRange.end === today) {
+      return translate("showingToday")
+    }
+    if (dateRange.start === dateRange.end) {
+      return `طلبات يوم ${dateRange.start}`
+    }
+    return `${dateRange.start} - ${dateRange.end}`
   }
 
   return (
@@ -1043,11 +1077,17 @@ const Reports: React.FC = () => {
                 {/* Filters and Export Section */}
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <Filter className="w-4 h-4 text-blue-600" />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Filter className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">البحث والتصفية</h3>
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900">البحث والتصفية</h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Calendar className="w-4 h-4" />
+                        <span>{getDateRangeText()}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="p-6">
@@ -1106,6 +1146,13 @@ const Reports: React.FC = () => {
 
                     <div className="flex flex-wrap gap-3">
                       <button
+                        onClick={resetToToday}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        {translate("resetToToday")}
+                      </button>
+                      <button
                         onClick={clearFilters}
                         className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                       >
@@ -1162,7 +1209,7 @@ const Reports: React.FC = () => {
                           )}
                         </div>
                         <h3 className="text-lg font-semibold text-gray-800 mb-2">{translate("noOrders")}</h3>
-                        <p className="text-gray-600">جرب تعديل مرشحات البحث</p>
+                        <p className="text-gray-600">جرب تعديل مرشحات البحث أو اختيار تاريخ آخر</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
