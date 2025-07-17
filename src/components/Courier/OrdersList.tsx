@@ -1,4 +1,3 @@
-"use client"
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -28,6 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
+  HandMetal,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -96,10 +96,16 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
       color: "text-orange-700",
       bgColor: "bg-orange-50 border-orange-200",
     },
+    receiving_part: {
+      label: "استلام قطعه",
+      icon: HandMetal,
+      color: "text-indigo-700",
+      bgColor: "bg-indigo-50 border-indigo-200",
+    },
   }
 
 const collectionMethods: Record<string, string> = {
-  visa: "فيزا",
+  paymob: "paymob",
   valu: "فاليو",
   courier: "المندوب",
 }
@@ -108,6 +114,7 @@ const paymentSubTypes: Record<string, string> = {
   on_hand: "نقداً",
   instapay: "إنستاباي",
   wallet: "المحفظة",
+  visa_machine: "ماكينة فيزا",
 }
 
 // Cloudinary config
@@ -233,7 +240,7 @@ const OrdersList: React.FC = () => {
 
   const normalizeMethod = (method: string) => {
     if (method?.includes("paymob.valu")) return "valu"
-    if (method?.includes("paymob")) return "visa"
+    if (method?.includes("paymob")) return "paymob"
     return method
   }
 
@@ -256,7 +263,8 @@ const OrdersList: React.FC = () => {
 
   const openModal = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
+    const isPaid = ["paymob", "valu", "card"].includes(method)
+    
     setSelectedOrder(order)
     setUpdateData({
       status: order.status,
@@ -264,7 +272,9 @@ const OrdersList: React.FC = () => {
       partial_paid_amount: order.partial_paid_amount?.toString() || "",
       internal_comment: order.internal_comment || "",
       payment_sub_type: order.payment_sub_type || "",
-      collected_by: isPaid ? method : order.collected_by || "",
+      // For paid orders, if there's no collected_by, leave it empty so courier can choose
+      // If there's already a collected_by, use it
+      collected_by: order.collected_by || "",
     })
     setModalOpen(true)
   }
@@ -374,8 +384,8 @@ const OrdersList: React.FC = () => {
   }
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
-    // For canceled, returned, or hand_to_hand orders
-    if (["canceled", "return", "hand_to_hand"].includes(currentStatus)) {
+    // For canceled, returned, hand_to_hand, or receiving_part orders
+    if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
       // If no fees are entered, the total is 0
       if (deliveryFee === 0 && partialAmount === 0) {
         return 0
@@ -400,7 +410,7 @@ const OrdersList: React.FC = () => {
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
-      const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
+      const isPaid = ["paymob", "valu", "card"].includes(method)
 
       const updatePayload: any = {
         status: updateData.status,
@@ -417,15 +427,23 @@ const OrdersList: React.FC = () => {
         updatePayload.internal_comment = updateData.internal_comment.trim()
       }
 
-      if (["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status)) {
-        const collected = updateData.collected_by || (isPaid ? method : "")
+      if (["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)) {
+        let collected = updateData.collected_by
+
+        // If order is paid and courier didn't select anything, automatically use the original payment method
+        if (isPaid && !collected) {
+          collected = method
+        }
+
         if (collected) {
-          const allowedCollected = ["visa", "valu", "courier"]
+          const allowedCollected = ["paymob", "valu", "courier"]
           if (!allowedCollected.includes(collected)) {
             alert("يرجى اختيار طريقة تحصيل صحيحة.")
             return
           }
           updatePayload.collected_by = collected
+          
+          // Only set payment_sub_type if collected by courier
           if (collected === "courier") {
             if (updateData.payment_sub_type) {
               updatePayload.payment_sub_type = updateData.payment_sub_type
@@ -433,13 +451,16 @@ const OrdersList: React.FC = () => {
               updatePayload.payment_sub_type = null
             }
           } else {
+            // For paymob/valu, clear payment_sub_type
             updatePayload.payment_sub_type = null
           }
         } else {
+          // If no collection method selected (shouldn't happen for paid orders due to above logic)
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
         }
       } else {
+        // For assigned status, clear collection info
         updatePayload.collected_by = null
         updatePayload.payment_sub_type = null
       }
@@ -476,6 +497,24 @@ const OrdersList: React.FC = () => {
   const canEditOrder = (order: Order) => {
     // Allow editing for assigned orders or if it's the assigned courier
     return order.assigned_courier_id === user?.id || order.status === "assigned"
+  }
+
+  // Helper function to get display payment method
+  const getDisplayPaymentMethod = (order: Order) => {
+    const method = normalizeMethod(order.payment_method)
+    
+    // If there's a payment_sub_type, use it
+    if (order.payment_sub_type && paymentSubTypes[order.payment_sub_type]) {
+      return paymentSubTypes[order.payment_sub_type]
+    }
+    
+    // If there's a collected_by, use it
+    if (order.collected_by && collectionMethods[order.collected_by]) {
+      return collectionMethods[order.collected_by]
+    }
+    
+    // Otherwise use the original payment method
+    return collectionMethods[method] || order.payment_method
   }
 
   if (loading) {
@@ -613,7 +652,7 @@ const OrdersList: React.FC = () => {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {orders.map((order) => {
               const method = normalizeMethod(order.payment_method)
-              const isPaid = ["visa", "valu", "card", "paymob"].includes(method)
+              const isPaid = ["paymob", "valu", "card"].includes(method)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
@@ -713,7 +752,7 @@ const OrdersList: React.FC = () => {
                               <p className="text-xs text-green-600">
                                 {order.status === "partial"
                                   ? "المبلغ المحصل جزئياً"
-                                  : ["canceled", "return", "hand_to_hand"].includes(order.status)
+                                  : ["canceled", "return", "hand_to_hand", "receiving_part"].includes(order.status)
                                     ? "إجمالي الرسوم"
                                     : "إجمالي الطلب"}
                               </p>
@@ -723,11 +762,7 @@ const OrdersList: React.FC = () => {
                         <div className="mt-3 pt-3 border-t border-green-200">
                           <div className="flex items-center gap-2 text-sm text-green-700">
                             <CreditCard className="w-4 h-4" />
-                            <span>
-                              {paymentSubTypes[order.payment_sub_type ?? ""] ||
-                                collectionMethods[normalizeMethod(order.payment_method)] ||
-                                order.payment_method}
-                            </span>
+                            <span>{getDisplayPaymentMethod(order)}</span>
                           </div>
                         </div>
                       </div>
@@ -937,7 +972,7 @@ const OrdersList: React.FC = () => {
                         <span className="text-gray-700">
                           {updateData.status === "partial"
                             ? "المبلغ المحصل:"
-                            : ["canceled", "return", "hand_to_hand"].includes(updateData.status)
+                            : ["canceled", "return", "hand_to_hand", "receiving_part"].includes(updateData.status)
                               ? "إجمالي الرسوم:"
                               : "إجمالي الطلب:"}
                         </span>
@@ -996,12 +1031,33 @@ const OrdersList: React.FC = () => {
                   </div>
 
                   {/* Collection Fields */}
-                  {["partial", "canceled", "delivered", "hand_to_hand", "return"].includes(updateData.status) && (
+                  {["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status) && (
                     <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                       <h4 className="font-medium text-blue-800 flex items-center gap-2">
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
+
+                      {/* Payment Method Info */}
+                      {(() => {
+                        const method = normalizeMethod(selectedOrder.payment_method)
+                        const isPaid = ["paymob", "valu", "card"].includes(method)
+                        
+                        if (isPaid) {
+                          return (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-green-700">
+                                <AlertCircle className="w-4 h-4" />
+                                <span className="text-sm font-medium">طلب مدفوع</span>
+                              </div>
+                              <p className="text-xs text-green-600 mt-1">
+                                هذا الطلب مدفوع بالفعل عبر {collectionMethods[method]}. إذا لم تختر طريقة تحصيل، سيتم تعيينها تلقائياً إلى {collectionMethods[method]}.
+                              </p>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
 
                       {/* Collected By */}
                       <div className="space-y-2">
@@ -1059,7 +1115,7 @@ const OrdersList: React.FC = () => {
                       </div>
 
                       {/* Zero Amount Warning */}
-                      {["canceled", "return", "hand_to_hand"].includes(updateData.status) && (
+                      {["canceled", "return", "hand_to_hand", "receiving_part"].includes(updateData.status) && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                           <div className="flex items-center gap-2 text-yellow-700">
                             <AlertCircle className="w-4 h-4" />

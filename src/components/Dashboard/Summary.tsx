@@ -27,6 +27,7 @@ import {
   Target,
   Zap,
   HandCoins,
+  Monitor,
 } from "lucide-react"
 import {
   BarChart,
@@ -82,12 +83,24 @@ interface DateRange {
   endDate: string
 }
 
-const normalizePaymentMethod = (method = ""): "cash" | "visa" | "valu" | "other" => {
+const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "other" => {
   const m = method.toLowerCase().trim()
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
-  if (m === "paymob" || m === "visa" || m === "card" || m.includes("paymob")) return "visa"
+  if (m === "paymob" || m === "visa" || m === "card" || m.includes("paymob")) return "paymob"
   if (m === "cash") return "cash"
   return "other"
+}
+
+// Helper function to get the display payment method
+const getDisplayPaymentMethod = (order: Order): string => {
+  // Priority: payment_sub_type > collected_by > original payment_method
+  if (order.payment_sub_type) {
+    return order.payment_sub_type
+  }
+  if (order.collected_by) {
+    return order.collected_by
+  }
+  return order.payment_method || ""
 }
 
 const Summary: React.FC = () => {
@@ -130,17 +143,19 @@ const Summary: React.FC = () => {
       returnOrders: "الطلبات المرتجعة",
       canceledOrders: "الطلبات الملغاة",
       assignedOrders: "الطلبات المكلفة",
+      receivingPartOrders: "طلبات استلام قطعه",
       totalOrders: "إجمالي الطلبات",
       // Electronic Payment Methods
-      visaOrders: "طلبات فيزا",
+      paymobOrders: "طلبات paymob",
       valuOrders: "طلبات فاليو",
       // Cash-based Payment Sub-types
       cashOnHandOrders: "طلبات نقداً",
       instapayOrders: "طلبات إنستاباي",
       walletOrders: "طلبات المحفظة",
+      visaMachineOrders: "طلبات ماكينة فيزا",
       // Collection Metrics
       totalCashOnHand: "إجمالي النقد في اليد",
-      totalVisaCollected: "إجمالي فيزا محصل",
+      totalPaymobCollected: "إجمالي paymob محصل",
       totalValuCollected: "إجمالي فاليو محصل",
       deliveryFeesCollected: "رسوم التوصيل المحصلة",
       totalCollected: "إجمالي المحصل",
@@ -167,13 +182,14 @@ const Summary: React.FC = () => {
       partial: "جزئي",
       hand_to_hand: "استبدال",
       return: "مرتجع",
+      receiving_part: "استلام قطعه",
       cash: "نقداً",
-      visa: "فيزا",
+      paymob: "paymob",
       valu: "فاليو",
-      courier_payment: "المندوب",
       on_hand: "نقداً",
       instapay: "إنستاباي",
       wallet: "المحفظة",
+      visa_machine: "ماكينة فيزا",
       orderStatusSection: "حالة الطلبات",
       electronicPaymentsSection: "المدفوعات الإلكترونية",
       cashPaymentsSection: "المدفوعات النقدية",
@@ -199,6 +215,7 @@ const Summary: React.FC = () => {
   })
   const [selectedCourier, setSelectedCourier] = useState<CourierSummary | null>(null)
   const [showAnalytics, setShowAnalytics] = useState(true)
+  const [activeFilter, setActiveFilter] = useState<string>("today")
 
   useEffect(() => {
     fetchSummary()
@@ -323,7 +340,7 @@ const Summary: React.FC = () => {
   }
 
   const metrics: Metric[] = [
-    // ORDER STATUS METRICS (0-6)
+    // ORDER STATUS METRICS (0-7)
     {
       label: "totalOrders",
       icon: Package,
@@ -387,15 +404,25 @@ const Summary: React.FC = () => {
       filter: (o) => o.status === "assigned",
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // ELECTRONIC PAYMENT METHODS (7-8)
     {
-      label: "visaOrders",
+      label: "receivingPartOrders",
+      icon: HandMetal,
+      isMoney: true,
+      color: "text-indigo-700",
+      bgColor: "bg-indigo-50 border-indigo-200",
+      filter: (o) => o.status === "receiving_part",
+      calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
+    },
+    // ELECTRONIC PAYMENT METHODS (8-9)
+    {
+      label: "paymobOrders",
       icon: CreditCard,
       isMoney: true,
       color: "text-blue-700",
       bgColor: "bg-blue-50 border-blue-200",
       filter: (o) =>
-        (normalizePaymentMethod(o.payment_method) === "visa" || o.collected_by === "visa") &&
+        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "paymob" || 
+         (normalizePaymentMethod(o.payment_method) === "paymob" && !o.collected_by)) &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -406,11 +433,12 @@ const Summary: React.FC = () => {
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
       filter: (o) =>
-        (normalizePaymentMethod(o.payment_method) === "valu" || o.collected_by === "valu") &&
+        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" || 
+         (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)) &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // CASH-BASED PAYMENT SUB-TYPES (9-11)
+    // CASH-BASED PAYMENT SUB-TYPES (10-13)
     {
       label: "cashOnHandOrders",
       icon: Banknote,
@@ -438,7 +466,16 @@ const Summary: React.FC = () => {
       filter: (o) => o.payment_sub_type === "wallet" && shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // NEW COD TOTAL METRIC (12)
+    {
+      label: "visaMachineOrders",
+      icon: Monitor,
+      isMoney: true,
+      color: "text-slate-700",
+      bgColor: "bg-slate-50 border-slate-200",
+      filter: (o) => o.payment_sub_type === "visa_machine" && shouldIncludeOrder(o),
+      calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
+    },
+    // COD TOTAL METRIC (14)
     {
       label: "totalCOD",
       icon: HandCoins,
@@ -446,11 +483,11 @@ const Summary: React.FC = () => {
       color: "text-amber-700",
       bgColor: "bg-amber-50 border-amber-200",
       filter: (o) => 
-        ["on_hand", "instapay", "wallet"].includes(o.payment_sub_type || "") && 
+        ["on_hand", "instapay", "wallet", "visa_machine"].includes(o.payment_sub_type || "") && 
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
-    // COLLECTION SUMMARY METRICS (13-17)
+    // COLLECTION SUMMARY METRICS (15-19)
     {
       label: "totalCashOnHand",
       icon: DollarSign,
@@ -461,13 +498,14 @@ const Summary: React.FC = () => {
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
     {
-      label: "totalVisaCollected",
+      label: "totalPaymobCollected",
       icon: CreditCard,
       isMoney: true,
       color: "text-blue-700",
       bgColor: "bg-blue-50 border-blue-200",
       filter: (o) =>
-        (normalizePaymentMethod(o.payment_method) === "visa" || o.collected_by === "visa") &&
+        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "paymob" || 
+         (normalizePaymentMethod(o.payment_method) === "paymob" && !o.collected_by)) &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -478,7 +516,8 @@ const Summary: React.FC = () => {
       color: "text-indigo-700",
       bgColor: "bg-indigo-50 border-indigo-200",
       filter: (o) =>
-        (normalizePaymentMethod(o.payment_method) === "valu" || o.collected_by === "valu") &&
+        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" || 
+         (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)) &&
         shouldIncludeOrder(o),
       calculateAmount: (orders) => orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0),
     },
@@ -533,11 +572,38 @@ const Summary: React.FC = () => {
     setShowAnalytics(true)
   }
 
-  const setQuickDateRange = (days: number) => {
-    const endDate = new Date()
-    const startDate = new Date()
-    startDate.setDate(endDate.getDate() - days + 1)
-        
+  // Fixed date range function
+  const setQuickDateRange = (filterType: string) => {
+    const today = new Date()
+    const endDate = new Date(today)
+    let startDate = new Date(today)
+    
+    switch (filterType) {
+      case "today":
+        // Today only
+        startDate = new Date(today)
+        break
+      case "yesterday":
+        // Yesterday only
+        startDate = new Date(today)
+        startDate.setDate(today.getDate() - 1)
+        endDate.setDate(today.getDate() - 1)
+        break
+      case "last7Days":
+        // Last 7 days including today
+        startDate = new Date(today)
+        startDate.setDate(today.getDate() - 6)
+        break
+      case "last30Days":
+        // Last 30 days including today
+        startDate = new Date(today)
+        startDate.setDate(today.getDate() - 29)
+        break
+      default:
+        break
+    }
+    
+    setActiveFilter(filterType)
     setDateRange({
       startDate: startDate.toISOString().split("T")[0],
       endDate: endDate.toISOString().split("T")[0],
@@ -560,12 +626,13 @@ const Summary: React.FC = () => {
     { name: translate("return"), value: allOrders.filter(o => o.status === "return").length, color: "#f97316" },
     { name: translate("canceled"), value: allOrders.filter(o => o.status === "canceled").length, color: "#ef4444" },
     { name: translate("assigned"), value: allOrders.filter(o => o.status === "assigned").length, color: "#3b82f6" },
+    { name: translate("receiving_part"), value: allOrders.filter(o => o.status === "receiving_part").length, color: "#6366f1" },
   ].filter(item => item.value > 0)
 
   const paymentMethodData = [
-    { name: translate("cash"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "cash").length, color: "#10b981" },
-    { name: translate("visa"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "visa").length, color: "#3b82f6" },
-    { name: translate("valu"), value: allOrders.filter(o => normalizePaymentMethod(o.payment_method) === "valu").length, color: "#8b5cf6" },
+    { name: translate("cash"), value: allOrders.filter(o => normalizePaymentMethod(getDisplayPaymentMethod(o)) === "cash").length, color: "#10b981" },
+    { name: translate("paymob"), value: allOrders.filter(o => normalizePaymentMethod(getDisplayPaymentMethod(o)) === "paymob").length, color: "#3b82f6" },
+    { name: translate("valu"), value: allOrders.filter(o => normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu").length, color: "#8b5cf6" },
   ].filter(item => item.value > 0)
 
   const statusAmountData = [
@@ -574,6 +641,7 @@ const Summary: React.FC = () => {
     { name: translate("hand_to_hand"), amount: allOrders.filter(o => o.status === "hand_to_hand").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
     { name: translate("return"), amount: allOrders.filter(o => o.status === "return").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
     { name: translate("canceled"), amount: allOrders.filter(o => o.status === "canceled").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
+    { name: translate("receiving_part"), amount: allOrders.filter(o => o.status === "receiving_part").reduce((acc, o) => acc + getTotalCourierAmount(o), 0) },
   ].filter(item => item.amount > 0)
 
   if (loading) {
@@ -621,20 +689,42 @@ const Summary: React.FC = () => {
                 {/* Quick Date Filters */}
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setQuickDateRange(1)}
-                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                    onClick={() => setQuickDateRange("today")}
+                    className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                      activeFilter === "today" 
+                        ? "bg-blue-600 text-white" 
+                        : "bg-blue-100 text-blue-700"
+                    }`}
                   >
                     {translate("today")}
                   </button>
                   <button
-                    onClick={() => setQuickDateRange(7)}
-                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                    onClick={() => setQuickDateRange("yesterday")}
+                    className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                      activeFilter === "yesterday" 
+                        ? "bg-blue-600 text-white" 
+                        : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {translate("yesterday")}
+                  </button>
+                  <button
+                    onClick={() => setQuickDateRange("last7Days")}
+                    className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                      activeFilter === "last7Days" 
+                        ? "bg-blue-600 text-white" 
+                        : "bg-blue-100 text-blue-700"
+                    }`}
                   >
                     {translate("last7Days")}
                   </button>
                   <button
-                    onClick={() => setQuickDateRange(30)}
-                    className="px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                    onClick={() => setQuickDateRange("last30Days")}
+                    className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                      activeFilter === "last30Days" 
+                        ? "bg-blue-600 text-white" 
+                        : "bg-blue-100 text-blue-700"
+                    }`}
                   >
                     {translate("last30Days")}
                   </button>
@@ -645,7 +735,10 @@ const Summary: React.FC = () => {
                   <input
                     type="date"
                     value={dateRange.startDate}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                    onChange={(e) => {
+                      setActiveFilter("custom")
+                      setDateRange(prev => ({ ...prev, startDate: e.target.value }))
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     dir="ltr"
                   />
@@ -653,7 +746,10 @@ const Summary: React.FC = () => {
                   <input
                     type="date"
                     value={dateRange.endDate}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                    onChange={(e) => {
+                      setActiveFilter("custom")
+                      setDateRange(prev => ({ ...prev, endDate: e.target.value }))
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     dir="ltr"
                   />
@@ -838,7 +934,7 @@ const Summary: React.FC = () => {
                   <h3 className="text-lg font-semibold text-gray-800">{translate("orderStatusSection")}</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {metrics.slice(0, 7).map((metric) => {
+                  {metrics.slice(0, 8).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
                     return (
@@ -887,7 +983,7 @@ const Summary: React.FC = () => {
                   <h3 className="text-lg font-semibold text-gray-800">{translate("electronicPaymentsSection")}</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {metrics.slice(7, 9).map((metric) => {
+                  {metrics.slice(8, 10).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
                     return (
@@ -935,9 +1031,9 @@ const Summary: React.FC = () => {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   {/* Individual COD components */}
-                  {metrics.slice(9, 12).map((metric) => {
+                  {metrics.slice(10, 14).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
                     return (
@@ -976,14 +1072,14 @@ const Summary: React.FC = () => {
                   })}
                   {/* COD Total */}
                   {(() => {
-                    const codMetric = metrics[12]; // totalCOD metric
+                    const codMetric = metrics[14]; // totalCOD metric
                     const { count, amount } = calcCountAmount(codMetric)
                     if (count === 0) return null
                     return (
                       <div
                         key={codMetric.label}
                         onClick={() => openOrders(codMetric.filter, translate(codMetric.label))}
-                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${codMetric.bgColor} col-span-full sm:col-span-1`}
+                        className={`cursor-pointer bg-white hover:shadow-lg p-6 rounded-xl border-2 transition-all duration-200 group ${codMetric.bgColor}`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
@@ -1025,7 +1121,7 @@ const Summary: React.FC = () => {
                   <h3 className="text-lg font-semibold text-gray-800">{translate("collectionSummarySection")}</h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                  {metrics.slice(13).map((metric) => {
+                  {metrics.slice(15).map((metric) => {
                     const { count, amount } = calcCountAmount(metric)
                     if (count === 0) return null
                     return (
@@ -1148,6 +1244,7 @@ const Summary: React.FC = () => {
                     const courierOrderAmount = getCourierOrderAmount(order)
                     const deliveryFee = Number(order.delivery_fee || 0)
                     const totalCourierAmount = getTotalCourierAmount(order)
+                    const displayPaymentMethod = getDisplayPaymentMethod(order)
                     return (
                       <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1261,11 +1358,19 @@ const Summary: React.FC = () => {
                                   </span>
                                 </div>
                               )}
-                              {order.collected_by && (
+                              {order.collected_by && !order.payment_sub_type && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
                                   <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
                                     {translate(order.collected_by)}
+                                  </span>
+                                </div>
+                              )}
+                              {!order.payment_sub_type && !order.collected_by && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-600">{translate("paymentMethod")}:</span>
+                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    {translate(normalizePaymentMethod(order.payment_method))}
                                   </span>
                                 </div>
                               )}
@@ -1399,16 +1504,77 @@ const Summary: React.FC = () => {
                 <p className="text-gray-600">تقرير شامل لأداء المندوبين</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-gray-400" />
-              <input
-                type="date"
-                value={dateRange.startDate}
-                onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-                className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                dir="ltr"
-                aria-label={translate("selectDate")}
-              />
+            <div className="flex items-center gap-4">
+              {/* Quick Date Filters */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setQuickDateRange("today")}
+                  className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                    activeFilter === "today" 
+                      ? "bg-blue-600 text-white" 
+                      : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {translate("today")}
+                </button>
+                <button
+                  onClick={() => setQuickDateRange("yesterday")}
+                  className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                    activeFilter === "yesterday" 
+                      ? "bg-blue-600 text-white" 
+                      : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {translate("yesterday")}
+                </button>
+                <button
+                  onClick={() => setQuickDateRange("last7Days")}
+                  className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                    activeFilter === "last7Days" 
+                      ? "bg-blue-600 text-white" 
+                      : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {translate("last7Days")}
+                </button>
+                <button
+                  onClick={() => setQuickDateRange("last30Days")}
+                  className={`px-3 py-2 text-sm rounded-lg hover:bg-blue-200 transition-colors ${
+                    activeFilter === "last30Days" 
+                      ? "bg-blue-600 text-white" 
+                      : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {translate("last30Days")}
+                </button>
+              </div>
+              {/* Date Range Picker */}
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-gray-400" />
+                <input
+                  type="date"
+                  value={dateRange.startDate}
+                  onChange={(e) => {
+                    setActiveFilter("custom")
+                    setDateRange(prev => ({ ...prev, startDate: e.target.value }))
+                  }}
+                  className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  dir="ltr"
+                  aria-label={translate("selectDate")}
+                />
+                <span className="text-gray-500">-</span>
+                <input
+                  type="date"
+                  value={dateRange.endDate}
+                  onChange={(e) => {
+                    setActiveFilter("custom")
+                    setDateRange(prev => ({ ...prev, endDate: e.target.value }))
+                  }}
+                  className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  dir="ltr"
+                  aria-label={translate("selectDate")}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -1439,7 +1605,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {metrics
-              .slice(0, 7)
+              .slice(0, 8)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1455,7 +1621,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {metrics
-              .slice(7, 9)
+              .slice(8, 10)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1469,15 +1635,15 @@ const Summary: React.FC = () => {
             </div>
             <h3 className="text-lg font-semibold text-gray-800">{translate("cashPaymentsSection")}</h3>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {/* Individual COD components */}
             {metrics
-              .slice(9, 12)
+              .slice(10, 14)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
             {/* COD Total */}
             {(() => {
-              const codMetric = metrics[12]; // totalCOD metric
+              const codMetric = metrics[14]; // totalCOD metric
               return renderMetric(codMetric, currentCourier.courierId)
             })()}
           </div>
@@ -1493,7 +1659,7 @@ const Summary: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {metrics
-              .slice(13)
+              .slice(15)
               .map((metric) => renderMetric(metric, currentCourier.courierId))
               .filter(Boolean)}
           </div>
@@ -1532,6 +1698,7 @@ const Summary: React.FC = () => {
                   const courierOrderAmount = getCourierOrderAmount(order)
                   const deliveryFee = Number(order.delivery_fee || 0)
                   const totalCourierAmount = getTotalCourierAmount(order)
+                  const displayPaymentMethod = getDisplayPaymentMethod(order)
                   return (
                     <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1645,11 +1812,19 @@ const Summary: React.FC = () => {
                                 </span>
                               </div>
                             )}
-                            {order.collected_by && (
+                            {order.collected_by && !order.payment_sub_type && (
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
                                 <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
                                   {translate(order.collected_by)}
+                                </span>
+                              </div>
+                            )}
+                            {!order.payment_sub_type && !order.collected_by && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">{translate("paymentMethod")}:</span>
+                                <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                  {translate(normalizePaymentMethod(order.payment_method))}
                                 </span>
                               </div>
                             )}
