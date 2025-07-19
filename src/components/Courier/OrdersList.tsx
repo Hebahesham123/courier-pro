@@ -478,6 +478,7 @@ const OrdersList: React.FC = () => {
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
       const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+      const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
       const updatePayload: any = {
         status: updateData.status,
@@ -507,8 +508,12 @@ const OrdersList: React.FC = () => {
           updatePayload.collected_by = method // Force collected_by to original online payment method
           updatePayload.payment_sub_type = null // Clear sub-type for online payments
         } else {
-          // For non-online paid orders, courier can only choose payment method if delivery fees are added
-          if (fee > 0) {
+          // For unpaid orders, allow choosing payment method directly
+          if (isOrderUnpaid && updateData.payment_sub_type) {
+            updatePayload.collected_by = "courier"
+            updatePayload.payment_sub_type = updateData.payment_sub_type
+          } else if (fee > 0) {
+            // For paid orders with delivery fees
             const collected = updateData.collected_by
             if (!collected) {
               alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
@@ -526,7 +531,7 @@ const OrdersList: React.FC = () => {
               updatePayload.payment_sub_type = null
             }
           } else {
-            // If no delivery fees, clear payment method fields
+            // If no delivery fees and no payment sub-type selected for unpaid orders
             updatePayload.collected_by = null
             updatePayload.payment_sub_type = null
           }
@@ -908,6 +913,17 @@ const OrdersList: React.FC = () => {
                       <span className="font-mono text-xs">{order.mobile_number}</span>
                     </button>
 
+                    {/* Payment Method Display */}
+                    <div className={`border rounded-lg p-1.5 text-center text-xs ${
+                      isEditedOrder 
+                        ? "bg-red-50 border-red-300" 
+                        : "bg-gray-50 border-gray-200"
+                    }`}>
+                      <p className={`font-medium ${
+                        isEditedOrder ? "text-red-700" : "text-gray-700"
+                      }`}>{getDisplayPaymentMethod(order)}</p>
+                    </div>
+
                     {/* Edit Button */}
                     {canEditOrder(order) ? (
                       <button
@@ -1104,6 +1120,7 @@ const OrdersList: React.FC = () => {
                       {(() => {
                         const method = normalizeMethod(selectedOrder.payment_method)
                         const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
                         const fee = Number.parseFloat(updateData.delivery_fee) || 0
                         const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
                         const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
@@ -1137,17 +1154,73 @@ const OrdersList: React.FC = () => {
                           )
                         }
 
+                        if (isOrderUnpaid) {
+                          return (
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-orange-700">
+                                <AlertCircle className="w-4 h-4" />
+                                <span className="text-sm font-medium">طلب غير مدفوع</span>
+                              </div>
+                              <p className="text-xs text-orange-600 mt-1">
+                                يمكن للمندوب اختيار طريقة الدفع المناسبة لهذا الطلب.
+                              </p>
+                            </div>
+                          )
+                        }
+
                         return null
                       })()}
 
-                      {/* Collected By - Only show if delivery fees are added or order is originally paid online */}
+                      {/* Payment Sub-Type - Show for unpaid orders OR when courier is selected with fees */}
                       {(() => {
                         const method = normalizeMethod(selectedOrder.payment_method)
                         const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
+                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
+                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && Number.parseFloat(updateData.partial_paid_amount) === 0
+                        
+                        // Show payment sub-types if:
+                        // 1. Order is unpaid and not hand_to_hand with no fees
+                        // 2. OR courier is selected and delivery fees are added (existing logic)
+                        const shouldShowSubType = 
+                          (!isOrderOriginallyPaidOnline && isOrderUnpaid && !isHandToHandWithNoFees) ||
+                          (updateData.collected_by === "courier" && fee > 0)
+
+                        if (!shouldShowSubType) return null
+
+                        return (
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              طريقة الدفع {isOrderUnpaid ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
+                            </label>
+                            <select
+                              value={updateData.payment_sub_type}
+                              onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required={isOrderUnpaid && !isHandToHandWithNoFees}
+                            >
+                              <option value="">اختر طريقة الدفع</option>
+                              {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Collected By - Only show if delivery fees are added for paid orders */}
+                      {(() => {
+                        const method = normalizeMethod(selectedOrder.payment_method)
+                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
                         const fee = Number.parseFloat(updateData.delivery_fee) || 0
                         const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
                         const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
-                        const shouldShowPaymentMethod = isOrderOriginallyPaidOnline || (fee > 0 && !isHandToHandWithNoFees)
+                        
+                        // Only show "collected by" for paid orders with delivery fees
+                        const shouldShowPaymentMethod = !isOrderOriginallyPaidOnline && !isOrderUnpaid && fee > 0 && !isHandToHandWithNoFees
 
                         if (!shouldShowPaymentMethod) return null
 
@@ -1158,38 +1231,10 @@ const OrdersList: React.FC = () => {
                               value={updateData.collected_by}
                               onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
                               className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              disabled={isOrderOriginallyPaidOnline}
-                              required={!isOrderOriginallyPaidOnline}
+                              required
                             >
                               <option value="">اختر الطريقة</option>
                               {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Payment Sub-Type - Only show if courier is selected and delivery fees are added */}
-                      {(() => {
-                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
-                        const shouldShowSubType = updateData.collected_by === "courier" && fee > 0
-
-                        if (!shouldShowSubType) return null
-
-                        return (
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">نوع الدفع الفرعي</label>
-                            <select
-                              value={updateData.payment_sub_type}
-                              onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required
-                            >
-                              <option value="">اختر النوع</option>
-                              {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
                                 <option key={key} value={key}>
                                   {label}
                                 </option>
