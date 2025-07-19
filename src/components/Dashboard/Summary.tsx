@@ -257,8 +257,8 @@ const Summary: React.FC = () => {
             order_proofs (id, image_data)
           `)
           .eq("assigned_courier_id", user.id)
-          .gte("updated_at", `${dateRange.startDate}T00:00:00`)
-          .lte("updated_at", `${dateRange.endDate}T23:59:59`)
+          .gte("created_at", `${dateRange.startDate}T00:00:00`)
+          .lte("created_at", `${dateRange.endDate}T23:59:59`)
         orders = (data ?? []) as Order[]
         setSummaryList([{ courierId: user.id, courierName: user.name || translate("courier") }])
         setAllOrders(orders)
@@ -276,8 +276,8 @@ const Summary: React.FC = () => {
               order_proofs (id, image_data)
             `)
             .eq("assigned_courier_id", selectedCourier.courierId)
-            .gte("updated_at", `${dateRange.startDate}T00:00:00`)
-            .lte("updated_at", `${dateRange.endDate}T23:59:59`)
+            .gte("created_at", `${dateRange.startDate}T00:00:00`)
+            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           orders = (data ?? []) as Order[]
         } else if (showAnalytics) {
           // If showing analytics, fetch ALL orders from ALL couriers
@@ -287,8 +287,8 @@ const Summary: React.FC = () => {
               *,
               order_proofs (id, image_data)
             `)
-            .gte("updated_at", `${dateRange.startDate}T00:00:00`)
-            .lte("updated_at", `${dateRange.endDate}T23:59:59`)
+            .gte("created_at", `${dateRange.startDate}T00:00:00`)
+            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           orders = (data ?? []) as Order[]
         } else {
           orders = []
