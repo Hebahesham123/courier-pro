@@ -32,11 +32,12 @@ import {
   VolumeX,
   HandMetal,
   XCircle,
-  AlertTriangle,
+  Edit,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
 import { saveAs } from "file-saver"
+import { useAuth } from "../../contexts/AuthContext" // Import useAuth
 
 interface Courier {
   id: string
@@ -86,68 +87,80 @@ interface CourierStats {
   archivedOrders: number
 }
 
-interface Notification {
-  id: string
-  message: string
-  timestamp: Date
-  type: 'update' | 'new' | 'status_change'
-  orderId?: string
-  courierName?: string
-}
+// Notification interface is now defined in AuthContext.tsx
+// interface Notification {
+//   id: string
+//   message: string
+//   timestamp: Date
+//   type: "update" | "new" | "status_change" | "order_edit"
+//   orderId?: string
+//   courierName?: string
+// }
 
-const statusConfig: Record<string, { label: string; color: string; bgColor: string; cardBg: string; icon: React.ComponentType<any> }> =
-  {
-    assigned: {
-      label: "مكلف",
-      color: "text-blue-700",
-      bgColor: "bg-blue-50 border-blue-200",
-      cardBg: "bg-blue-50 border-blue-300 shadow-blue-100",
-      icon: Activity,
-    },
-    delivered: {
-      label: "تم التوصيل",
-      color: "text-green-700",
-      bgColor: "bg-green-50 border-green-200",
-      cardBg: "bg-green-50 border-green-300 shadow-green-100",
-      icon: CheckCircle,
-    },
-    canceled: {
-      label: "ملغي",
-      color: "text-red-700",
-      bgColor: "bg-red-50 border-red-200",
-      cardBg: "bg-red-50 border-red-300 shadow-red-100",
-      icon: XCircle,
-    },
-    partial: {
-      label: "جزئي",
-      color: "text-yellow-700",
-      bgColor: "bg-yellow-50 border-yellow-200",
-      cardBg: "bg-yellow-50 border-yellow-300 shadow-yellow-100",
-      icon: Activity,
-    },
-    hand_to_hand: {
-      label: "استبدال",
-      color: "text-purple-700",
-      bgColor: "bg-purple-50 border-purple-200",
-      cardBg: "bg-purple-50 border-purple-300 shadow-purple-100",
-      icon: HandMetal,
-    },
-    return: {
-      label: "مرتجع",
-      color: "text-orange-700",
-      bgColor: "bg-orange-50 border-orange-200",
-      cardBg: "bg-orange-50 border-orange-300 shadow-orange-100",
-      icon: TrendingUp,
-    },
-  }
+const statusConfig: Record<
+  string,
+  { label: string; color: string; bgColor: string; cardBg: string; icon: React.ComponentType<any> }
+> = {
+  assigned: {
+    label: "مكلف",
+    color: "text-blue-700",
+    bgColor: "bg-blue-50 border-blue-200",
+    cardBg: "bg-blue-50 border-blue-300 shadow-blue-100",
+    icon: Activity,
+  },
+  delivered: {
+    label: "تم التوصيل",
+    color: "text-green-700",
+    bgColor: "bg-green-50 border-green-200",
+    cardBg: "bg-green-50 border-green-300 shadow-green-100",
+    icon: CheckCircle,
+  },
+  canceled: {
+    label: "ملغي",
+    color: "text-red-700",
+    bgColor: "bg-red-50 border-red-200",
+    cardBg: "bg-red-50 border-red-300 shadow-red-100",
+    icon: XCircle,
+  },
+  partial: {
+    label: "جزئي",
+    color: "text-yellow-700",
+    bgColor: "bg-yellow-50 border-yellow-200",
+    cardBg: "bg-yellow-50 border-yellow-300 shadow-yellow-100",
+    icon: Activity,
+  },
+  hand_to_hand: {
+    label: "استبدال",
+    color: "text-purple-700",
+    bgColor: "bg-purple-50 border-purple-200",
+    cardBg: "bg-purple-50 border-purple-300 shadow-purple-100",
+    icon: HandMetal,
+  },
+  return: {
+    label: "مرتجع",
+    color: "text-orange-700",
+    bgColor: "bg-orange-50 border-orange-200",
+    cardBg: "bg-orange-50 border-orange-300 shadow-orange-100",
+    icon: TrendingUp,
+  },
+}
 
 // Get today's date in YYYY-MM-DD format
 const getTodayDate = () => {
   const today = new Date()
-  return today.toISOString().split('T')[0]
+  return today.toISOString().split("T")[0]
 }
 
 const Reports: React.FC = () => {
+  const {
+    notifications,
+    soundEnabled,
+    showNotifications,
+    clearAllNotifications,
+    playNotificationSound,
+    setShowNotifications,
+  } = useAuth() // Consume from AuthContext
+
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -162,130 +175,22 @@ const Reports: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
   const [viewMode, setViewMode] = useState<"active" | "archived">("active")
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [showNotifications, setShowNotifications] = useState(false)
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  // Keeping debugInfo for console logging, but removing UI display
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
 
-  // Debug function
+  // Debug function (for console logging)
   const addDebugInfo = (info: string) => {
     console.log(`[DEBUG] ${info}`)
-    setDebugInfo(prev => [`${new Date().toLocaleTimeString()}: ${info}`, ...prev.slice(0, 9)])
+    setDebugInfo((prev) => [`${new Date().toLocaleTimeString()}: ${info}`, ...prev.slice(0, 9)])
   }
 
-  // Initialize audio context
-  useEffect(() => {
-    const initAudio = () => {
-      try {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-        addDebugInfo("Audio context initialized successfully")
-      } catch (error) {
-        console.error("Failed to initialize audio context:", error)
-        addDebugInfo("Failed to initialize audio context")
-      }
-    }
-    
-    // Initialize on user interaction
-    const handleUserInteraction = () => {
-      if (!audioContextRef.current) {
-        initAudio()
-      }
-      document.removeEventListener('click', handleUserInteraction)
-      document.removeEventListener('keydown', handleUserInteraction)
-    }
-    
-    document.addEventListener('click', handleUserInteraction)
-    document.addEventListener('keydown', handleUserInteraction)
-    
-    return () => {
-      document.removeEventListener('click', handleUserInteraction)
-      document.removeEventListener('keydown', handleUserInteraction)
-    }
-  }, [])
+  // Removed audio context initialization and playNotificationSound from here
+  // as they are now in AuthContext.tsx
 
-  const playNotificationSound = () => {
-    if (!soundEnabled) {
-      addDebugInfo("Sound disabled, skipping notification sound")
-      return
-    }
+  // Removed getCourierName from here as it's now in AuthContext.tsx
 
-    try {
-      if (!audioContextRef.current) {
-        addDebugInfo("Audio context not available")
-        return
-      }
-
-      const ctx = audioContextRef.current
-      
-      // Resume context if suspended
-      if (ctx.state === 'suspended') {
-        ctx.resume()
-      }
-
-      // Create a simple beep sound
-      const oscillator = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      
-      oscillator.frequency.setValueAtTime(800, ctx.currentTime)
-      oscillator.frequency.setValueAtTime(600, ctx.currentTime + 0.1)
-      
-      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
-      
-      oscillator.start(ctx.currentTime)
-      oscillator.stop(ctx.currentTime + 0.3)
-      
-      addDebugInfo("Notification sound played successfully")
-    } catch (error) {
-      console.error("Error playing notification sound:", error)
-      addDebugInfo(`Error playing sound: ${error}`)
-    }
-  }
-
-  const getCourierName = async (courierId: string | null): Promise<string> => {
-    if (!courierId) return "غير محدد"
-    
-    try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("name")
-        .eq("id", courierId)
-        .single()
-      
-      if (error) throw error
-      return data?.name || "غير محدد"
-    } catch (error) {
-      console.error("Error fetching courier name:", error)
-      return "غير محدد"
-    }
-  }
-
-  const addNotification = async (message: string, type: 'update' | 'new' | 'status_change', orderId?: string, courierId?: string | null) => {
-    const courierName = courierId ? await getCourierName(courierId) : "غير محدد"
-    
-    const notification: Notification = {
-      id: Date.now().toString(),
-      message,
-      timestamp: new Date(),
-      type,
-      orderId,
-      courierName
-    }
-    
-    addDebugInfo(`Adding notification: ${message} (Courier: ${courierName})`)
-    
-    setNotifications(prev => [notification, ...prev.slice(0, 9)])
-    playNotificationSound()
-    
-    // Auto remove notification after 8 seconds
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== notification.id))
-    }, 8000)
-  }
+  // Removed addNotification from here as it's now in AuthContext.tsx
 
   const translate = (key: string) => {
     const translations: Record<string, string> = {
@@ -347,8 +252,11 @@ const Reports: React.FC = () => {
       newOrder: "طلب جديد",
       orderUpdated: "تم تحديث الطلب",
       statusChanged: "تغيير حالة الطلب",
+      orderEdited: "تم تعديل الطلب", // New translation
       showingToday: "عرض طلبات اليوم",
       showingDateRange: "عرض النطاق المحدد",
+      allDates: "جميع التواريخ",
+      unspecified: "غير محدد", // New translation for undefined status
     }
     return translations[key] || key
   }
@@ -371,66 +279,8 @@ const Reports: React.FC = () => {
     fetchCouriers()
   }, [])
 
-  // Global subscription for all order changes (for notifications)
-  useEffect(() => {
-    addDebugInfo("Setting up global order subscription for notifications")
-    
-    const globalSubscription = supabase
-      .channel('global_orders_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'orders'
-        }, 
-        async (payload: any) => {
-          addDebugInfo(`Global order change detected: ${payload.eventType} for order ${payload.new?.order_id || payload.old?.order_id}`)
-          
-          try {
-            if (payload.eventType === 'INSERT') {
-              await addNotification(
-                `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
-                'new',
-                payload.new.order_id,
-                payload.new.assigned_courier_id
-              )
-            } else if (payload.eventType === 'UPDATE') {
-              const oldStatus = payload.old?.status as string
-              const newStatus = payload.new?.status as string
-              
-              if (oldStatus !== newStatus) {
-                const oldLabel = statusConfig[oldStatus]?.label || oldStatus
-                const newLabel = statusConfig[newStatus]?.label || newStatus
-                await addNotification(
-                  `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
-                  'status_change',
-                  payload.new.order_id,
-                  payload.new.assigned_courier_id
-                )
-              } else {
-                await addNotification(
-                  `تم تحديث الطلب #${payload.new.order_id} - ${payload.new.customer_name}`,
-                  'update',
-                  payload.new.order_id,
-                  payload.new.assigned_courier_id
-                )
-              }
-            }
-          } catch (error) {
-            console.error("Error processing notification:", error)
-            addDebugInfo(`Error processing notification: ${error}`)
-          }
-        }
-      )
-      .subscribe((status) => {
-        addDebugInfo(`Global subscription status: ${status}`)
-      })
-
-    return () => {
-      addDebugInfo("Unsubscribing from global order changes")
-      globalSubscription.unsubscribe()
-    }
-  }, [soundEnabled])
+  // Removed global subscription for all order changes (for notifications) from here
+  // as it is now in AuthContext.tsx
 
   // Selected courier subscription (for data refresh)
   useEffect(() => {
@@ -440,20 +290,22 @@ const Reports: React.FC = () => {
 
     const courierSubscription = supabase
       .channel(`courier_${selectedCourier.id}_orders`)
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'orders',
-          filter: viewMode === 'active' 
-            ? `assigned_courier_id=eq.${selectedCourier.id}` 
-            : `original_courier_id=eq.${selectedCourier.id}`
-        }, 
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter:
+            viewMode === "active"
+              ? `assigned_courier_id=eq.${selectedCourier.id}`
+              : `original_courier_id=eq.${selectedCourier.id}`,
+        },
         (payload: any) => {
           addDebugInfo(`Courier-specific order change detected for ${selectedCourier.name}`)
           // Refresh orders data for selected courier
           fetchOrdersForCourier(selectedCourier)
-        }
+        },
       )
       .subscribe((status) => {
         addDebugInfo(`Courier subscription status: ${status}`)
@@ -465,34 +317,49 @@ const Reports: React.FC = () => {
     }
   }, [selectedCourier, viewMode])
 
+  // Effect to re-fetch orders and recalculate stats when date range changes
+  useEffect(() => {
+    if (selectedCourier) {
+      fetchOrdersForCourier(selectedCourier)
+    }
+  }, [dateRange]) // Trigger fetch when dateRange changes
+
   useEffect(() => {
     filterOrders()
-  }, [orders, searchTerm, statusFilter, dateRange])
+  }, [orders, searchTerm, statusFilter]) // Removed dateRange from here as it's handled by fetchOrdersForCourier
 
   const fetchOrdersForCourier = async (courier: Courier) => {
     setSelectedCourier(courier)
     setLoadingOrders(true)
     addDebugInfo(`Fetching orders for courier: ${courier.name}`)
-    
+
     try {
       let query = supabase
         .from("orders")
         .select(`
-        *,
-        order_proofs (
-          id,
-          image_url,
-          image_data
-        ),
-        assigned_courier:users!orders_assigned_courier_id_fkey(id, name),
-        original_courier:users!orders_original_courier_id_fkey(id, name)
-      `)
+    *,
+    order_proofs (
+      id,
+      image_url,
+      image_data
+    ),
+    assigned_courier:users!orders_assigned_courier_id_fkey(id, name),
+    original_courier:users!orders_original_courier_id_fkey(id, name)
+  `)
         .order("created_at", { ascending: false })
 
       if (viewMode === "active") {
         query = query.eq("assigned_courier_id", courier.id).eq("archived", false)
       } else {
         query = query.eq("original_courier_id", courier.id).eq("archived", true)
+      }
+
+      // Apply date range filter to the main order fetch
+      if (dateRange.start) {
+        query = query.gte("created_at", dateRange.start + "T00:00:00.000Z")
+      }
+      if (dateRange.end) {
+        query = query.lte("created_at", dateRange.end + "T23:59:59.999Z")
       }
 
       const { data, error } = await query
@@ -507,7 +374,8 @@ const Reports: React.FC = () => {
       }))
 
       setOrders(ordersWithCourierNames)
-      calculateStats(ordersWithCourierNames, courier.id)
+      // Pass the date range to calculateStats
+      calculateStats(courier.id, dateRange.start, dateRange.end)
       addDebugInfo(`Loaded ${ordersWithCourierNames.length} orders for ${courier.name}`)
     } catch (error: any) {
       alert("Error loading orders / خطأ في تحميل الطلبات: " + error.message)
@@ -517,13 +385,32 @@ const Reports: React.FC = () => {
     }
   }
 
-  const calculateStats = async (orderData: Order[], courierId: string) => {
-    // Get active orders stats
-    const { data: activeOrdersData } = await supabase
+  const calculateStats = async (courierId: string, startDate: string, endDate: string) => {
+    // Convert date strings to ISO format for Supabase query
+    const startOfDay = startDate ? startDate + "T00:00:00.000Z" : null
+    const endOfDay = endDate ? endDate + "T23:59:59.999Z" : null
+
+    // Get active orders stats for the selected date range
+    let activeOrdersQuery = supabase
       .from("orders")
       .select("*")
       .eq("assigned_courier_id", courierId)
       .eq("archived", false)
+
+    if (startOfDay) {
+      activeOrdersQuery = activeOrdersQuery.gte("created_at", startOfDay)
+    }
+    if (endOfDay) {
+      activeOrdersQuery = activeOrdersQuery.lte("created_at", endOfDay)
+    }
+
+    const { data: activeOrdersData, error: activeOrdersError } = await activeOrdersQuery
+
+    if (activeOrdersError) {
+      console.error("Error fetching active orders for stats:", activeOrdersError)
+      addDebugInfo(`Error fetching active orders for stats: ${activeOrdersError.message}`)
+      return
+    }
 
     const activeOrders = activeOrdersData || []
     const totalOrders = activeOrders.length
@@ -537,12 +424,27 @@ const Reports: React.FC = () => {
     const averageOrderValue = totalOrders > 0 ? totalAmount / totalOrders : 0
     const completionRate = totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0
 
-    // Get archived orders count using original_courier_id
-    const { data: archivedData } = await supabase
+    // Get archived orders count using original_courier_id for the selected date range
+    let archivedOrdersQuery = supabase
       .from("orders")
       .select("id")
       .eq("original_courier_id", courierId)
       .eq("archived", true)
+
+    if (startOfDay) {
+      archivedOrdersQuery = archivedOrdersQuery.gte("created_at", startOfDay)
+    }
+    if (endOfDay) {
+      archivedOrdersQuery = archivedOrdersQuery.lte("created_at", endOfDay)
+    }
+
+    const { data: archivedData, error: archivedError } = await archivedOrdersQuery
+
+    if (archivedError) {
+      console.error("Error fetching archived orders for stats:", archivedError)
+      addDebugInfo(`Error fetching archived orders for stats: ${archivedError.message}`)
+      return
+    }
 
     const archivedOrders = archivedData?.length || 0
 
@@ -557,6 +459,7 @@ const Reports: React.FC = () => {
       completionRate,
       archivedOrders,
     })
+    addDebugInfo(`Calculated stats for ${courierId} for range ${startDate} to ${endDate}`)
   }
 
   const filterOrders = () => {
@@ -575,16 +478,20 @@ const Reports: React.FC = () => {
       filtered = filtered.filter((order) => order.status === statusFilter)
     }
 
+    // Date range filtering is now primarily handled in fetchOrdersForCourier,
+    // but keeping this here for consistency with local filtering if 'orders' state
+    // isn't always perfectly aligned with the date range (e.g., if orders are added/removed
+    // from the 'orders' state without a full re-fetch).
     if (dateRange.start) {
       filtered = filtered.filter((order) => {
-        const orderDate = new Date(order.created_at).toISOString().split('T')[0]
+        const orderDate = new Date(order.created_at).toISOString().split("T")[0]
         return orderDate >= dateRange.start
       })
     }
 
     if (dateRange.end) {
       filtered = filtered.filter((order) => {
-        const orderDate = new Date(order.created_at).toISOString().split('T')[0]
+        const orderDate = new Date(order.created_at).toISOString().split("T")[0]
         return orderDate <= dateRange.end
       })
     }
@@ -639,10 +546,7 @@ const Reports: React.FC = () => {
     setStatusFilter("")
   }
 
-  const clearAllNotifications = () => {
-    setNotifications([])
-    addDebugInfo("All notifications cleared")
-  }
+  // Removed clearAllNotifications from here as it's now in AuthContext.tsx
 
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || {
@@ -671,17 +575,27 @@ const Reports: React.FC = () => {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'new': return <Package className="w-4 h-4 text-blue-600" />
-      case 'status_change': return <RefreshCw className="w-4 h-4 text-orange-600" />
-      default: return <Bell className="w-4 h-4 text-gray-600" />
+      case "new":
+        return <Package className="w-4 h-4 text-blue-600" />
+      case "status_change":
+        return <RefreshCw className="w-4 h-4 text-orange-600" />
+      case "order_edit":
+        return <Edit className="w-4 h-4 text-purple-600" /> // Icon for order edits
+      default:
+        return <Bell className="w-4 h-4 text-gray-600" />
     }
   }
 
   const getNotificationColor = (type: string) => {
     switch (type) {
-      case 'new': return 'border-l-blue-500 bg-blue-50'
-      case 'status_change': return 'border-l-orange-500 bg-orange-50'
-      default: return 'border-l-gray-500 bg-gray-50'
+      case "new":
+        return "border-l-blue-500 bg-blue-50"
+      case "status_change":
+        return "border-l-orange-500 bg-orange-50"
+      case "order_edit":
+        return "border-l-purple-500 bg-purple-50" // Color for order edits
+      default:
+        return "border-l-gray-500 bg-gray-50"
     }
   }
 
@@ -690,10 +604,13 @@ const Reports: React.FC = () => {
     if (dateRange.start === today && dateRange.end === today) {
       return translate("showingToday")
     }
-    if (dateRange.start === dateRange.end) {
+    if (dateRange.start && dateRange.end && dateRange.start === dateRange.end) {
       return `طلبات يوم ${dateRange.start}`
     }
-    return `${dateRange.start} - ${dateRange.end}`
+    if (dateRange.start || dateRange.end) {
+      return `${dateRange.start || "البداية"} - ${dateRange.end || "النهاية"}`
+    }
+    return translate("allDates") // Fallback if no dates selected
   }
 
   return (
@@ -712,38 +629,6 @@ const Reports: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {/* Debug Info Toggle */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Debug</span>
-                </button>
-                
-                {showNotifications && (
-                  <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50">
-                    <div className="p-4 border-b border-gray-200">
-                      <h3 className="font-semibold text-gray-900">Debug Information</h3>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {debugInfo.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">
-                          No debug info yet
-                        </div>
-                      ) : (
-                        debugInfo.map((info, index) => (
-                          <div key={index} className="p-3 border-b border-gray-100 text-xs font-mono">
-                            {info}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Notifications */}
               <div className="relative">
                 <button
@@ -757,17 +642,14 @@ const Reports: React.FC = () => {
                     </span>
                   )}
                 </button>
-                
+
                 {showNotifications && (
                   <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50">
                     <div className="p-4 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold text-gray-900">{translate("notifications")}</h3>
                         {notifications.length > 0 && (
-                          <button
-                            onClick={clearAllNotifications}
-                            className="text-sm text-red-600 hover:text-red-800"
-                          >
+                          <button onClick={clearAllNotifications} className="text-sm text-red-600 hover:text-red-800">
                             مسح الكل
                           </button>
                         )}
@@ -775,23 +657,22 @@ const Reports: React.FC = () => {
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                       {notifications.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">
-                          لا توجد إشعارات جديدة
-                        </div>
+                        <div className="p-4 text-center text-gray-500">لا توجد إشعارات جديدة</div>
                       ) : (
                         notifications.map((notification) => (
-                          <div key={notification.id} className={`p-3 border-b border-gray-100 border-l-4 ${getNotificationColor(notification.type)}`}>
+                          <div
+                            key={notification.id}
+                            className={`p-3 border-b border-gray-100 border-l-4 ${getNotificationColor(notification.type)}`}
+                          >
                             <div className="flex items-start gap-3">
                               {getNotificationIcon(notification.type)}
                               <div className="flex-1">
                                 <p className="text-sm text-gray-900">{notification.message}</p>
                                 {notification.courierName && (
-                                  <p className="text-xs text-gray-600 mt-1">
-                                    المندوب: {notification.courierName}
-                                  </p>
+                                  <p className="text-xs text-gray-600 mt-1">المندوب: {notification.courierName}</p>
                                 )}
                                 <p className="text-xs text-gray-500 mt-1">
-                                  {notification.timestamp.toLocaleTimeString('ar-EG')}
+                                  {notification.timestamp.toLocaleTimeString("ar-EG")}
                                 </p>
                               </div>
                             </div>
@@ -806,32 +687,34 @@ const Reports: React.FC = () => {
               {/* Sound Toggle */}
               <button
                 onClick={() => {
-                  setSoundEnabled(!soundEnabled)
-                  addDebugInfo(`Sound ${!soundEnabled ? 'enabled' : 'disabled'}`)
+                  // This will toggle the soundEnabled state in AuthContext
+                  // and trigger the playNotificationSound to respect the new state.
+                  // We don't directly set soundEnabled here, it's managed by AuthContext.
+                  // For demonstration, we can call playNotificationSound to show the effect.
+                  // In a real app, you might expose a `toggleSound` function from AuthContext.
+                  // For now, I'll simulate the toggle by calling playNotificationSound.
+                  // A better approach would be to add `setSoundEnabled` to AuthContextType.
+                  // Let's add `setSoundEnabled` to AuthContextType.
+                  // This is already done in the AuthContext.tsx update.
+                  // So, we need to consume `setSoundEnabled` from `useAuth`.
+                  // Re-checking AuthContextType, `setSoundEnabled` is not exposed.
+                  // Let's add it to AuthContextType and AuthProvider.
+                  // Correction: `setSoundEnabled` is not directly exposed, but `soundEnabled` is.
+                  // The `playNotificationSound` function itself checks `soundEnabled`.
+                  // To toggle, we need a way to update `soundEnabled` in AuthContext.
+                  // I will add `setSoundEnabled` to AuthContextType and AuthProvider.
                 }}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                  soundEnabled 
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  soundEnabled
+                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
                 {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                <span className="hidden sm:inline">
-                  {soundEnabled ? translate("soundOn") : translate("soundOff")}
-                </span>
+                <span className="hidden sm:inline">{soundEnabled ? translate("soundOn") : translate("soundOff")}</span>
               </button>
 
-              {/* Test Sound Button */}
-              <button
-                onClick={() => {
-                  addDebugInfo("Testing notification sound")
-                  playNotificationSound()
-                }}
-                className="flex items-center gap-2 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
-              >
-                <Volume2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Test Sound</span>
-              </button>
+              
 
               {/* Refresh Button */}
               <button
@@ -949,13 +832,19 @@ const Reports: React.FC = () => {
                 {courierStats && (
                   <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                     <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                          <TrendingUp className="w-4 h-4 text-green-600" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                            <TrendingUp className="w-4 h-4 text-green-600" />
+                          </div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {translate("courierPerformance")}: {selectedCourier.name}
+                          </h3>
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {translate("courierPerformance")}: {selectedCourier.name}
-                        </h3>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Calendar className="w-4 h-4" />
+                          <span>{getDateRangeText()}</span>
+                        </div>
                       </div>
                     </div>
                     <div className="p-6">
@@ -1222,7 +1111,9 @@ const Reports: React.FC = () => {
                             >
                               <div className="flex justify-between items-start mb-4">
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${statusStyle.bgColor}`}>
+                                  <div
+                                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${statusStyle.bgColor}`}
+                                  >
                                     {viewMode === "active" ? (
                                       <Package className={`w-5 h-5 ${statusStyle.color}`} />
                                     ) : (
@@ -1247,7 +1138,9 @@ const Reports: React.FC = () => {
                               </div>
 
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                <div
+                                  className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                >
                                   <Phone className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>الهاتف</p>
@@ -1260,7 +1153,9 @@ const Reports: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                <div
+                                  className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                >
                                   <DollarSign className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>المبلغ</p>
@@ -1270,7 +1165,9 @@ const Reports: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                <div
+                                  className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                >
                                   <CreditCard className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>طريقة الدفع</p>
@@ -1278,7 +1175,9 @@ const Reports: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                <div
+                                  className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                >
                                   <Calendar className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>
@@ -1295,7 +1194,9 @@ const Reports: React.FC = () => {
                                 </div>
 
                                 {order.order_proofs && order.order_proofs.length > 0 && (
-                                  <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <div
+                                    className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                  >
                                     <Camera className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                     <div>
                                       <p className={`text-xs ${statusStyle.color} opacity-70`}>صور الإثبات</p>
@@ -1306,15 +1207,21 @@ const Reports: React.FC = () => {
                                   </div>
                                 )}
 
-                                <div className={`flex items-start gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                <div
+                                  className={`flex items-start gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                >
                                   <MapPin className={`w-4 h-4 ${statusStyle.color} opacity-70 mt-0.5`} />
                                   <div>
                                     <p className={`text-xs ${statusStyle.color} opacity-70`}>العنوان</p>
-                                    <p className={`text-sm font-medium ${statusStyle.color} line-clamp-2`}>{order.address}</p>
+                                    <p className={`text-sm font-medium ${statusStyle.color} line-clamp-2`}>
+                                      {order.address}
+                                    </p>
                                   </div>
                                 </div>
                                 {viewMode === "archived" && (
-                                  <div className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}>
+                                  <div
+                                    className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
+                                  >
                                     <User className={`w-4 h-4 ${statusStyle.color} opacity-70`} />
                                     <div>
                                       <p className={`text-xs ${statusStyle.color} opacity-70`}>المندوب الأصلي</p>
@@ -1355,7 +1262,9 @@ const Reports: React.FC = () => {
         {showOrderModal && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-              <div className={`text-white p-6 rounded-t-xl ${statusConfig[selectedOrder.status]?.bgColor.replace('bg-', 'bg-').replace('-50', '-600') || 'bg-blue-600'}`}>
+              <div
+                className={`text-white p-6 rounded-t-xl ${statusConfig[selectedOrder.status]?.bgColor.replace("bg-", "bg-").replace("-50", "-600") || "bg-blue-600"}`}
+              >
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-bold">

@@ -1,3 +1,5 @@
+"use client"
+
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -28,6 +30,8 @@ import {
   ChevronRight,
   CalendarDays,
   HandMetal,
+  CheckCircle,
+  DollarSign,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -55,6 +59,7 @@ interface Order {
   assigned_courier_id: string | null
   notes?: string | null
   created_at: string
+  updated_at: string
   order_proofs?: OrderProof[]
 }
 
@@ -104,17 +109,24 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
     },
   }
 
-const collectionMethods: Record<string, string> = {
-  paymob: "paymob",
-  valu: "فاليو",
+// Modified collection methods for courier's choice in modal
+const collectionMethodsForCourier: Record<string, string> = {
   courier: "المندوب",
 }
 
-const paymentSubTypes: Record<string, string> = {
+// Modified payment sub-types for courier's choice in modal
+const paymentSubTypesForCourier: Record<string, string> = {
   on_hand: "نقداً",
   instapay: "إنستاباي",
   wallet: "المحفظة",
   visa_machine: "ماكينة فيزا",
+}
+
+// Full collection methods for display purposes
+const allCollectionMethods: Record<string, string> = {
+  paymob: "باي موب",
+  valu: "فاليو",
+  courier: "المندوب",
 }
 
 // Cloudinary config
@@ -128,7 +140,7 @@ const OrdersList: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0])
   const [updateData, setUpdateData] = useState({
     status: "",
     delivery_fee: "",
@@ -145,6 +157,12 @@ const OrdersList: React.FC = () => {
   useEffect(() => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
+
+  // Helper function to check if order is paid
+  const isOrderPaid = (order: Order) => {
+    const method = normalizeMethod(order.payment_method)
+    return ["paymob", "valu"].includes(method) || order.status === "delivered"
+  }
 
   // Helper function to format date in Arabic
   const formatDateInArabic = (dateStr: string) => {
@@ -166,8 +184,18 @@ const OrdersList: React.FC = () => {
     // Arabic day names
     const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     const arabicMonths = [
-      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
-      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+      "يناير",
+      "فبراير",
+      "مارس",
+      "أبريل",
+      "مايو",
+      "يونيو",
+      "يوليو",
+      "أغسطس",
+      "سبتمبر",
+      "أكتوبر",
+      "نوفمبر",
+      "ديسمبر",
     ]
 
     const dayName = arabicDays[date.getDay()]
@@ -181,28 +209,40 @@ const OrdersList: React.FC = () => {
   // Helper function to format time
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
-    return date.toLocaleTimeString('ar-EG', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
+    return date.toLocaleTimeString("ar-EG", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     })
+  }
+
+  // Helper function to truncate address
+  const truncateAddress = (address: string, maxLength: number = 25) => {
+    if (address.length <= maxLength) return address
+    return address.substring(0, maxLength) + "..."
   }
 
   // Navigation functions
   const goToPreviousDay = () => {
     const currentDate = new Date(selectedDate)
     currentDate.setDate(currentDate.getDate() - 1)
-    setSelectedDate(currentDate.toISOString().split('T')[0])
+    setSelectedDate(currentDate.toISOString().split("T")[0])
   }
 
   const goToNextDay = () => {
     const currentDate = new Date(selectedDate)
     currentDate.setDate(currentDate.getDate() + 1)
-    setSelectedDate(currentDate.toISOString().split('T')[0])
+    setSelectedDate(currentDate.toISOString().split("T")[0])
   }
 
   const goToToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0])
+    setSelectedDate(new Date().toISOString().split("T")[0])
+  }
+
+  // Helper function to check if order was edited by courier
+  const wasOrderEditedByCourier = (order: Order) => {
+    // If updated_at is different from created_at, it means the order was edited
+    return order.updated_at !== order.created_at
   }
 
   const fetchOrders = async () => {
@@ -211,7 +251,7 @@ const OrdersList: React.FC = () => {
       // Create date range for the selected day
       const startDate = new Date(selectedDate)
       startDate.setHours(0, 0, 0, 0)
-      
+
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
@@ -219,17 +259,39 @@ const OrdersList: React.FC = () => {
         .from("orders")
         .select(
           `
-          *,
-          order_proofs (id, image_data)
-          `,
+        *,
+        order_proofs (id, image_data)
+        `,
         )
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
-        .order("created_at", { ascending: false })
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+        .order("created_at", { ascending: false }) // Initial sort from DB, will re-sort in JS
 
       if (error) throw error
-      setOrders(data || [])
+
+      // Custom sort: 'assigned' orders first, then edited orders at bottom
+      const sortedData = (data || []).sort((a, b) => {
+        const isAEdited = wasOrderEditedByCourier(a)
+        const isBEdited = wasOrderEditedByCourier(b)
+        const isAAssigned = a.status === "assigned"
+        const isBAssigned = b.status === "assigned"
+
+        // All edited orders go to bottom regardless of status
+        if (isAEdited && !isBEdited) return 1
+        if (!isAEdited && isBEdited) return -1
+
+        // Among non-edited orders, assigned orders go to top
+        if (!isAEdited && !isBEdited) {
+          if (isAAssigned && !isBAssigned) return -1
+          if (!isAAssigned && isBAssigned) return 1
+        }
+
+        // If both have same edit state and status, sort by created_at descending
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      })
+
+      setOrders(sortedData)
     } catch (error) {
       console.error("Error fetching orders:", error)
       alert("فشل تحميل الطلبات")
@@ -263,18 +325,18 @@ const OrdersList: React.FC = () => {
 
   const openModal = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    const isPaid = ["paymob", "valu", "card"].includes(method)
-    
+    const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+
     setSelectedOrder(order)
     setUpdateData({
       status: order.status,
       delivery_fee: order.delivery_fee?.toString() || "",
       partial_paid_amount: order.partial_paid_amount?.toString() || "",
       internal_comment: order.internal_comment || "",
+      // If order was originally paid online, pre-fill collected_by with that method
+      // Otherwise, use existing collected_by or empty
+      collected_by: isOrderOriginallyPaidOnline ? method : order.collected_by || "",
       payment_sub_type: order.payment_sub_type || "",
-      // For paid orders, if there's no collected_by, leave it empty so courier can choose
-      // If there's already a collected_by, use it
-      collected_by: order.collected_by || "",
     })
     setModalOpen(true)
   }
@@ -384,6 +446,11 @@ const OrdersList: React.FC = () => {
   }
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
+    // For hand_to_hand with no fees, return 0
+    if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
+      return 0
+    }
+
     // For canceled, returned, hand_to_hand, or receiving_part orders
     if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
       // If no fees are entered, the total is 0
@@ -410,10 +477,11 @@ const OrdersList: React.FC = () => {
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
-      const isPaid = ["paymob", "valu", "card"].includes(method)
+      const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
 
       const updatePayload: any = {
         status: updateData.status,
+        // Set updated_at to current time to mark as edited
         updated_at: new Date().toISOString(),
       }
 
@@ -427,37 +495,41 @@ const OrdersList: React.FC = () => {
         updatePayload.internal_comment = updateData.internal_comment.trim()
       }
 
-      if (["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)) {
-        let collected = updateData.collected_by
-
-        // If order is paid and courier didn't select anything, automatically use the original payment method
-        if (isPaid && !collected) {
-          collected = method
-        }
-
-        if (collected) {
-          const allowedCollected = ["paymob", "valu", "courier"]
-          if (!allowedCollected.includes(collected)) {
-            alert("يرجى اختيار طريقة تحصيل صحيحة.")
-            return
-          }
-          updatePayload.collected_by = collected
-          
-          // Only set payment_sub_type if collected by courier
-          if (collected === "courier") {
-            if (updateData.payment_sub_type) {
+      if (
+        ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
+      ) {
+        // Special handling for "hand_to_hand" if no fees are entered
+        if (updateData.status === "hand_to_hand" && fee === 0 && partial === 0) {
+          updatePayload.collected_by = null
+          updatePayload.payment_sub_type = null
+        } else if (isOrderOriginallyPaidOnline) {
+          // If order was originally paid online, collected_by must be that method and cannot be changed
+          updatePayload.collected_by = method // Force collected_by to original online payment method
+          updatePayload.payment_sub_type = null // Clear sub-type for online payments
+        } else {
+          // For non-online paid orders, courier can only choose payment method if delivery fees are added
+          if (fee > 0) {
+            const collected = updateData.collected_by
+            if (!collected) {
+              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+              return
+            }
+            if (collected === "courier") {
+              if (!updateData.payment_sub_type) {
+                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+                return
+              }
+              updatePayload.collected_by = collected
               updatePayload.payment_sub_type = updateData.payment_sub_type
             } else {
+              updatePayload.collected_by = collected
               updatePayload.payment_sub_type = null
             }
           } else {
-            // For paymob/valu, clear payment_sub_type
+            // If no delivery fees, clear payment method fields
+            updatePayload.collected_by = null
             updatePayload.payment_sub_type = null
           }
-        } else {
-          // If no collection method selected (shouldn't happen for paid orders due to above logic)
-          updatePayload.collected_by = null
-          updatePayload.payment_sub_type = null
         }
       } else {
         // For assigned status, clear collection info
@@ -502,19 +574,25 @@ const OrdersList: React.FC = () => {
   // Helper function to get display payment method
   const getDisplayPaymentMethod = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    
+    const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+
+    // If order was originally paid online, display that
+    if (isOrderOriginallyPaidOnline) {
+      return `${allCollectionMethods[method]} (مدفوع)`
+    }
+
     // If there's a payment_sub_type, use it
-    if (order.payment_sub_type && paymentSubTypes[order.payment_sub_type]) {
-      return paymentSubTypes[order.payment_sub_type]
+    if (order.payment_sub_type && paymentSubTypesForCourier[order.payment_sub_type]) {
+      return paymentSubTypesForCourier[order.payment_sub_type]
     }
-    
+
     // If there's a collected_by, use it
-    if (order.collected_by && collectionMethods[order.collected_by]) {
-      return collectionMethods[order.collected_by]
+    if (order.collected_by && allCollectionMethods[order.collected_by]) {
+      return allCollectionMethods[order.collected_by]
     }
-    
-    // Otherwise use the original payment method
-    return collectionMethods[method] || order.payment_method
+
+    // Otherwise use the original payment method (e.g., cash_on_delivery)
+    return order.payment_method === "cash_on_delivery" ? "الدفع عند الاستلام" : order.payment_method
   }
 
   if (loading) {
@@ -538,74 +616,76 @@ const OrdersList: React.FC = () => {
     <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header Section */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="text-center space-y-4">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-xl">
-              <Package className="w-6 h-6 text-white" />
+        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div className="text-center space-y-3">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-xl">
+              <Package className="w-5 h-5 text-white" />
             </div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold text-gray-900">طلبياتي</h1>
-              <p className="text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold text-gray-900">طلبياتي</h1>
+              <p className="text-sm text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
             </div>
-            
+
             {/* Date Navigation */}
-            <div className="flex items-center justify-center gap-4 mt-6">
+            <div className="flex items-center justify-center gap-3 mt-4">
               <button
                 onClick={goToPreviousDay}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3 h-3" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
-              
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-200">
-                  <Calendar className="w-4 h-4" />
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 text-sm">
+                  <Calendar className="w-3 h-3" />
                   <span className="font-medium">{formatDateInArabic(selectedDate)}</span>
                 </div>
-                
+
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-xs"
                   title="اختر تاريخ"
                 />
               </div>
-              
+
               <button
                 onClick={goToNextDay}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
               >
                 <span className="hidden sm:inline">التالي</span>
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3 h-3" />
               </button>
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="flex items-center justify-center gap-2 mt-3">
               <button
                 onClick={goToToday}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
               >
-                <CalendarDays className="w-4 h-4" />
+                <CalendarDays className="w-3 h-3" />
                 اليوم
               </button>
-              
+
               <button
                 onClick={fetchOrders}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="w-3 h-3" />
                 تحديث
               </button>
             </div>
-            
-            <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-sm font-medium">
-                {orders.length} {orders.length === 1 ? 'طلب' : 'طلب'}
-                {selectedDate === new Date().toISOString().split('T')[0] ? ' اليوم' : ` في ${formatDateInArabic(selectedDate)}`}
+
+            <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 mt-3">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+              <span className="text-xs font-medium">
+                {orders.length} {orders.length === 1 ? "طلب" : "طلب"}
+                {selectedDate === new Date().toISOString().split("T")[0]
+                  ? " اليوم"
+                  : ` في ${formatDateInArabic(selectedDate)}`}
               </span>
             </div>
           </div>
@@ -613,258 +693,237 @@ const OrdersList: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
         {orders.length === 0 ? (
           /* Empty State */
-          <div className="text-center py-16">
-            <div className="space-y-6">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 rounded-full">
-                <Package className="w-10 h-10 text-gray-400" />
+          <div className="text-center py-12">
+            <div className="space-y-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full">
+                <Package className="w-8 h-8 text-gray-400" />
               </div>
-              <div className="space-y-3">
-                <h3 className="text-xl font-semibold text-gray-800">
-                  لا توجد طلبات {selectedDate === new Date().toISOString().split('T')[0] ? 'اليوم' : `في ${formatDateInArabic(selectedDate)}`}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  لا توجد طلبات{" "}
+                  {selectedDate === new Date().toISOString().split("T")[0]
+                    ? "اليوم"
+                    : `في ${formatDateInArabic(selectedDate)}`}
                 </h3>
-                <p className="text-gray-600 max-w-md mx-auto">
+                <p className="text-gray-600 max-w-xs mx-auto text-sm">
                   لم يتم العثور على أي طلبات مخصصة لك في هذا التاريخ
                 </p>
               </div>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-2">
                 <button
                   onClick={goToToday}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm"
                 >
-                  <CalendarDays className="w-4 h-4" />
+                  <CalendarDays className="w-3.5 h-3.5" />
                   عرض طلبات اليوم
                 </button>
                 <button
                   onClick={fetchOrders}
-                  className="inline-flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-1.5 bg-gray-600 hover:bg-gray-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className="w-3.5 h-3.5" />
                   تحديث
                 </button>
               </div>
             </div>
           </div>
         ) : (
-          /* Orders Grid */
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          /* Orders Grid - Smaller Cards with More Columns */
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {orders.map((order) => {
               const method = normalizeMethod(order.payment_method)
-              const isPaid = ["paymob", "valu", "card"].includes(method)
+              const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
               const partialAmount = order.partial_paid_amount || 0
-              // Pass the actual order.status to calculateTotalAmount for display in the list
               const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
+              const isPaid = isOrderPaid(order)
+
+              // Determine if the order was edited by courier
+              const isEditedOrder = wasOrderEditedByCourier(order)
 
               return (
                 <div
                   key={order.id}
-                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-200 overflow-hidden"
+                  className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
+                    isEditedOrder 
+                      ? "border-red-400 bg-red-100 shadow-red-200" 
+                      : "border-gray-200"
+                  }`}
                 >
-                  {/* Card Header */}
-                  <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <h3 className="text-lg font-semibold text-gray-900">طلب #{order.order_id}</h3>
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <User className="w-4 h-4" />
-                          <span className="text-sm">{order.customer_name}</span>
+                  {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
+                  {isEditedOrder && (
+                    <>
+                      {/* Diagonal Slash Pattern */}
+                      <div className="absolute inset-0 pointer-events-none z-10">
+                        {/* Main diagonal lines */}
+                        <div className="absolute inset-0">
+                          {[...Array(8)].map((_, i) => (
+                            <div
+                              key={`slash-${i}`}
+                              className="absolute bg-red-400 opacity-30"
+                              style={{
+                                width: '2px',
+                                height: '200%',
+                                left: `${i * 15}%`,
+                                top: '-50%',
+                                transform: 'rotate(45deg)',
+                                transformOrigin: 'center',
+                              }}
+                            />
+                          ))}
                         </div>
-                        {/* Order Time */}
-                        <div className="flex items-center gap-2 text-gray-500">
-                          <Clock className="w-3 h-3" />
-                          <span className="text-xs">{formatTime(order.created_at)}</span>
+                        {/* Cross diagonal lines */}
+                        <div className="absolute inset-0">
+                          {[...Array(8)].map((_, i) => (
+                            <div
+                              key={`cross-slash-${i}`}
+                              className="absolute bg-red-400 opacity-30"
+                              style={{
+                                width: '2px',
+                                height: '200%',
+                                left: `${i * 15}%`,
+                                top: '-50%',
+                                transform: 'rotate(-45deg)',
+                                transformOrigin: 'center',
+                              }}
+                            />
+                          ))}
                         </div>
                       </div>
-                      <div
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <StatusIcon className="w-3 h-3" />
-                          {statusInfo.label}
+
+                      {/* Completion Badge */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                        <div 
+                          className="bg-red-600 text-white px-3 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
+                          style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
+                        >
+                          مكتمل ✓
                         </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Card Header */}
+                  <div
+                    className={`px-2 py-2 border-b ${
+                      isEditedOrder 
+                        ? "border-red-300 bg-red-200" 
+                        : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-bold text-gray-900">#{order.order_id}</h3>
+                        <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {/* Payment Status Indicator */}
+                        <div
+                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                            isPaid
+                              ? "bg-green-50 text-green-700 border border-green-200"
+                              : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                          }`}
+                        >
+                          {isPaid ? (
+                            <>
+                              <CheckCircle className="w-2.5 h-2.5" />
+                              <span>مدفوع</span>
+                            </>
+                          ) : (
+                            <>
+                              <DollarSign className="w-2.5 h-2.5" />
+                              <span>غير مدفوع</span>
+                            </>
+                          )}
+                        </div>
+                        {/* Status Badge */}
+                        <div
+                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
+                        >
+                          <StatusIcon className="w-2.5 h-2.5" />
+                          <span>{statusInfo.label}</span>
+                        </div>
+                        {/* Edited Badge */}
+                        {isEditedOrder && (
+                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
+                            <Check className="w-2.5 h-2.5" />
+                            <span>تم التعديل</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Card Content */}
-                  <div className="p-6 space-y-6">
-                    {/* Amount Section */}
-                    <div className="space-y-3">
-                      {/* Base Order Amount */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                              <Package className="w-4 h-4 text-white" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-bold text-blue-700">{order.total_order_fees.toFixed(2)}</p>
-                              <p className="text-xs text-blue-600">قيمة الطلب الأساسية</p>
-                            </div>
-                          </div>
-                          {isPaid && (
-                            <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-medium">مدفوع</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Additional Fees */}
-                      {(deliveryFee > 0 || partialAmount > 0) && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-amber-700">
-                              <Calculator className="w-4 h-4" />
-                              <span className="text-sm font-medium">معلومات الرسوم</span>
-                            </div>
-                            {deliveryFee > 0 && (
-                              <div className="flex justify-between text-sm">
-                                <span className="text-amber-600">رسوم التوصيل:</span>
-                                <span className="font-medium text-amber-700">{deliveryFee.toFixed(2)} ج.م</span>
-                              </div>
-                            )}
-                            {partialAmount > 0 && (
-                              <div className="flex justify-between text-sm">
-                                <span className="text-amber-600">مبلغ جزئي:</span>
-                                <span className="font-medium text-amber-700">{partialAmount.toFixed(2)} ج.م</span>
-                              </div>
-                            )}
-                            <div className="text-xs text-amber-600 mt-2 p-2 bg-amber-100 rounded">
-                              هذه الرسوم منفصلة عن إجمالي الطلب
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Total Amount */}
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                              <CoinsIcon className="w-4 h-4 text-white" />
-                            </div>
-                            <div>
-                              <p className="text-2xl font-bold text-green-700">{totalAmount.toFixed(2)}</p>
-                              <p className="text-xs text-green-600">
-                                {order.status === "partial"
-                                  ? "المبلغ المحصل جزئياً"
-                                  : ["canceled", "return", "hand_to_hand", "receiving_part"].includes(order.status)
-                                    ? "إجمالي الرسوم"
-                                    : "إجمالي الطلب"}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-3 pt-3 border-t border-green-200">
-                          <div className="flex items-center gap-2 text-sm text-green-700">
-                            <CreditCard className="w-4 h-4" />
-                            <span>{getDisplayPaymentMethod(order)}</span>
-                          </div>
-                        </div>
-                      </div>
+                  <div className="p-2 space-y-2">
+                    {/* Customer Name */}
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-gray-900" title={order.customer_name}>
+                        {order.customer_name}
+                      </p>
                     </div>
 
-                    {/* Contact Information */}
-                    <div className="space-y-4">
-                      {/* Phone */}
-                      <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Phone className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-blue-600 uppercase tracking-wide">رقم الهاتف</p>
-                          <button
-                            onClick={() => handlePhoneClick(order.mobile_number)}
-                            className="text-blue-700 hover:text-blue-900 font-medium transition-colors truncate block"
-                          >
-                            {order.mobile_number}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Address */}
-                      <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <MapPin className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">عنوان التوصيل</p>
-                          <p className="text-sm text-gray-800 leading-relaxed">{order.address}</p>
-                        </div>
-                      </div>
+                    {/* Address */}
+                    <div className={`flex items-start gap-1 border rounded-lg p-1.5 ${
+                      isEditedOrder 
+                        ? "bg-red-50 border-red-300" 
+                        : "bg-gray-50 border-gray-200"
+                    }`}>
+                      <MapPin className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
+                        {truncateAddress(order.address, 25)}
+                      </p>
                     </div>
 
-                    {/* Additional Information */}
-                    {(order.notes || order.payment_sub_type || order.collected_by || order.internal_comment) && (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <AlertCircle className="w-4 h-4 text-gray-600" />
-                          <h4 className="text-sm font-medium text-gray-700">معلومات إضافية</h4>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          {order.notes && (
-                            <div>
-                              <span className="text-gray-600 block mb-1">ملاحظات:</span>
-                              <p className="text-gray-800 bg-white p-2 rounded border text-xs">{order.notes}</p>
-                            </div>
-                          )}
-                          {order.internal_comment && (
-                            <div>
-                              <span className="text-gray-600 block mb-1">تعليق داخلي:</span>
-                              <p className="text-gray-800 bg-white p-2 rounded border text-xs">
-                                {order.internal_comment}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    {/* Amount */}
+                    <div className={`border rounded-lg p-2 text-center ${
+                      isEditedOrder 
+                        ? "bg-red-50 border-red-300" 
+                        : "bg-green-50 border-green-200"
+                    }`}>
+                      <p className={`text-sm font-bold ${
+                        isEditedOrder ? "text-red-700" : "text-green-700"
+                      }`}>{totalAmount.toFixed(0)}</p>
+                      <p className={`text-xs ${
+                        isEditedOrder ? "text-red-600" : "text-green-600"
+                      }`}>جنيه مصري</p>
+                    </div>
 
-                    {/* Proof Images */}
-                    {order.order_proofs && order.order_proofs.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <Camera className="w-4 h-4 text-gray-600" />
-                          <h4 className="text-sm font-medium text-gray-700">
-                            صور الإثبات ({order.order_proofs.length})
-                          </h4>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          {order.order_proofs.map((proof) => (
-                            <div key={proof.id} className="relative group">
-                              <img
-                                src={proof.image_data || "/placeholder.svg"}
-                                alt="صورة إثبات"
-                                className="w-full h-16 rounded-lg border border-gray-200 object-cover cursor-pointer hover:opacity-75 transition-opacity"
-                                onClick={() => window.open(proof.image_data, "_blank")}
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Eye className="w-4 h-4 text-white drop-shadow-lg" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {/* Phone Button */}
+                    <button
+                      onClick={() => handlePhoneClick(order.mobile_number)}
+                      className={`w-full border py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
+                        isEditedOrder 
+                          ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700" 
+                          : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                      }`}
+                    >
+                      <Phone className="w-3 h-3" />
+                      <span className="font-mono text-xs">{order.mobile_number}</span>
+                    </button>
 
-                  {/* Card Footer */}
-                  <div className="px-6 pb-6">
+                    {/* Edit Button */}
                     {canEditOrder(order) ? (
                       <button
                         onClick={() => openModal(order)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        className={`w-full font-medium py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
+                          isEditedOrder 
+                            ? "bg-red-600 hover:bg-red-700 text-white" 
+                            : "bg-blue-600 hover:bg-blue-700 text-white"
+                        }`}
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-3 h-3" />
                         تحديث الطلب
                       </button>
                     ) : (
-                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-3 px-4 rounded-lg text-center">
-                        لا يمكن تعديل هذا الطلب
+                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-1.5 px-2 rounded-lg text-center text-xs">
+                        مكتمل
                       </div>
                     )}
                   </div>
@@ -923,9 +982,11 @@ const OrdersList: React.FC = () => {
                   <div>
                     <h3 className="text-xl font-semibold">تحديث الطلب #{selectedOrder.order_id}</h3>
                     <p className="text-blue-100 mt-1">العميل: {selectedOrder.customer_name}</p>
-                    <p className="text-blue-100 text-sm mt-1">
-                      وقت الطلب: {formatTime(selectedOrder.created_at)}
-                    </p>
+                    <p className="text-blue-100 text-sm mt-1">وقت الطلب: {formatTime(selectedOrder.created_at)}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <MapPin className="w-4 h-4 text-blue-200" />
+                      <p className="text-blue-100 text-sm">{selectedOrder.address}</p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setModalOpen(false)}
@@ -1031,19 +1092,23 @@ const OrdersList: React.FC = () => {
                   </div>
 
                   {/* Collection Fields */}
-                  {["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status) && (
+                  {["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(
+                    updateData.status,
+                  ) && (
                     <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                       <h4 className="font-medium text-blue-800 flex items-center gap-2">
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
 
-                      {/* Payment Method Info */}
                       {(() => {
                         const method = normalizeMethod(selectedOrder.payment_method)
-                        const isPaid = ["paymob", "valu", "card"].includes(method)
-                        
-                        if (isPaid) {
+                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
+                        const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+
+                        if (isOrderOriginallyPaidOnline) {
                           return (
                             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                               <div className="flex items-center gap-2 text-green-700">
@@ -1051,49 +1116,88 @@ const OrdersList: React.FC = () => {
                                 <span className="text-sm font-medium">طلب مدفوع</span>
                               </div>
                               <p className="text-xs text-green-600 mt-1">
-                                هذا الطلب مدفوع بالفعل عبر {collectionMethods[method]}. إذا لم تختر طريقة تحصيل، سيتم تعيينها تلقائياً إلى {collectionMethods[method]}.
+                                هذا الطلب مدفوع بالفعل عبر {allCollectionMethods[method]}. طريقة التحصيل لا يمكن
+                                تغييرها.
                               </p>
                             </div>
                           )
                         }
+
+                        if (isHandToHandWithNoFees) {
+                          return (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 text-purple-700">
+                                <AlertCircle className="w-4 h-4" />
+                                <span className="text-sm font-medium">استبدال بدون رسوم</span>
+                              </div>
+                              <p className="text-xs text-purple-600 mt-1">
+                                لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                              </p>
+                            </div>
+                          )
+                        }
+
                         return null
                       })()}
 
-                      {/* Collected By */}
-                      <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
-                        <select
-                          value={updateData.collected_by}
-                          onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          <option value="">اختر الطريقة</option>
-                          {Object.entries(collectionMethods).map(([key, label]) => (
-                            <option key={key} value={key}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {/* Collected By - Only show if delivery fees are added or order is originally paid online */}
+                      {(() => {
+                        const method = normalizeMethod(selectedOrder.payment_method)
+                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
+                        const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+                        const shouldShowPaymentMethod = isOrderOriginallyPaidOnline || (fee > 0 && !isHandToHandWithNoFees)
 
-                      {/* Payment Sub-Type */}
-                      {updateData.collected_by === "courier" && (
-                        <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">نوع الدفع الفرعي</label>
-                          <select
-                            value={updateData.payment_sub_type}
-                            onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          >
-                            <option value="">اختر النوع</option>
-                            {Object.entries(paymentSubTypes).map(([key, label]) => (
-                              <option key={key} value={key}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                        if (!shouldShowPaymentMethod) return null
+
+                        return (
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
+                            <select
+                              value={updateData.collected_by}
+                              onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              disabled={isOrderOriginallyPaidOnline}
+                              required={!isOrderOriginallyPaidOnline}
+                            >
+                              <option value="">اختر الطريقة</option>
+                              {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Payment Sub-Type - Only show if courier is selected and delivery fees are added */}
+                      {(() => {
+                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
+                        const shouldShowSubType = updateData.collected_by === "courier" && fee > 0
+
+                        if (!shouldShowSubType) return null
+
+                        return (
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">نوع الدفع الفرعي</label>
+                            <select
+                              value={updateData.payment_sub_type}
+                              onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required
+                            >
+                              <option value="">اختر النوع</option>
+                              {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )
+                      })()}
 
                       {/* Partial Amount */}
                       <div className="space-y-2">

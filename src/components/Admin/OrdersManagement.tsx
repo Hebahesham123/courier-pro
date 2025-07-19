@@ -34,8 +34,6 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  Eye,
-  EyeOff,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -127,14 +125,14 @@ const OrdersManagement: React.FC = () => {
   const [viewMode, setViewMode] = useState<"active" | "archived">("active")
   const [expandedRows, setExpandedRows] = useState<string[]>([])
   const [isMobile, setIsMobile] = useState(false)
-  
+
   // Date state - default to today
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date()
-    return today.toISOString().split('T')[0] // Format: YYYY-MM-DD
+    return today.toISOString().split("T")[0] // Format: YYYY-MM-DD
   })
   const [showDatePicker, setShowDatePicker] = useState(false)
-  
+
   const [filters, setFilters] = useState({
     courier: "",
     mobile: "",
@@ -149,8 +147,8 @@ const OrdersManagement: React.FC = () => {
       setIsMobile(window.innerWidth < 768)
     }
     checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
   }, [])
 
   useEffect(() => {
@@ -174,8 +172,8 @@ const OrdersManagement: React.FC = () => {
     setError(null)
     try {
       // Create date range for the selected day
-      const startOfDay = new Date(selectedDate + 'T00:00:00.000Z')
-      const endOfDay = new Date(selectedDate + 'T23:59:59.999Z')
+      const startOfDay = new Date(selectedDate + "T00:00:00.000Z")
+      const endOfDay = new Date(selectedDate + "T23:59:59.999Z")
 
       let query = supabase
         .from("orders")
@@ -236,61 +234,67 @@ const OrdersManagement: React.FC = () => {
   const goToPreviousDay = () => {
     const currentDate = new Date(selectedDate)
     currentDate.setDate(currentDate.getDate() - 1)
-    setSelectedDate(currentDate.toISOString().split('T')[0])
+    setSelectedDate(currentDate.toISOString().split("T")[0])
   }
 
   const goToNextDay = () => {
     const currentDate = new Date(selectedDate)
     currentDate.setDate(currentDate.getDate() + 1)
-    setSelectedDate(currentDate.toISOString().split('T')[0])
+    setSelectedDate(currentDate.toISOString().split("T")[0])
   }
 
   const goToToday = () => {
     const today = new Date()
-    setSelectedDate(today.toISOString().split('T')[0])
+    setSelectedDate(today.toISOString().split("T")[0])
   }
 
   const formatSelectedDate = () => {
-    const date = new Date(selectedDate + 'T12:00:00')
+    const date = new Date(selectedDate + "T12:00:00")
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
-    
-    const isToday = selectedDate === today.toISOString().split('T')[0]
-    const isYesterday = selectedDate === yesterday.toISOString().split('T')[0]
-    
+
+    const isToday = selectedDate === today.toISOString().split("T")[0]
+    const isYesterday = selectedDate === yesterday.toISOString().split("T")[0]
+
     if (isToday) return "اليوم"
     if (isYesterday) return "أمس"
-    
-    const arabicDays = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+
+    const arabicDays = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     const arabicMonths = [
-      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+      "يناير",
+      "فبراير",
+      "مارس",
+      "أبريل",
+      "مايو",
+      "يونيو",
+      "يوليو",
+      "أغسطس",
+      "سبتمبر",
+      "أكتوبر",
+      "نوفمبر",
+      "ديسمبر",
     ]
-    
+
     const dayName = arabicDays[date.getDay()]
     const day = date.getDate()
     const month = arabicMonths[date.getMonth()]
     const year = date.getFullYear()
-    
+
     return `${dayName} ${day} ${month} ${year}`
   }
 
   const formatOrderTime = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleTimeString('ar-EG', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
+    return date.toLocaleTimeString("ar-EG", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     })
   }
 
   const toggleRowExpansion = (orderId: string) => {
-    setExpandedRows(prev => 
-      prev.includes(orderId) 
-        ? prev.filter(id => id !== orderId)
-        : [...prev, orderId]
-    )
+    setExpandedRows((prev) => (prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]))
   }
 
   const handleEditChange = (orderId: string, field: keyof Order, value: any) => {
@@ -571,11 +575,11 @@ const OrdersManagement: React.FC = () => {
     const assigned = isOrderAssigned(order)
 
     return (
-      <div className={`rounded-lg border p-4 space-y-4 ${
-        assigned 
-          ? 'bg-green-50 border-green-200 shadow-sm' 
-          : 'bg-white border-gray-200'
-      }`}>
+      <div
+        className={`rounded-lg border p-4 space-y-4 ${
+          assigned ? "bg-green-50 border-green-200 shadow-sm" : "bg-white border-gray-200"
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -589,9 +593,7 @@ const OrdersManagement: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Hash className="w-4 h-4 text-gray-400" />
                 <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
-                {assigned && (
-                  <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>
-                )}
+                {assigned && <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>}
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <User className="w-4 h-4 text-gray-400" />
@@ -624,15 +626,13 @@ const OrdersManagement: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-gray-400" />
-            <span className={`${assigned ? 'text-green-700 font-medium' : 'text-gray-900'}`}>
+            <span className={`${assigned ? "text-green-700 font-medium" : "text-gray-900"}`}>
               {order.courier_name || "غير مخصص"}
             </span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-900">
-              {order.created_at ? formatOrderTime(order.created_at) : '-'}
-            </span>
+            <span className="text-gray-900">{order.created_at ? formatOrderTime(order.created_at) : "-"}</span>
           </div>
         </div>
 
@@ -755,9 +755,7 @@ const OrdersManagement: React.FC = () => {
               ) : (
                 <div className="flex items-start gap-2">
                   <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-gray-900 break-words">
-                    {order.notes || "لا توجد ملاحظات"}
-                  </span>
+                  <span className="text-sm text-gray-900 break-words">{order.notes || "لا توجد ملاحظات"}</span>
                 </div>
               )}
             </div>
@@ -814,7 +812,7 @@ const OrdersManagement: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Custom CSS for always visible scrollbars */}
-      <style >{`
+      <style>{`
         .scrollbar-always {
           scrollbar-width: thin;
           scrollbar-color: #CBD5E0 #F7FAFC;
@@ -913,15 +911,18 @@ const OrdersManagement: React.FC = () => {
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">طلبات يوم: {formatSelectedDate()}</h2>
-                <p className="text-sm text-gray-600">Orders for: {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}</p>
+                <p className="text-sm text-gray-600">
+                  Orders for:{" "}
+                  {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               {/* Date Navigation Buttons */}
               <button
@@ -932,7 +933,7 @@ const OrdersManagement: React.FC = () => {
                 <ChevronRight className="w-4 h-4" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
-              
+
               <button
                 onClick={goToToday}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -940,7 +941,7 @@ const OrdersManagement: React.FC = () => {
                 <Calendar className="w-4 h-4" />
                 <span>اليوم</span>
               </button>
-              
+
               <button
                 onClick={goToNextDay}
                 className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -949,7 +950,7 @@ const OrdersManagement: React.FC = () => {
                 <span className="hidden sm:inline">التالي</span>
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              
+
               {/* Custom Date Picker */}
               <div className="relative">
                 <button
@@ -959,7 +960,7 @@ const OrdersManagement: React.FC = () => {
                   <Calendar className="w-4 h-4" />
                   <span>اختر تاريخ</span>
                 </button>
-                
+
                 {showDatePicker && (
                   <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-20">
                     <div className="space-y-3">
@@ -1028,7 +1029,7 @@ const OrdersManagement: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-600">الطلبات المخصصة</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {orders.filter(order => isOrderAssigned(order)).length}
+                  {orders.filter((order) => isOrderAssigned(order)).length}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">Assigned Orders</p>
               </div>
@@ -1141,7 +1142,7 @@ const OrdersManagement: React.FC = () => {
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                  <CheckCircle className="w-4 h-4" />
                 </div>
                 <span className="font-semibold text-gray-900">{selectedOrders.length} طلب محدد</span>
               </div>
@@ -1238,7 +1239,7 @@ const OrdersManagement: React.FC = () => {
         ) : (
           /* Desktop Table Layout with Sticky Columns and Always Visible Scrollbars */
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="relative overflow-x-auto scrollbar-always">
+            <div className="relative overflow-x-scroll overflow-y-auto max-h-[60vh] scrollbar-always">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
@@ -1293,16 +1294,19 @@ const OrdersManagement: React.FC = () => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
-                    
+
                     return (
-                      <tr key={order.id} className={`transition-colors ${
-                        assigned 
-                          ? 'bg-green-50 hover:bg-green-100' 
-                          : 'hover:bg-gray-50'
-                      }`}>
-                        <td className={`sticky left-0 z-10 px-6 py-4 border-r border-gray-200 ${
-                          assigned ? 'bg-green-50' : 'bg-white'
-                        }`}>
+                      <tr
+                        key={order.id}
+                        className={`transition-colors ${
+                          assigned ? "bg-green-50 hover:bg-green-100" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <td
+                          className={`sticky left-0 z-10 px-6 py-4 border-r border-gray-200 ${
+                            assigned ? "bg-green-50" : "bg-white"
+                          }`}
+                        >
                           <div className="flex items-center gap-2">
                             <input
                               type="checkbox"
@@ -1310,22 +1314,24 @@ const OrdersManagement: React.FC = () => {
                               onChange={() => toggleOrderSelection(order.id)}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            {assigned && (
-                              <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>
-                            )}
+                            {assigned && <div className="w-2 h-2 bg-green-500 rounded-full" title="مخصص لمندوب"></div>}
                           </div>
                         </td>
-                        <td className={`sticky left-12 z-10 px-6 py-4 border-r border-gray-200 ${
-                          assigned ? 'bg-green-50' : 'bg-white'
-                        }`}>
+                        <td
+                          className={`sticky left-12 z-10 px-6 py-4 border-r border-gray-200 ${
+                            assigned ? "bg-green-50" : "bg-white"
+                          }`}
+                        >
                           <div className="flex items-center gap-2">
                             <Hash className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-medium text-gray-900">#{order.order_id}</span>
                           </div>
                         </td>
-                        <td className={`sticky left-40 z-10 px-6 py-4 border-r border-gray-200 ${
-                          assigned ? 'bg-green-50' : 'bg-white'
-                        }`}>
+                        <td
+                          className={`sticky left-40 z-10 px-6 py-4 border-r border-gray-200 ${
+                            assigned ? "bg-green-50" : "bg-white"
+                          }`}
+                        >
                           {isEditing ? (
                             <div className="flex items-center gap-2">
                               <input
@@ -1336,7 +1342,11 @@ const OrdersManagement: React.FC = () => {
                               />
                               <button
                                 onClick={() =>
-                                  openExpandedEdit(order.id, "customer_name", edited.customer_name ?? order.customer_name)
+                                  openExpandedEdit(
+                                    order.id,
+                                    "customer_name",
+                                    edited.customer_name ?? order.customer_name,
+                                  )
                                 }
                                 className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                               >
@@ -1354,7 +1364,7 @@ const OrdersManagement: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-gray-400" />
                             <span className="text-sm text-gray-900">
-                              {order.created_at ? formatOrderTime(order.created_at) : '-'}
+                              {order.created_at ? formatOrderTime(order.created_at) : "-"}
                             </span>
                           </div>
                         </td>
@@ -1489,9 +1499,7 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex items-center gap-2">
                               <UserCheck className="w-4 h-4 text-gray-400" />
-                              <span className={`text-sm ${
-                                assigned ? 'text-green-700 font-medium' : 'text-gray-900'
-                              }`}>
+                              <span className={`text-sm ${assigned ? "text-green-700 font-medium" : "text-gray-900"}`}>
                                 {order.courier_name || "غير مخصص"}
                               </span>
                             </div>

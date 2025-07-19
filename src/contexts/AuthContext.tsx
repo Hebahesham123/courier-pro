@@ -1,13 +1,23 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from "react"
 import type { User } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabase"
+import { CheckCircle, XCircle, Activity, TrendingUp, HandMetal } from "lucide-react"
 
 interface AuthUser extends User {
   role?: "admin" | "courier"
   name?: string
+}
+
+interface Notification {
+  id: string
+  message: string
+  timestamp: Date
+  type: "update" | "new" | "status_change" | "order_edit"
+  orderId?: string
+  courierName?: string
 }
 
 interface AuthContextType {
@@ -15,6 +25,18 @@ interface AuthContextType {
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  notifications: Notification[]
+  soundEnabled: boolean
+  showNotifications: boolean
+  addNotification: (
+    message: string,
+    type: "update" | "new" | "status_change" | "order_edit",
+    orderId?: string,
+    courierId?: string | null,
+  ) => Promise<void>
+  clearAllNotifications: () => void
+  playNotificationSound: () => void
+  setShowNotifications: (show: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -27,9 +49,150 @@ export const useAuth = (): AuthContextType => {
   return context
 }
 
+// Minimal status config for notification messages
+const statusConfigForNotifications: Record<string, { label: string; icon: React.ComponentType<any> }> = {
+  assigned: { label: "مكلف", icon: Activity },
+  delivered: { label: "تم التوصيل", icon: CheckCircle },
+  canceled: { label: "ملغي", icon: XCircle },
+  partial: { label: "جزئي", icon: Activity },
+  hand_to_hand: { label: "استبدال", icon: HandMetal },
+  return: { label: "مرتجع", icon: TrendingUp },
+}
+
+const getStatusLabel = (status: string) => {
+  return statusConfigForNotifications[status]?.label || status
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const audioContextRef = useRef<AudioContext | null>(null)
+
+  // Debug function (for console logging)
+  const addDebugInfo = (info: string) => {
+    console.log(`[DEBUG] ${info}`)
+  }
+
+  // Initialize audio context
+  useEffect(() => {
+    const initAudio = () => {
+      try {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+        addDebugInfo("Audio context initialized successfully")
+      } catch (error) {
+        console.error("Failed to initialize audio context:", error)
+        addDebugInfo("Failed to initialize audio context")
+      }
+    }
+
+    // Initialize on user interaction
+    const handleUserInteraction = () => {
+      if (!audioContextRef.current) {
+        initAudio()
+      }
+      document.removeEventListener("click", handleUserInteraction)
+      document.removeEventListener("keydown", handleUserInteraction)
+    }
+
+    document.addEventListener("click", handleUserInteraction)
+    document.addEventListener("keydown", handleUserInteraction)
+
+    return () => {
+      document.removeEventListener("click", handleUserInteraction)
+      document.removeEventListener("keydown", handleUserInteraction)
+    }
+  }, [])
+
+  const playNotificationSound = useCallback(() => {
+    if (!soundEnabled) {
+      addDebugInfo("Sound disabled, skipping notification sound")
+      return
+    }
+
+    try {
+      if (!audioContextRef.current) {
+        addDebugInfo("Audio context not available")
+        return
+      }
+
+      const ctx = audioContextRef.current
+
+      // Resume context if suspended
+      if (ctx.state === "suspended") {
+        ctx.resume()
+      }
+
+      // Create a simple chime sound
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+
+      gainNode.gain.setValueAtTime(0.7, ctx.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime)
+      oscillator.frequency.linearRampToValueAtTime(1320, ctx.currentTime + 0.1)
+      oscillator.frequency.linearRampToValueAtTime(0, ctx.currentTime + 0.2)
+
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.2)
+
+      addDebugInfo("Notification sound played successfully")
+    } catch (error) {
+      console.error("Error playing notification sound:", error)
+      addDebugInfo(`Error playing sound: ${error}`)
+    }
+  }, [soundEnabled])
+
+  const getCourierName = useCallback(async (courierId: string | null): Promise<string> => {
+    if (!courierId) return "غير محدد"
+
+    try {
+      const { data, error } = await supabase.from("users").select("name").eq("id", courierId).single()
+
+      if (error) throw error
+      return data?.name || "غير محدد"
+    } catch (error) {
+      console.error("Error fetching courier name for notification:", error)
+      return "غير محدد"
+    }
+  }, [])
+
+  const addNotification = useCallback(
+    async (
+      message: string,
+      type: "update" | "new" | "status_change" | "order_edit",
+      orderId?: string,
+      courierId?: string | null,
+    ) => {
+      const courierName = courierId ? await getCourierName(courierId) : "غير محدد"
+
+      const notification: Notification = {
+        id: Date.now().toString(),
+        message,
+        timestamp: new Date(),
+        type,
+        orderId,
+        courierName,
+      }
+
+      addDebugInfo(`Adding notification: ${message} (Courier: ${courierName})`)
+
+      setNotifications((prev) => [notification, ...prev])
+      playNotificationSound()
+    },
+    [getCourierName, playNotificationSound],
+  )
+
+  const clearAllNotifications = useCallback(() => {
+    setNotifications([])
+    addDebugInfo("All notifications cleared")
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -160,11 +323,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null)
   }
 
+  // Global subscription for all order changes (for notifications)
+  useEffect(() => {
+    addDebugInfo("Setting up global order subscription for notifications")
+
+    const globalSubscription = supabase
+      .channel("global_orders_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        async (payload: any) => {
+          addDebugInfo(
+            `Global order change detected: ${payload.eventType} for order ${payload.new?.order_id || payload.old?.order_id}`,
+          )
+
+          try {
+            if (payload.eventType === "INSERT") {
+              await addNotification(
+                `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
+                "new",
+                payload.new.order_id,
+                payload.new.assigned_courier_id,
+              )
+            } else if (payload.eventType === "UPDATE") {
+              const oldStatus = payload.old?.status as string | undefined
+              const newStatus = payload.new?.status as string
+              const oldUpdatedAt = payload.old?.updated_at as string
+              const newUpdatedAt = payload.new?.updated_at as string
+
+              if (oldStatus !== newStatus) {
+                const oldLabel = getStatusLabel(oldStatus || "غير محدد")
+                const newLabel = getStatusLabel(newStatus)
+                await addNotification(
+                  `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
+                  "status_change",
+                  payload.new.order_id,
+                  payload.new.assigned_courier_id,
+                )
+              } else if (newUpdatedAt !== oldUpdatedAt) {
+                await addNotification(
+                  `تم تعديل الطلب #${payload.new.order_id}`,
+                  "order_edit",
+                  payload.new.order_id,
+                  payload.new.assigned_courier_id,
+                )
+              } else {
+                await addNotification(
+                  `تم تحديث الطلب #${payload.new.order_id} - ${payload.new.customer_name}`,
+                  "update",
+                  payload.new.order_id,
+                  payload.new.assigned_courier_id,
+                )
+              }
+            }
+          } catch (error) {
+            console.error("Error processing notification:", error)
+            addDebugInfo(`Error processing notification: ${error}`)
+          }
+        },
+      )
+      .subscribe((status) => {
+        addDebugInfo(`Global subscription status: ${status}`)
+      })
+
+    return () => {
+      addDebugInfo("Unsubscribing from global order changes")
+      globalSubscription.unsubscribe()
+    }
+  }, [addNotification]) // Depend on addNotification to re-subscribe if it changes
+
   const contextValue: AuthContextType = {
     user,
     loading,
     signIn,
     signOut,
+    notifications,
+    soundEnabled,
+    showNotifications,
+    addNotification,
+    clearAllNotifications,
+    playNotificationSound,
+    setShowNotifications,
   }
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
