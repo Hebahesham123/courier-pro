@@ -7,7 +7,6 @@ import {
   Phone,
   MapPin,
   Package,
-  CoinsIcon,
   Camera,
   Check,
   X,
@@ -18,7 +17,6 @@ import {
   Eye,
   AlertCircle,
   Loader2,
-  User,
   CreditCard,
   FileText,
   Upload,
@@ -127,6 +125,7 @@ const allCollectionMethods: Record<string, string> = {
   paymob: "باي موب",
   valu: "فاليو",
   courier: "المندوب",
+  visa: "فيزا", // Added for display consistency
 }
 
 // Cloudinary config
@@ -140,7 +139,17 @@ const OrdersList: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0])
+
+  // Helper function to get today's date in YYYY-MM-DD format (local timezone)
+  const getTodayDateString = () => {
+    const today = new Date()
+    const year = today.getFullYear()
+    const month = (today.getMonth() + 1).toString().padStart(2, "0") // Months are 0-indexed
+    const day = today.getDate().toString().padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString())
   const [updateData, setUpdateData] = useState({
     status: "",
     delivery_fee: "",
@@ -158,10 +167,24 @@ const OrdersList: React.FC = () => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
 
+  // Helper function to check if payment method is a card payment
+  const isCardPayment = (method: string) => {
+    const cardKeywords = ["card", "credit", "debit", "visa", "mastercard", "amex", "discover"]
+    return cardKeywords.some((keyword) => method.toLowerCase().includes(keyword))
+  }
+
+  // Updated normalize method function to handle card payments as valu
+  const normalizeMethod = (method: string) => {
+    if (method?.includes("paymob.valu")) return "valu"
+    // If it's paymob or any card payment, treat as 'visa'
+    if (method?.includes("paymob") || isCardPayment(method)) return "visa"
+    return method
+  }
+
   // Helper function to check if order is paid
   const isOrderPaid = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    return ["paymob", "valu"].includes(method) || order.status === "delivered"
+    return ["visa", "valu"].includes(method) // Updated to check for 'visa' and 'valu'
   }
 
   // Helper function to format date in Arabic
@@ -175,7 +198,6 @@ const OrdersList: React.FC = () => {
     if (date.toDateString() === today.toDateString()) {
       return "اليوم"
     }
-
     // Check if it's yesterday
     if (date.toDateString() === yesterday.toDateString()) {
       return "أمس"
@@ -217,7 +239,7 @@ const OrdersList: React.FC = () => {
   }
 
   // Helper function to truncate address
-  const truncateAddress = (address: string, maxLength: number = 25) => {
+  const truncateAddress = (address: string, maxLength = 25) => {
     if (address.length <= maxLength) return address
     return address.substring(0, maxLength) + "..."
   }
@@ -236,7 +258,7 @@ const OrdersList: React.FC = () => {
   }
 
   const goToToday = () => {
-    setSelectedDate(new Date().toISOString().split("T")[0])
+    setSelectedDate(getTodayDateString())
   }
 
   // Helper function to check if order was edited by courier
@@ -251,7 +273,6 @@ const OrdersList: React.FC = () => {
       // Create date range for the selected day
       const startDate = new Date(selectedDate)
       startDate.setHours(0, 0, 0, 0)
-
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
@@ -300,12 +321,6 @@ const OrdersList: React.FC = () => {
     }
   }
 
-  const normalizeMethod = (method: string) => {
-    if (method?.includes("paymob.valu")) return "valu"
-    if (method?.includes("paymob")) return "paymob"
-    return method
-  }
-
   const handlePhoneClick = (phoneNumber: string) => {
     setSelectedPhoneNumber(phoneNumber)
     setPhoneOptionsOpen(true)
@@ -325,18 +340,42 @@ const OrdersList: React.FC = () => {
 
   const openModal = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+    const isOrderOriginallyPaidOnline = ["valu", "visa"].includes(method)
+
+    let initialDeliveryFee = order.delivery_fee?.toString() || ""
+    let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
+    let initialCollectedBy = order.collected_by || ""
+    let initialPaymentSubType = order.payment_sub_type || ""
+
+    // If status is 'return' or 'receiving_part' with no fees, set fees to 0 and clear collection method
+    if (
+      order.status === "return" ||
+      (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount)
+    ) {
+      initialDeliveryFee = "0"
+      initialPartialPaidAmount = "0"
+      initialCollectedBy = "" // Courier cannot choose payment method
+      initialPaymentSubType = "" // Courier cannot choose payment method
+    } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
+      // If order was originally paid online and no fees were previously added, pre-fill collected_by with that method
+      initialCollectedBy = method
+      initialPaymentSubType = "" // Clear sub-type for online payments
+    } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
+      // For unpaid orders (not canceled), collected_by is implicitly courier
+      initialCollectedBy = "courier"
+    } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
+      // For canceled orders with fees, collected_by is implicitly courier
+      initialCollectedBy = "courier"
+    }
 
     setSelectedOrder(order)
     setUpdateData({
       status: order.status,
-      delivery_fee: order.delivery_fee?.toString() || "",
-      partial_paid_amount: order.partial_paid_amount?.toString() || "",
+      delivery_fee: initialDeliveryFee,
+      partial_paid_amount: initialPartialPaidAmount,
       internal_comment: order.internal_comment || "",
-      // If order was originally paid online, pre-fill collected_by with that method
-      // Otherwise, use existing collected_by or empty
-      collected_by: isOrderOriginallyPaidOnline ? method : order.collected_by || "",
-      payment_sub_type: order.payment_sub_type || "",
+      collected_by: initialCollectedBy,
+      payment_sub_type: initialPaymentSubType,
     })
     setModalOpen(true)
   }
@@ -345,6 +384,7 @@ const OrdersList: React.FC = () => {
     if (!e.target.files || !selectedOrder || !user) return
     const originalFile = e.target.files[0]
     setImageUploading(true)
+
     try {
       const compressedFile = await new Promise<File>((resolve, reject) => {
         const reader = new FileReader()
@@ -418,6 +458,7 @@ const OrdersList: React.FC = () => {
         courier_id: user.id,
         image_data: data.secure_url,
       })
+
       if (error) throw error
 
       alert("تم رفع الصورة بنجاح!")
@@ -450,7 +491,6 @@ const OrdersList: React.FC = () => {
     if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
       return 0
     }
-
     // For canceled, returned, hand_to_hand, or receiving_part orders
     if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
       // If no fees are entered, the total is 0
@@ -460,13 +500,11 @@ const OrdersList: React.FC = () => {
       // If fees are entered, the total is the sum of those fees
       return deliveryFee + partialAmount
     }
-
     // For partial orders
     if (currentStatus === "partial") {
       // The total is the partial amount if greater than 0, otherwise 0
       return partialAmount > 0 ? partialAmount : 0
     }
-
     // For delivered, assigned, or any other status not explicitly handled above
     // The total is the original total_order_fees
     return order.total_order_fees
@@ -477,7 +515,7 @@ const OrdersList: React.FC = () => {
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
-      const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
+      const isOrderOriginallyPaidOnline = ["valu", "visa"].includes(method)
       const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
       const updatePayload: any = {
@@ -486,8 +524,20 @@ const OrdersList: React.FC = () => {
         updated_at: new Date().toISOString(),
       }
 
-      const fee = Number.parseFloat(updateData.delivery_fee) || 0
-      const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+      let fee = Number.parseFloat(updateData.delivery_fee) || 0
+      let partial = Number.parseFloat(updateData.partial_paid_amount) || 0
+
+      const isReturnStatus = updateData.status === "return"
+      const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
+      const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+
+      // If status is 'return' or 'receiving_part' with no fees, force fees to 0 and clear collection info
+      if (isReturnStatus || isReceivingPartWithNoFees) {
+        fee = 0
+        partial = 0
+        updatePayload.collected_by = null
+        updatePayload.payment_sub_type = null
+      }
 
       updatePayload.delivery_fee = fee
       updatePayload.partial_paid_amount = partial
@@ -499,42 +549,70 @@ const OrdersList: React.FC = () => {
       if (
         ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
       ) {
-        // Special handling for "hand_to_hand" if no fees are entered
-        if (updateData.status === "hand_to_hand" && fee === 0 && partial === 0) {
+        if (isReturnStatus || isReceivingPartWithNoFees) {
+          // Already handled above: fees are 0, collected_by and payment_sub_type are null
+        } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
         } else if (isOrderOriginallyPaidOnline) {
-          // If order was originally paid online, collected_by must be that method and cannot be changed
-          updatePayload.collected_by = method // Force collected_by to original online payment method
-          updatePayload.payment_sub_type = null // Clear sub-type for online payments
-        } else {
-          // For unpaid orders, allow choosing payment method directly
-          if (isOrderUnpaid && updateData.payment_sub_type) {
-            updatePayload.collected_by = "courier"
-            updatePayload.payment_sub_type = updateData.payment_sub_type
-          } else if (fee > 0) {
-            // For paid orders with delivery fees
-            const collected = updateData.collected_by
-            if (!collected) {
-              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+          // Case: Order was originally paid online (Valu/Visa)
+          if (fee > 0 || partial > 0) {
+            // If delivery fees or partial amount are added, courier CAN choose payment method for these additional fees
+            if (!updateData.collected_by) {
+              alert("يرجى اختيار طريقة تحصيل للرسوم الإضافية.")
               return
             }
-            if (collected === "courier") {
-              if (!updateData.payment_sub_type) {
-                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
-                return
-              }
-              updatePayload.collected_by = collected
-              updatePayload.payment_sub_type = updateData.payment_sub_type
-            } else {
-              updatePayload.collected_by = collected
-              updatePayload.payment_sub_type = null
+            if (updateData.collected_by === "courier" && !updateData.payment_sub_type) {
+              alert("يرجى اختيار نوع الدفع الفرعي للمندوب للرسوم الإضافية.")
+              return
             }
+            updatePayload.collected_by = updateData.collected_by
+            updatePayload.payment_sub_type = updateData.payment_sub_type
           } else {
-            // If no delivery fees and no payment sub-type selected for unpaid orders
+            // No additional fees, keep original online payment method
+            updatePayload.collected_by = method // Force collected_by to original online payment method
+            updatePayload.payment_sub_type = null // Clear sub-type for online payments
+          }
+        } else if (updateData.status === "canceled" && fee > 0) {
+          // Courier can choose payment method ONLY if canceled AND delivery fees are added
+          if (!updateData.payment_sub_type) {
+            alert("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.")
+            return
+          }
+          updatePayload.collected_by = "courier"
+          updatePayload.payment_sub_type = updateData.payment_sub_type
+        } else if (isOrderUnpaid) {
+          // For other unpaid orders (not canceled with fees), allow choosing payment method directly
+          if (updateData.payment_sub_type) {
+            updatePayload.collected_by = "courier"
+            updatePayload.payment_sub_type = updateData.payment_sub_type
+          } else {
+            // If no sub-type selected for unpaid orders, clear collected_by
             updatePayload.collected_by = null
             updatePayload.payment_sub_type = null
           }
+        } else if (fee > 0 || partial > 0) {
+          // This covers cases where order was not online paid, not unpaid, and has fees
+          const collected = updateData.collected_by
+          if (!collected) {
+            alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+            return
+          }
+          if (collected === "courier") {
+            if (!updateData.payment_sub_type) {
+              alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+              return
+            }
+            updatePayload.collected_by = collected
+            updatePayload.payment_sub_type = updateData.payment_sub_type
+          } else {
+            updatePayload.collected_by = collected
+            updatePayload.payment_sub_type = null
+          }
+        } else {
+          // If no delivery fees and no partial amount, clear collection info
+          updatePayload.collected_by = null
+          updatePayload.payment_sub_type = null
         }
       } else {
         // For assigned status, clear collection info
@@ -543,6 +621,7 @@ const OrdersList: React.FC = () => {
       }
 
       const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
+
       if (error) {
         console.error("Supabase error:", error.message)
         alert("خطأ في الحفظ: " + error.message)
@@ -579,24 +658,30 @@ const OrdersList: React.FC = () => {
   // Helper function to get display payment method
   const getDisplayPaymentMethod = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
 
-    // If order was originally paid online, display that
-    if (isOrderOriginallyPaidOnline) {
-      return `${allCollectionMethods[method]} (مدفوع)`
-    }
-
-    // If there's a payment_sub_type, use it
-    if (order.payment_sub_type && paymentSubTypesForCourier[order.payment_sub_type]) {
-      return paymentSubTypesForCourier[order.payment_sub_type]
-    }
-
-    // If there's a collected_by, use it
+    // If collected_by and payment_sub_type are set, prioritize them for display
     if (order.collected_by && allCollectionMethods[order.collected_by]) {
+      if (
+        order.collected_by === "courier" &&
+        order.payment_sub_type &&
+        paymentSubTypesForCourier[order.payment_sub_type]
+      ) {
+        return paymentSubTypesForCourier[order.payment_sub_type]
+      }
+      // If collected_by is set but no sub-type (e.g., for online payments or non-courier collection)
+      if (order.collected_by === "valu") return `${allCollectionMethods.valu} (مدفوع)`
+      if (order.collected_by === "visa") return `${allCollectionMethods.visa} (مدفوع)`
       return allCollectionMethods[order.collected_by]
     }
 
-    // Otherwise use the original payment method (e.g., cash_on_delivery)
+    // Fallback to original payment method if no collected_by is set
+    if (method === "valu") {
+      return `${allCollectionMethods.valu} (مدفوع)`
+    }
+    if (method === "visa") {
+      return `${allCollectionMethods.visa} (مدفوع)`
+    }
+
     return order.payment_method === "cash_on_delivery" ? "الدفع عند الاستلام" : order.payment_method
   }
 
@@ -630,7 +715,6 @@ const OrdersList: React.FC = () => {
               <h1 className="text-2xl font-bold text-gray-900">طلبياتي</h1>
               <p className="text-sm text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
             </div>
-
             {/* Date Navigation */}
             <div className="flex items-center justify-center gap-3 mt-4">
               <button
@@ -640,13 +724,11 @@ const OrdersList: React.FC = () => {
                 <ChevronRight className="w-3 h-3" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
-
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 text-sm">
                   <Calendar className="w-3 h-3" />
                   <span className="font-medium">{formatDateInArabic(selectedDate)}</span>
                 </div>
-
                 <input
                   type="date"
                   value={selectedDate}
@@ -655,7 +737,6 @@ const OrdersList: React.FC = () => {
                   title="اختر تاريخ"
                 />
               </div>
-
               <button
                 onClick={goToNextDay}
                 className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
@@ -664,7 +745,6 @@ const OrdersList: React.FC = () => {
                 <ChevronLeft className="w-3 h-3" />
               </button>
             </div>
-
             {/* Quick Actions */}
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
@@ -674,7 +754,6 @@ const OrdersList: React.FC = () => {
                 <CalendarDays className="w-3 h-3" />
                 اليوم
               </button>
-
               <button
                 onClick={fetchOrders}
                 className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
@@ -683,14 +762,11 @@ const OrdersList: React.FC = () => {
                 تحديث
               </button>
             </div>
-
             <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 mt-3">
               <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
               <span className="text-xs font-medium">
                 {orders.length} {orders.length === 1 ? "طلب" : "طلب"}
-                {selectedDate === new Date().toISOString().split("T")[0]
-                  ? " اليوم"
-                  : ` في ${formatDateInArabic(selectedDate)}`}
+                {selectedDate === getTodayDateString() ? " اليوم" : ` في ${formatDateInArabic(selectedDate)}`}
               </span>
             </div>
           </div>
@@ -709,9 +785,7 @@ const OrdersList: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold text-gray-800">
                   لا توجد طلبات{" "}
-                  {selectedDate === new Date().toISOString().split("T")[0]
-                    ? "اليوم"
-                    : `في ${formatDateInArabic(selectedDate)}`}
+                  {selectedDate === getTodayDateString() ? "اليوم" : `في ${formatDateInArabic(selectedDate)}`}
                 </h3>
                 <p className="text-gray-600 max-w-xs mx-auto text-sm">
                   لم يتم العثور على أي طلبات مخصصة لك في هذا التاريخ
@@ -747,7 +821,6 @@ const OrdersList: React.FC = () => {
               const partialAmount = order.partial_paid_amount || 0
               const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
               const isPaid = isOrderPaid(order)
-
               // Determine if the order was edited by courier
               const isEditedOrder = wasOrderEditedByCourier(order)
 
@@ -755,9 +828,7 @@ const OrdersList: React.FC = () => {
                 <div
                   key={order.id}
                   className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
-                    isEditedOrder 
-                      ? "border-red-400 bg-red-100 shadow-red-200" 
-                      : "border-gray-200"
+                    isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
                   }`}
                 >
                   {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
@@ -772,12 +843,12 @@ const OrdersList: React.FC = () => {
                               key={`slash-${i}`}
                               className="absolute bg-red-400 opacity-30"
                               style={{
-                                width: '2px',
-                                height: '200%',
+                                width: "2px",
+                                height: "200%",
                                 left: `${i * 15}%`,
-                                top: '-50%',
-                                transform: 'rotate(45deg)',
-                                transformOrigin: 'center',
+                                top: "-50%",
+                                transform: "rotate(45deg)",
+                                transformOrigin: "center",
                               }}
                             />
                           ))}
@@ -789,23 +860,22 @@ const OrdersList: React.FC = () => {
                               key={`cross-slash-${i}`}
                               className="absolute bg-red-400 opacity-30"
                               style={{
-                                width: '2px',
-                                height: '200%',
+                                width: "2px",
+                                height: "200%",
                                 left: `${i * 15}%`,
-                                top: '-50%',
-                                transform: 'rotate(-45deg)',
-                                transformOrigin: 'center',
+                                top: "-50%",
+                                transform: "rotate(-45deg)",
+                                transformOrigin: "center",
                               }}
                             />
                           ))}
                         </div>
                       </div>
-
                       {/* Completion Badge */}
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                        <div 
+                        <div
                           className="bg-red-600 text-white px-3 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
-                          style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}
+                          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
                         >
                           مكتمل ✓
                         </div>
@@ -816,9 +886,7 @@ const OrdersList: React.FC = () => {
                   {/* Card Header */}
                   <div
                     className={`px-2 py-2 border-b ${
-                      isEditedOrder 
-                        ? "border-red-300 bg-red-200" 
-                        : "border-gray-200 bg-gray-50"
+                      isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -873,64 +941,57 @@ const OrdersList: React.FC = () => {
                         {order.customer_name}
                       </p>
                     </div>
-
                     {/* Address */}
-                    <div className={`flex items-start gap-1 border rounded-lg p-1.5 ${
-                      isEditedOrder 
-                        ? "bg-red-50 border-red-300" 
-                        : "bg-gray-50 border-gray-200"
-                    }`}>
+                    <div
+                      className={`flex items-start gap-1 border rounded-lg p-1.5 ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
                       <MapPin className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" />
                       <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
                         {truncateAddress(order.address, 25)}
                       </p>
                     </div>
-
                     {/* Amount */}
-                    <div className={`border rounded-lg p-2 text-center ${
-                      isEditedOrder 
-                        ? "bg-red-50 border-red-300" 
-                        : "bg-green-50 border-green-200"
-                    }`}>
-                      <p className={`text-sm font-bold ${
-                        isEditedOrder ? "text-red-700" : "text-green-700"
-                      }`}>{totalAmount.toFixed(0)}</p>
-                      <p className={`text-xs ${
-                        isEditedOrder ? "text-red-600" : "text-green-600"
-                      }`}>جنيه مصري</p>
+                    <div
+                      className={`border rounded-lg p-2 text-center ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
+                      }`}
+                    >
+                      <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
+                        {totalAmount.toFixed(0)}
+                      </p>
+                      <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>جنيه مصري</p>
                     </div>
-
                     {/* Phone Button */}
                     <button
                       onClick={() => handlePhoneClick(order.mobile_number)}
                       className={`w-full border py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
-                        isEditedOrder 
-                          ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700" 
+                        isEditedOrder
+                          ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
                           : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                       }`}
                     >
                       <Phone className="w-3 h-3" />
                       <span className="font-mono text-xs">{order.mobile_number}</span>
                     </button>
-
                     {/* Payment Method Display */}
-                    <div className={`border rounded-lg p-1.5 text-center text-xs ${
-                      isEditedOrder 
-                        ? "bg-red-50 border-red-300" 
-                        : "bg-gray-50 border-gray-200"
-                    }`}>
-                      <p className={`font-medium ${
-                        isEditedOrder ? "text-red-700" : "text-gray-700"
-                      }`}>{getDisplayPaymentMethod(order)}</p>
+                    <div
+                      className={`border rounded-lg p-1.5 text-center text-xs ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <p className={`font-medium ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
+                        {getDisplayPaymentMethod(order)}
+                      </p>
                     </div>
-
                     {/* Edit Button */}
                     {canEditOrder(order) ? (
                       <button
                         onClick={() => openModal(order)}
                         className={`w-full font-medium py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
-                          isEditedOrder 
-                            ? "bg-red-600 hover:bg-red-700 text-white" 
+                          isEditedOrder
+                            ? "bg-red-600 hover:bg-red-700 text-white"
                             : "bg-blue-600 hover:bg-blue-700 text-white"
                         }`}
                       >
@@ -1098,12 +1159,17 @@ const OrdersList: React.FC = () => {
                         value={updateData.delivery_fee}
                         onChange={(e) => setUpdateData({ ...updateData, delivery_fee: e.target.value })}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={
+                          updateData.status === "return" ||
+                          (updateData.status === "receiving_part" &&
+                            Number.parseFloat(updateData.partial_paid_amount) === 0)
+                        }
                         placeholder="0.00"
                       />
                       <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                     </div>
                     <p className="text-xs text-gray-500">
-                      رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
+                      رسوم التوصيل من��صلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
                     </p>
                   </div>
 
@@ -1116,131 +1182,166 @@ const OrdersList: React.FC = () => {
                         <CreditCard className="w-4 h-4" />
                         تفاصيل التحصيل
                       </h4>
-
                       {(() => {
-                        const method = normalizeMethod(selectedOrder.payment_method)
-                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
-                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
-                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
-                        const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
-                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+                        const currentMethod = normalizeMethod(selectedOrder.payment_method)
+                        const isOrderOriginallyPaidOnlineInModal = ["valu", "visa"].includes(currentMethod)
+                        const isOrderUnpaidInModal = !isOrderPaid(selectedOrder)
+                        const currentFee = Number.parseFloat(updateData.delivery_fee) || 0
+                        const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
+                        const isReturnStatusInModal = updateData.status === "return"
+                        const isReceivingPartNoFeesInModal =
+                          updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
+                        const isHandToHandWithNoFeesInModal =
+                          updateData.status === "hand_to_hand" && currentFee === 0 && currentPartial === 0
 
-                        if (isOrderOriginallyPaidOnline) {
-                          return (
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-green-700">
-                                <AlertCircle className="w-4 h-4" />
-                                <span className="text-sm font-medium">طلب مدفوع</span>
-                              </div>
-                              <p className="text-xs text-green-600 mt-1">
-                                هذا الطلب مدفوع بالفعل عبر {allCollectionMethods[method]}. طريقة التحصيل لا يمكن
-                                تغييرها.
-                              </p>
-                            </div>
-                          )
-                        }
+                        // Condition for the "Order Paid" message
+                        const showOrderPaidMessage =
+                          isOrderOriginallyPaidOnlineInModal && currentFee === 0 && currentPartial === 0
 
-                        if (isHandToHandWithNoFees) {
-                          return (
-                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-purple-700">
-                                <AlertCircle className="w-4 h-4" />
-                                <span className="text-sm font-medium">استبدال بدون رسوم</span>
-                              </div>
-                              <p className="text-xs text-purple-600 mt-1">
-                                لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
-                              </p>
-                            </div>
-                          )
-                        }
+                        // Condition for the "Order Unpaid" message
+                        const showOrderUnpaidMessage =
+                          isOrderUnpaidInModal &&
+                          !isReturnStatusInModal &&
+                          !isHandToHandWithNoFeesInModal &&
+                          !isReceivingPartNoFeesInModal
 
-                        if (isOrderUnpaid) {
-                          return (
-                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                              <div className="flex items-center gap-2 text-orange-700">
-                                <AlertCircle className="w-4 h-4" />
-                                <span className="text-sm font-medium">طلب غير مدفوع</span>
-                              </div>
-                              <p className="text-xs text-orange-600 mt-1">
-                                يمكن للمندوب اختيار طريقة الدفع المناسبة لهذا الطلب.
-                              </p>
-                            </div>
-                          )
-                        }
+                        // Condition for "Return Status" message
+                        const showReturnStatusMessage = isReturnStatusInModal
 
-                        return null
-                      })()}
+                        // Condition for "Receiving Part No Fees" message
+                        const showReceivingPartNoFeesMessage = isReceivingPartNoFeesInModal
 
-                      {/* Payment Sub-Type - Show for unpaid orders OR when courier is selected with fees */}
-                      {(() => {
-                        const method = normalizeMethod(selectedOrder.payment_method)
-                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
-                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
-                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
-                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && Number.parseFloat(updateData.partial_paid_amount) === 0
-                        
-                        // Show payment sub-types if:
-                        // 1. Order is unpaid and not hand_to_hand with no fees
-                        // 2. OR courier is selected and delivery fees are added (existing logic)
-                        const shouldShowSubType = 
-                          (!isOrderOriginallyPaidOnline && isOrderUnpaid && !isHandToHandWithNoFees) ||
-                          (updateData.collected_by === "courier" && fee > 0)
+                        // Condition for "Hand to Hand No Fees" message
+                        const showHandToHandNoFeesMessage = isHandToHandWithNoFeesInModal
 
-                        if (!shouldShowSubType) return null
+                        // Condition to show Payment Sub-Type dropdown
+                        const showPaymentSubTypeDropdown =
+                          !isReturnStatusInModal &&
+                          !isHandToHandWithNoFeesInModal &&
+                          !isReceivingPartNoFeesInModal &&
+                          ((isOrderOriginallyPaidOnlineInModal && (currentFee > 0 || currentPartial > 0)) || // Online paid, but adding fees
+                            isOrderUnpaidInModal || // Unpaid orders
+                            (updateData.status === "canceled" && currentFee > 0) || // Canceled with fees
+                            (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0))) // Receiving part with fees
+
+                        // Condition to show Collected By dropdown
+                        const showCollectedByDropdown =
+                          !isReturnStatusInModal &&
+                          !isHandToHandWithNoFeesInModal &&
+                          !isReceivingPartNoFeesInModal &&
+                          (currentFee > 0 || currentPartial > 0) && // Only show if there are fees/partial amount
+                          (isOrderOriginallyPaidOnlineInModal || // Online paid and adding fees
+                            (!isOrderOriginallyPaidOnlineInModal &&
+                              !isOrderUnpaidInModal &&
+                              updateData.status !== "canceled")) // Not online paid, not unpaid, not canceled, but adding fees
 
                         return (
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">
-                              طريقة الدفع {isOrderUnpaid ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
-                            </label>
-                            <select
-                              value={updateData.payment_sub_type}
-                              onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required={isOrderUnpaid && !isHandToHandWithNoFees}
-                            >
-                              <option value="">اختر طريقة الدفع</option>
-                              {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )
-                      })()}
+                          <>
+                            {showOrderPaidMessage && (
+                              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-green-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">طلب مدفوع</span>
+                                </div>
+                                <p className="text-xs text-green-600 mt-1">
+                                  هذا الطلب مدفوع بالفعل عبر{" "}
+                                  {currentMethod === "valu" ? allCollectionMethods.valu : allCollectionMethods.visa}.
+                                  طريقة التحصيل لا يمكن تغييرها.
+                                </p>
+                              </div>
+                            )}
+                            {showReturnStatusMessage && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-yellow-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">طلب مرتجع</span>
+                                </div>
+                                <p className="text-xs text-yellow-600 mt-1">
+                                  الطلبات المرتجعة لا تتطلب تحصيل رسوم. سيتم حساب الإجمالي كصفر.
+                                </p>
+                              </div>
+                            )}
+                            {showReceivingPartNoFeesMessage && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-yellow-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">استلام قطعة بدون رسوم</span>
+                                </div>
+                                <p className="text-xs text-yellow-600 mt-1">
+                                  لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                                </p>
+                              </div>
+                            )}
+                            {showHandToHandNoFeesMessage && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-purple-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">استبدال بدون رسوم</span>
+                                </div>
+                                <p className="text-xs text-purple-600 mt-1">
+                                  لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                                </p>
+                              </div>
+                            )}
+                            {showOrderUnpaidMessage && (
+                              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-orange-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">طلب غير مدفوع</span>
+                                </div>
+                                <p className="text-xs text-orange-600 mt-1">
+                                  يمكن للمندوب اختيار طريقة الدفع المناسبة لهذا الطلب.
+                                </p>
+                              </div>
+                            )}
 
-                      {/* Collected By - Only show if delivery fees are added for paid orders */}
-                      {(() => {
-                        const method = normalizeMethod(selectedOrder.payment_method)
-                        const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
-                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
-                        const fee = Number.parseFloat(updateData.delivery_fee) || 0
-                        const partial = Number.parseFloat(updateData.partial_paid_amount) || 0
-                        const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
-                        
-                        // Only show "collected by" for paid orders with delivery fees
-                        const shouldShowPaymentMethod = !isOrderOriginallyPaidOnline && !isOrderUnpaid && fee > 0 && !isHandToHandWithNoFees
+                            {showPaymentSubTypeDropdown && (
+                              <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                  طريقة الدفع {isOrderUnpaidInModal ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
+                                </label>
+                                <select
+                                  value={updateData.payment_sub_type}
+                                  onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  required={
+                                    showPaymentSubTypeDropdown &&
+                                    (isOrderUnpaidInModal ||
+                                      updateData.collected_by === "courier" ||
+                                      (updateData.status === "canceled" && currentFee > 0) ||
+                                      (updateData.status === "receiving_part" &&
+                                        (currentFee > 0 || currentPartial > 0)))
+                                  }
+                                >
+                                  <option value="">اختر طريقة الدفع</option>
+                                  {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
+                                    <option key={key} value={key}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
 
-                        if (!shouldShowPaymentMethod) return null
-
-                        return (
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
-                            <select
-                              value={updateData.collected_by}
-                              onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required
-                            >
-                              <option value="">اختر الطريقة</option>
-                              {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
-                                <option key={key} value={key}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                            {showCollectedByDropdown && (
+                              <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
+                                <select
+                                  value={updateData.collected_by}
+                                  onChange={(e) => setUpdateData({ ...updateData, collected_by: e.target.value })}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  required={showCollectedByDropdown}
+                                >
+                                  <option value="">اختر الطريقة</option>
+                                  {Object.entries(collectionMethodsForCourier).map(([key, label]) => (
+                                    <option key={key} value={key}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </>
                         )
                       })()}
 
@@ -1254,6 +1355,11 @@ const OrdersList: React.FC = () => {
                             value={updateData.partial_paid_amount}
                             onChange={(e) => setUpdateData({ ...updateData, partial_paid_amount: e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            disabled={
+                              updateData.status === "return" ||
+                              (updateData.status === "receiving_part" &&
+                                Number.parseFloat(updateData.delivery_fee) === 0)
+                            }
                             placeholder="0.00"
                           />
                           <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
