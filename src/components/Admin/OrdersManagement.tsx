@@ -1,4 +1,5 @@
 "use client"
+
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -35,8 +36,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react"
-import { supabase } from "../../lib/supabase"
-import { useLanguage } from "../../contexts/LanguageContext"
+import { supabase } from "../../lib/supabase" // Assuming this path is correct based on your original code
+import { useLanguage } from "../../contexts/LanguageContext" // Assuming this path is correct
 
 interface Order {
   id: string
@@ -134,12 +135,14 @@ const OrdersManagement: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false)
 
   const [filters, setFilters] = useState({
-    courier: "",
+    couriers: [] as string[], // Changed to array for multi-select
+    statuses: [] as string[], // Added for multi-select status
     mobile: "",
     payment: "",
     orderId: "",
   })
-  const { t } = useLanguage()
+
+  const { t } = useLanguage() // Assuming useLanguage hook provides a translate function 't'
 
   // Check if mobile
   useEffect(() => {
@@ -154,7 +157,7 @@ const OrdersManagement: React.FC = () => {
   useEffect(() => {
     fetchOrders()
     fetchCouriers()
-  }, [viewMode, selectedDate])
+  }, [viewMode, selectedDate, filters]) // Added filters to dependency array to re-fetch on filter change
 
   // Auto-hide messages after 5 seconds
   useEffect(() => {
@@ -177,33 +180,38 @@ const OrdersManagement: React.FC = () => {
 
       let query = supabase
         .from("orders")
-        .select(`
+        .select(
+          `
           id, order_id, customer_name, address, billing_city, mobile_number, total_order_fees,
           payment_method, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
           users!orders_assigned_courier_id_fkey(name)
-        `)
+        `,
+        )
         .eq("archived", viewMode === "archived")
         .gte("created_at", startOfDay.toISOString())
         .lte("created_at", endOfDay.toISOString())
         .order("created_at", { ascending: false })
 
-      if (filters.courier) {
-        const { data: matchedCouriers } = await supabase
-          .from("users")
-          .select("id")
-          .ilike("name", `%${filters.courier}%`)
-        const ids = matchedCouriers?.map((c) => c.id) || []
+      // Apply multi-select courier filter
+      if (filters.couriers.length > 0) {
         if (viewMode === "archived") {
-          query = query.in("original_courier_id", ids.length > 0 ? ids : [""])
+          query = query.in("original_courier_id", filters.couriers)
         } else {
-          query = query.in("assigned_courier_id", ids.length > 0 ? ids : [""])
+          query = query.in("assigned_courier_id", filters.couriers)
         }
       }
+
+      // Apply multi-select status filter
+      if (filters.statuses.length > 0) {
+        query = query.in("status", filters.statuses)
+      }
+
       if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
       if (filters.payment) query = query.ilike("payment_method", `%${filters.payment}%`)
       if (filters.orderId) query = query.ilike("order_id", `%${filters.orderId}%`)
 
       const { data, error } = await query
+
       if (error) throw error
 
       const ordersWithCourierNames =
@@ -355,8 +363,11 @@ const OrdersManagement: React.FC = () => {
       if (changes.assigned_courier_id && !orders.find((o) => o.id === orderId)?.original_courier_id) {
         changes.original_courier_id = changes.assigned_courier_id
       }
+
       const { error } = await supabase.from("orders").update(changes).eq("id", orderId)
+
       if (error) throw error
+
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
       setOrderEdits((prev) => {
         const copy = { ...prev }
@@ -375,8 +386,10 @@ const OrdersManagement: React.FC = () => {
       setError("Please select courier and orders / يرجى اختيار المندوب والطلبات")
       return
     }
+
     setAssignLoading(true)
     setError(null)
+
     try {
       const { data: currentOrders } = await supabase
         .from("orders")
@@ -393,9 +406,11 @@ const OrdersManagement: React.FC = () => {
         } else if (!order.original_courier_id) {
           updateData.original_courier_id = selectedCourier
         }
+
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
         if (error) throw error
       }
+
       await fetchOrders()
       setSelectedOrders([])
       setSelectedCourier("")
@@ -414,13 +429,16 @@ const OrdersManagement: React.FC = () => {
       setError("Please select orders to archive / يرجى اختيار طلبات للأرشفة")
       return
     }
+
     setArchiveLoading(true)
     setError(null)
+
     try {
       const { data: ordersToArchive, error: fetchError } = await supabase
         .from("orders")
         .select("id, assigned_courier_id, original_courier_id")
         .in("id", selectedOrders)
+
       if (fetchError) throw fetchError
 
       for (const order of ordersToArchive || []) {
@@ -435,6 +453,7 @@ const OrdersManagement: React.FC = () => {
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
         if (error) throw error
       }
+
       await fetchOrders()
       setSelectedOrders([])
       setShowArchiveConfirm(false)
@@ -453,13 +472,16 @@ const OrdersManagement: React.FC = () => {
       setError("Please select orders to restore / يرجى اختيار طلبات للاستعادة")
       return
     }
+
     setArchiveLoading(true)
     setError(null)
+
     try {
       const { data: ordersToRestore, error: fetchError } = await supabase
         .from("orders")
         .select("id, original_courier_id")
         .in("id", selectedOrders)
+
       if (fetchError) throw fetchError
 
       for (const order of ordersToRestore || []) {
@@ -473,6 +495,7 @@ const OrdersManagement: React.FC = () => {
           .eq("id", order.id)
         if (error) throw error
       }
+
       await fetchOrders()
       setSelectedOrders([])
       setSuccessMessage(
@@ -490,11 +513,14 @@ const OrdersManagement: React.FC = () => {
       setError("Please select orders to delete / يرجى اختيار طلبات للحذف")
       return
     }
+
     setDeleteLoading(true)
     setError(null)
+
     try {
       const { error } = await supabase.from("orders").delete().in("id", selectedOrders)
       if (error) throw error
+
       await fetchOrders()
       setSelectedOrders([])
       setShowDeleteConfirm(false)
@@ -522,12 +548,13 @@ const OrdersManagement: React.FC = () => {
 
   const clearFilters = () => {
     setFilters({
-      courier: "",
+      couriers: [], // Reset to empty array
+      statuses: [], // Reset to empty array
       mobile: "",
       payment: "",
       orderId: "",
     })
-    fetchOrders()
+    // No need to call fetchOrders here, as setting filters will trigger useEffect
   }
 
   const getStatusBadge = (status: string) => {
@@ -639,100 +666,6 @@ const OrdersManagement: React.FC = () => {
         {/* Expanded Details */}
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-gray-200">
-            {/* Address */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">العنوان</label>
-              {isEditing ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={edited.address ?? order.address}
-                    onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
-                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-gray-900 break-words">{order.address}</span>
-                </div>
-              )}
-            </div>
-
-            {/* City */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">المدينة</label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={edited.billing_city ?? order.billing_city}
-                  onChange={(e) => handleEditChange(order.id, "billing_city", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              ) : (
-                <span className="text-sm text-gray-900">{order.billing_city}</span>
-              )}
-            </div>
-
-            {/* Payment Method */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">طريقة الدفع</label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={edited.payment_method ?? order.payment_method}
-                  onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              ) : (
-                <span className="text-sm text-gray-900">{order.payment_method}</span>
-              )}
-            </div>
-
-            {/* Status */}
-            {isEditing && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">الحالة</label>
-                <select
-                  value={edited.status ?? order.status}
-                  onChange={(e) => handleEditChange(order.id, "status", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="assigned">مكلف</option>
-                  <option value="delivered">تم التوصيل</option>
-                  <option value="canceled">ملغي</option>
-                  <option value="partial">جزئي</option>
-                  <option value="hand_to_hand">استبدال</option>
-                  <option value="return">مرتجع</option>
-                </select>
-              </div>
-            )}
-
-            {/* Courier */}
-            {isEditing && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">المندوب</label>
-                <select
-                  value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
-                  onChange={(e) => handleEditChange(order.id, "assigned_courier_id", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">غير مخصص</option>
-                  {couriers.map((courier) => (
-                    <option key={courier.id} value={courier.id}>
-                      {courier.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {/* Notes */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">الملاحظات</label>
@@ -759,7 +692,94 @@ const OrdersManagement: React.FC = () => {
                 </div>
               )}
             </div>
-
+            {/* Address */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">العنوان</label>
+              {isEditing ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={edited.address ?? order.address}
+                    onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm text-gray-900 break-words">{order.address}</span>
+                </div>
+              )}
+            </div>
+            {/* City */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">المدينة</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={edited.billing_city ?? order.billing_city}
+                  onChange={(e) => handleEditChange(order.id, "billing_city", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              ) : (
+                <span className="text-sm text-gray-900">{order.billing_city}</span>
+              )}
+            </div>
+            {/* Payment Method */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">طريقة الدفع</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={edited.payment_method ?? order.payment_method}
+                  onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              ) : (
+                <span className="text-sm text-gray-900">{order.payment_method}</span>
+              )}
+            </div>
+            {/* Status */}
+            {isEditing && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">الحالة</label>
+                <select
+                  value={edited.status ?? order.status}
+                  onChange={(e) => handleEditChange(order.id, "status", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {Object.keys(statusConfig).map((statusKey) => (
+                    <option key={statusKey} value={statusKey}>
+                      {statusConfig[statusKey].label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* Courier */}
+            {isEditing && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">المندوب</label>
+                <select
+                  value={edited.assigned_courier_id ?? order.assigned_courier_id ?? ""}
+                  onChange={(e) => handleEditChange(order.id, "assigned_courier_id", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">غير مخصص</option>
+                  {couriers.map((courier) => (
+                    <option key={courier.id} value={courier.id}>
+                      {courier.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
               {isEditing ? (
@@ -817,27 +837,27 @@ const OrdersManagement: React.FC = () => {
           scrollbar-width: thin;
           scrollbar-color: #CBD5E0 #F7FAFC;
         }
-        
+
         .scrollbar-always::-webkit-scrollbar {
           width: 12px;
           height: 12px;
         }
-        
+
         .scrollbar-always::-webkit-scrollbar-track {
           background: #F7FAFC;
           border-radius: 6px;
         }
-        
+
         .scrollbar-always::-webkit-scrollbar-thumb {
           background: #CBD5E0;
           border-radius: 6px;
           border: 2px solid #F7FAFC;
         }
-        
+
         .scrollbar-always::-webkit-scrollbar-thumb:hover {
           background: #A0AEC0;
         }
-        
+
         .scrollbar-always::-webkit-scrollbar-corner {
           background: #F7FAFC;
         }
@@ -922,7 +942,6 @@ const OrdersManagement: React.FC = () => {
                 </p>
               </div>
             </div>
-
             <div className="flex items-center gap-3">
               {/* Date Navigation Buttons */}
               <button
@@ -933,7 +952,6 @@ const OrdersManagement: React.FC = () => {
                 <ChevronRight className="w-4 h-4" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
-
               <button
                 onClick={goToToday}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -941,7 +959,6 @@ const OrdersManagement: React.FC = () => {
                 <Calendar className="w-4 h-4" />
                 <span>اليوم</span>
               </button>
-
               <button
                 onClick={goToNextDay}
                 className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -950,7 +967,6 @@ const OrdersManagement: React.FC = () => {
                 <span className="hidden sm:inline">التالي</span>
                 <ChevronLeft className="w-4 h-4" />
               </button>
-
               {/* Custom Date Picker */}
               <div className="relative">
                 <button
@@ -960,7 +976,6 @@ const OrdersManagement: React.FC = () => {
                   <Calendar className="w-4 h-4" />
                   <span>اختر تاريخ</span>
                 </button>
-
                 {showDatePicker && (
                   <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-20">
                     <div className="space-y-3">
@@ -1064,21 +1079,61 @@ const OrdersManagement: React.FC = () => {
               <h3 className="text-lg font-semibold text-gray-900">مرشحات البحث</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Couriers as checkboxes */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">البحث بالمندوب</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="اسم المندوب"
-                    value={filters.courier}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, courier: e.target.value }))}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                <label className="block text-sm font-medium text-gray-700">اختر المندوبين</label>
+                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto pl-2 border border-gray-200 rounded-lg">
+                  {couriers.map((courier) => (
+                    <label key={courier.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={filters.couriers.includes(courier.id)}
+                        onChange={() => {
+                          setFilters((prev) => {
+                            const alreadySelected = prev.couriers.includes(courier.id)
+                            return {
+                              ...prev,
+                              couriers: alreadySelected
+                                ? prev.couriers.filter((id) => id !== courier.id)
+                                : [...prev.couriers, courier.id],
+                            }
+                          })
+                        }}
+                      />
+                      <span>{courier.name}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
+              {/* Statuses as checkboxes */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">البحث بالهاتف</label>
+                <label className="block text-sm font-medium text-gray-700">اختر الحالات</label>
+                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto pl-2 border border-gray-200 rounded-lg">
+                  {Object.keys(statusConfig).map((statusKey) => (
+                    <label key={statusKey} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={filters.statuses.includes(statusKey)}
+                        onChange={() => {
+                          setFilters((prev) => {
+                            const alreadySelected = prev.statuses.includes(statusKey)
+                            return {
+                              ...prev,
+                              statuses: alreadySelected
+                                ? prev.statuses.filter((s) => s !== statusKey)
+                                : [...prev.statuses, statusKey],
+                            }
+                          })
+                        }}
+                      />
+                      <span>{statusConfig[statusKey].label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {/* Phone filter */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">رقم الهاتف</label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
@@ -1090,8 +1145,9 @@ const OrdersManagement: React.FC = () => {
                   />
                 </div>
               </div>
+              {/* Payment filter */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">البحث بطريقة الدفع</label>
+                <label className="block text-sm font-medium text-gray-700">طريقة الدفع</label>
                 <div className="relative">
                   <CreditCard className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
@@ -1103,8 +1159,9 @@ const OrdersManagement: React.FC = () => {
                   />
                 </div>
               </div>
+              {/* Order ID filter */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">البحث برقم الطلب</label>
+                <label className="block text-sm font-medium text-gray-700">رقم الطلب</label>
                 <div className="relative">
                   <Hash className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
@@ -1261,7 +1318,7 @@ const OrdersManagement: React.FC = () => {
                       وقت الطلب
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[250px]">
-                      العنوان
+                      الملاحظات
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
                       المدينة
@@ -1281,9 +1338,6 @@ const OrdersManagement: React.FC = () => {
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[140px]">
                       المندوب
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[200px]">
-                      الملاحظات
-                    </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[150px]">
                       الإجراءات
                     </th>
@@ -1294,7 +1348,6 @@ const OrdersManagement: React.FC = () => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
-
                     return (
                       <tr
                         key={order.id}
@@ -1371,23 +1424,27 @@ const OrdersManagement: React.FC = () => {
                         <td className="px-6 py-4 max-w-xs">
                           {isEditing ? (
                             <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={edited.address ?? order.address}
-                                onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              <textarea
+                                value={edited.notes ?? order.notes ?? ""}
+                                onChange={(e) => handleEditChange(order.id, "notes", e.target.value)}
+                                placeholder="أضف ملاحظات"
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                rows={2}
                               />
                               <button
-                                onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                                onClick={() => openExpandedEdit(order.id, "notes", edited.notes ?? order.notes ?? "")}
                                 className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                                title="توسيع محرر الملاحظات"
                               >
                                 <Maximize2 className="w-4 h-4" />
                               </button>
                             </div>
                           ) : (
                             <div className="flex items-start gap-2">
-                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                              <span className="text-sm text-gray-900 break-words">{order.address}</span>
+                              <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                              <span className="text-sm text-gray-900 break-words">
+                                {order.notes || "لا توجد ملاحظات"}
+                              </span>
                             </div>
                           )}
                         </td>
@@ -1471,12 +1528,11 @@ const OrdersManagement: React.FC = () => {
                               onChange={(e) => handleEditChange(order.id, "status", e.target.value)}
                               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             >
-                              <option value="assigned">مكلف</option>
-                              <option value="delivered">تم التوصيل</option>
-                              <option value="canceled">ملغي</option>
-                              <option value="partial">جزئي</option>
-                              <option value="hand_to_hand">استبدال</option>
-                              <option value="return">مرتجع</option>
+                              {Object.keys(statusConfig).map((statusKey) => (
+                                <option key={statusKey} value={statusKey}>
+                                  {statusConfig[statusKey].label}
+                                </option>
+                              ))}
                             </select>
                           ) : (
                             getStatusBadge(order.status)
@@ -1501,33 +1557,6 @@ const OrdersManagement: React.FC = () => {
                               <UserCheck className="w-4 h-4 text-gray-400" />
                               <span className={`text-sm ${assigned ? "text-green-700 font-medium" : "text-gray-900"}`}>
                                 {order.courier_name || "غير مخصص"}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 max-w-xs">
-                          {isEditing ? (
-                            <div className="flex items-center gap-2">
-                              <textarea
-                                value={edited.notes ?? order.notes ?? ""}
-                                onChange={(e) => handleEditChange(order.id, "notes", e.target.value)}
-                                placeholder="أضف ملاحظات"
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                                rows={2}
-                              />
-                              <button
-                                onClick={() => openExpandedEdit(order.id, "notes", edited.notes ?? order.notes ?? "")}
-                                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                                title="توسيع محرر الملاحظات"
-                              >
-                                <Maximize2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-start gap-2">
-                              <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                              <span className="text-sm text-gray-900 break-words">
-                                {order.notes || "لا توجد ملاحظات"}
                               </span>
                             </div>
                           )}
