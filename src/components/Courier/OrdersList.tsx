@@ -94,7 +94,7 @@ const statusLabels: Record<string, { label: string; icon: React.ComponentType<an
       bgColor: "bg-purple-50 border-purple-200",
     },
     return: {
-      label: "مرتجع",
+      label: "مؤجل",
       icon: Truck,
       color: "text-orange-700",
       bgColor: "bg-orange-50 border-orange-200",
@@ -167,24 +167,28 @@ const OrdersList: React.FC = () => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
 
-  // Helper function to check if payment method is a card payment
+  // Helper function to check if payment method is a card payment (but NOT visa_machine)
   const isCardPayment = (method: string) => {
     const cardKeywords = ["card", "credit", "debit", "visa", "mastercard", "amex", "discover"]
+    // Exclude visa_machine from being considered a card payment for online purposes
+    if (method === "visa_machine") return false
     return cardKeywords.some((keyword) => method.toLowerCase().includes(keyword))
   }
 
-  // Updated normalize method function to handle card payments as valu
+  // Updated normalize method function to handle card payments as visa, but exclude visa_machine
   const normalizeMethod = (method: string) => {
     if (method?.includes("paymob.valu")) return "valu"
-    // If it's paymob or any card payment, treat as 'visa'
+    // Only treat as 'visa' if it's paymob or card payment, but NOT visa_machine
+    if (method === "visa_machine") return "visa_machine" // Keep visa_machine separate
     if (method?.includes("paymob") || isCardPayment(method)) return "visa"
     return method
   }
 
-  // Helper function to check if order is paid
+  // Helper function to check if order is paid online (excluding visa_machine)
   const isOrderPaid = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    return ["visa", "valu"].includes(method) // Updated to check for 'visa' and 'valu'
+    // Only consider valu and visa (online payments) as paid, not visa_machine
+    return ["visa", "valu"].includes(method)
   }
 
   // Helper function to format date in Arabic
@@ -366,6 +370,10 @@ const OrdersList: React.FC = () => {
     } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
       // For canceled orders with fees, collected_by is implicitly courier
       initialCollectedBy = "courier"
+    } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
+      // For canceled orders with no fees, clear everything so it calculates to zero
+      initialCollectedBy = ""
+      initialPaymentSubType = ""
     }
 
     setSelectedOrder(order)
@@ -530,9 +538,10 @@ const OrdersList: React.FC = () => {
       const isReturnStatus = updateData.status === "return"
       const isReceivingPartWithNoFees = updateData.status === "receiving_part" && fee === 0 && partial === 0
       const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
+      const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
 
-      // If status is 'return' or 'receiving_part' with no fees, force fees to 0 and clear collection info
-      if (isReturnStatus || isReceivingPartWithNoFees) {
+      // If status is 'return' or 'receiving_part' with no fees, or 'canceled' with no fees, force fees to 0 and clear collection info
+      if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
         fee = 0
         partial = 0
         updatePayload.collected_by = null
@@ -549,7 +558,7 @@ const OrdersList: React.FC = () => {
       if (
         ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
       ) {
-        if (isReturnStatus || isReceivingPartWithNoFees) {
+        if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
           // Already handled above: fees are 0, collected_by and payment_sub_type are null
         } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
@@ -1169,7 +1178,7 @@ const OrdersList: React.FC = () => {
                       <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
                     </div>
                     <p className="text-xs text-gray-500">
-                      رسوم التوصيل من��صلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
+                      رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
                     </p>
                   </div>
 
@@ -1193,6 +1202,8 @@ const OrdersList: React.FC = () => {
                           updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
                         const isHandToHandWithNoFeesInModal =
                           updateData.status === "hand_to_hand" && currentFee === 0 && currentPartial === 0
+                        const isCanceledWithNoFeesInModal =
+                          updateData.status === "canceled" && currentFee === 0 && currentPartial === 0
 
                         // Condition for the "Order Paid" message
                         const showOrderPaidMessage =
@@ -1203,7 +1214,8 @@ const OrdersList: React.FC = () => {
                           isOrderUnpaidInModal &&
                           !isReturnStatusInModal &&
                           !isHandToHandWithNoFeesInModal &&
-                          !isReceivingPartNoFeesInModal
+                          !isReceivingPartNoFeesInModal &&
+                          !isCanceledWithNoFeesInModal
 
                         // Condition for "Return Status" message
                         const showReturnStatusMessage = isReturnStatusInModal
@@ -1214,11 +1226,15 @@ const OrdersList: React.FC = () => {
                         // Condition for "Hand to Hand No Fees" message
                         const showHandToHandNoFeesMessage = isHandToHandWithNoFeesInModal
 
+                        // Condition for "Canceled No Fees" message
+                        const showCanceledNoFeesMessage = isCanceledWithNoFeesInModal
+
                         // Condition to show Payment Sub-Type dropdown
                         const showPaymentSubTypeDropdown =
                           !isReturnStatusInModal &&
                           !isHandToHandWithNoFeesInModal &&
                           !isReceivingPartNoFeesInModal &&
+                          !isCanceledWithNoFeesInModal &&
                           ((isOrderOriginallyPaidOnlineInModal && (currentFee > 0 || currentPartial > 0)) || // Online paid, but adding fees
                             isOrderUnpaidInModal || // Unpaid orders
                             (updateData.status === "canceled" && currentFee > 0) || // Canceled with fees
@@ -1229,6 +1245,7 @@ const OrdersList: React.FC = () => {
                           !isReturnStatusInModal &&
                           !isHandToHandWithNoFeesInModal &&
                           !isReceivingPartNoFeesInModal &&
+                          !isCanceledWithNoFeesInModal &&
                           (currentFee > 0 || currentPartial > 0) && // Only show if there are fees/partial amount
                           (isOrderOriginallyPaidOnlineInModal || // Online paid and adding fees
                             (!isOrderOriginallyPaidOnlineInModal &&
@@ -1254,10 +1271,10 @@ const OrdersList: React.FC = () => {
                               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-yellow-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">طلب مرتجع</span>
+                                  <span className="text-sm font-medium">طلب مؤجل</span>
                                 </div>
                                 <p className="text-xs text-yellow-600 mt-1">
-                                  الطلبات المرتجعة لا تتطلب تحصيل رسوم. سيتم حساب الإجمالي كصفر.
+                                  الطلبات المؤجلة لا تتطلب تحصيل رسوم. سيتم حساب الإجمالي كصفر.
                                 </p>
                               </div>
                             )}
@@ -1280,6 +1297,17 @@ const OrdersList: React.FC = () => {
                                 </div>
                                 <p className="text-xs text-purple-600 mt-1">
                                   لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                                </p>
+                              </div>
+                            )}
+                            {showCanceledNoFeesMessage && (
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-gray-700">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-sm font-medium">طلب ملغي بدون رسوم</span>
+                                </div>
+                                <p className="text-xs text-gray-600 mt-1">
+                                  الطلبات الملغاة بدون رسوم سيتم حساب إجماليها كصفر تلقائياً.
                                 </p>
                               </div>
                             )}

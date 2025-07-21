@@ -66,10 +66,12 @@ interface DateRange {
   endDate: string
 }
 
-const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "other" => {
+// Updated normalize function to exclude visa_machine from paymob
+const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa_machine" | "other" => {
   const m = method.toLowerCase().trim()
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
-  if (m === "paymob" || m.includes("visa") || m.includes("card")) return "paymob" // Group all card/paymob under 'paymob'
+  if (m === "visa_machine") return "visa_machine" // Keep visa_machine separate
+  if (m === "paymob" || (m.includes("visa") && m !== "visa_machine") || m.includes("card")) return "paymob"
   if (m === "cash") return "cash"
   return "other"
 }
@@ -126,7 +128,7 @@ const Summary: React.FC = () => {
       canceledOrders: "الطلبات الملغاة",
       partialOrders: "الطلبات الجزئية",
       handToHandOrders: "الطلبات يد بيد",
-      returnOrders: "الطلبات المرتجعة",
+      returnOrders: "الطلبات المؤجله",
       assignedOrders: "الطلبات المكلفة",
       receivingPartOrders: "طلبات استلام قطعه",
       totalOrders: "إجمالي الطلبات",
@@ -175,7 +177,7 @@ const Summary: React.FC = () => {
       canceled: "ملغي",
       partial: "جزئي",
       hand_to_hand: "استبدال",
-      return: "مرتجع",
+      return: "مؤجل",
       receiving_part: "استلام قطعه",
       cash: "نقداً",
       paymob: "باي موب",
@@ -455,11 +457,21 @@ const Summary: React.FC = () => {
       return { count, amount, orders }
     }
 
-    const paymobOrders = getPaymentMethodMetrics(
-      (o) =>
-        normalizePaymentMethod(getDisplayPaymentMethod(o)) === "paymob" ||
-        (normalizePaymentMethod(o.payment_method) === "paymob" && !o.collected_by),
-    )
+    // Updated paymob orders calculation - exclude visa_machine
+    const paymobOrders = getPaymentMethodMetrics((o) => {
+      const displayMethod = getDisplayPaymentMethod(o)
+      const normalizedDisplay = normalizePaymentMethod(displayMethod)
+      const normalizedOriginal = normalizePaymentMethod(o.payment_method)
+      
+      // Include if:
+      // 1. Display method normalizes to paymob AND it's not visa_machine
+      // 2. Original payment method is paymob and no collected_by is set (original online payment)
+      return (
+        (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
+        (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
+      )
+    })
+
     const valuOrders = getPaymentMethodMetrics(
       (o) =>
         normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
@@ -832,14 +844,14 @@ const Summary: React.FC = () => {
                       {/* Returned Orders */}
                       <div
                         className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
-                        onClick={() => openOrders(metrics.returned.orders, "الطلبات المرتجعة")}
+                        onClick={() => openOrders(metrics.returned.orders, "الطلبات المؤجله")}
                       >
                         <div className="flex items-center gap-4 mb-4">
                           <div className="w-12 h-12 bg-orange-200 rounded-xl flex items-center justify-center">
                             <Truck className="w-6 h-6 text-orange-700" />
                           </div>
                           <div>
-                            <h3 className="text-lg font-bold text-orange-900">الطلبات المرتجعة</h3>
+                            <h3 className="text-lg font-bold text-orange-900">الطلبات المؤجله</h3>
                             <p className="text-sm text-orange-700">{metrics.returned.count} طلب</p>
                           </div>
                         </div>
@@ -1744,7 +1756,7 @@ const Summary: React.FC = () => {
                   className={`bg-orange-50 border-2 border-orange-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
                     isCourier ? "p-4" : "p-6"
                   }`}
-                  onClick={() => openOrders(metrics.returned.orders, "الطلبات المرتجعة")}
+                  onClick={() => openOrders(metrics.returned.orders, "الطلبات المؤجله")}
                 >
                   <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
                     <div
@@ -1756,7 +1768,7 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المرتجعة" : "الطلبات المرتجعة"}
+                        {isCourier ? "المؤجله" : "الطلبات المؤجله"}
                       </h3>
                       <p className={`text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
                         {metrics.returned.count} طلب
@@ -2069,13 +2081,17 @@ const Summary: React.FC = () => {
               <div className={`grid ${isCourier ? "grid-cols-2 gap-2" : "grid-cols-1 sm:grid-cols-2 gap-4"}`}>
                 {/* Valu */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
-                        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)) &&
+                  const orders = allOrders.filter((o) => {
+                    const displayMethod = getDisplayPaymentMethod(o)
+                    const normalizedDisplay = normalizePaymentMethod(displayMethod)
+                    const normalizedOriginal = normalizePaymentMethod(o.payment_method)
+                    
+                    return (
+                      (normalizedDisplay === "valu" || (normalizedOriginal === "valu" && !o.collected_by)) &&
                       shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                      o.assigned_courier_id === currentCourier.courierId
+                    )
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
@@ -2101,15 +2117,20 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-                {/* Paymob */}
+                {/* Paymob - Updated logic to exclude visa_machine */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "paymob" ||
-                        (normalizePaymentMethod(o.payment_method) === "paymob" && !o.collected_by)) &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const orders = allOrders.filter((o) => {
+                    const displayMethod = getDisplayPaymentMethod(o)
+                    const normalizedDisplay = normalizePaymentMethod(displayMethod)
+                    const normalizedOriginal = normalizePaymentMethod(o.payment_method)
+                    
+                    return (
+                      // Include if display method normalizes to paymob AND it's not visa_machine
+                      (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
+                      // OR original payment method is paymob and no collected_by is set (original online payment)
+                      (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
+                    ) && shouldIncludeOrder(o) && o.assigned_courier_id === currentCourier.courierId
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
