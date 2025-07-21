@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import {
@@ -38,18 +37,15 @@ import { supabase } from "../../lib/supabase"
 import Papa from "papaparse"
 import { saveAs } from "file-saver"
 import { useAuth } from "../../contexts/AuthContext" // Import useAuth
-
 interface Courier {
   id: string
   name: string
 }
-
 interface OrderProof {
   id: string
   image_url?: string | null
   image_data?: string | null
 }
-
 interface Order {
   courier_name: string
   id: string
@@ -74,7 +70,6 @@ interface Order {
   archived?: boolean
   archived_at?: string
 }
-
 interface CourierStats {
   totalOrders: number
   deliveredOrders: number
@@ -86,7 +81,6 @@ interface CourierStats {
   completionRate: number
   archivedOrders: number
 }
-
 // Notification interface is now defined in AuthContext.tsx
 // interface Notification {
 //   id: string
@@ -96,7 +90,6 @@ interface CourierStats {
 //   orderId?: string
 //   courierName?: string
 // }
-
 const statusConfig: Record<
   string,
   { label: string; color: string; bgColor: string; cardBg: string; icon: React.ComponentType<any> }
@@ -144,13 +137,11 @@ const statusConfig: Record<
     icon: TrendingUp,
   },
 }
-
 // Get today's date in YYYY-MM-DD format
 const getTodayDate = () => {
   const today = new Date()
   return today.toISOString().split("T")[0]
 }
-
 const Reports: React.FC = () => {
   const {
     notifications,
@@ -159,8 +150,8 @@ const Reports: React.FC = () => {
     clearAllNotifications,
     playNotificationSound,
     setShowNotifications,
+    setSoundEnabled, // Added setSoundEnabled from AuthContext
   } = useAuth() // Consume from AuthContext
-
   const [couriers, setCouriers] = useState<Courier[]>([])
   const [selectedCourier, setSelectedCourier] = useState<Courier | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -178,20 +169,15 @@ const Reports: React.FC = () => {
   // Keeping debugInfo for console logging, but removing UI display
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
-
   // Debug function (for console logging)
   const addDebugInfo = (info: string) => {
     console.log(`[DEBUG] ${info}`)
     setDebugInfo((prev) => [`${new Date().toLocaleTimeString()}: ${info}`, ...prev.slice(0, 9)])
   }
-
   // Removed audio context initialization and playNotificationSound from here
   // as they are now in AuthContext.tsx
-
   // Removed getCourierName from here as it's now in AuthContext.tsx
-
   // Removed addNotification from here as it's now in AuthContext.tsx
-
   const translate = (key: string) => {
     const translations: Record<string, string> = {
       courierReports: "تقارير المندوبين",
@@ -260,7 +246,6 @@ const Reports: React.FC = () => {
     }
     return translations[key] || key
   }
-
   useEffect(() => {
     const fetchCouriers = async () => {
       setLoadingCouriers(true)
@@ -278,16 +263,12 @@ const Reports: React.FC = () => {
     }
     fetchCouriers()
   }, [])
-
   // Removed global subscription for all order changes (for notifications) from here
   // as it is now in AuthContext.tsx
-
   // Selected courier subscription (for data refresh)
   useEffect(() => {
     if (!selectedCourier) return
-
     addDebugInfo(`Setting up subscription for courier: ${selectedCourier.name}`)
-
     const courierSubscription = supabase
       .channel(`courier_${selectedCourier.id}_orders`)
       .on(
@@ -310,29 +291,24 @@ const Reports: React.FC = () => {
       .subscribe((status) => {
         addDebugInfo(`Courier subscription status: ${status}`)
       })
-
     return () => {
       addDebugInfo(`Unsubscribing from courier ${selectedCourier.name} orders`)
       courierSubscription.unsubscribe()
     }
   }, [selectedCourier, viewMode])
-
   // Effect to re-fetch orders and recalculate stats when date range changes
   useEffect(() => {
     if (selectedCourier) {
       fetchOrdersForCourier(selectedCourier)
     }
   }, [dateRange]) // Trigger fetch when dateRange changes
-
   useEffect(() => {
     filterOrders()
   }, [orders, searchTerm, statusFilter]) // Removed dateRange from here as it's handled by fetchOrdersForCourier
-
   const fetchOrdersForCourier = async (courier: Courier) => {
     setSelectedCourier(courier)
     setLoadingOrders(true)
     addDebugInfo(`Fetching orders for courier: ${courier.name}`)
-
     try {
       let query = supabase
         .from("orders")
@@ -347,13 +323,11 @@ const Reports: React.FC = () => {
     original_courier:users!orders_original_courier_id_fkey(id, name)
   `)
         .order("created_at", { ascending: false })
-
       if (viewMode === "active") {
         query = query.eq("assigned_courier_id", courier.id).eq("archived", false)
       } else {
         query = query.eq("original_courier_id", courier.id).eq("archived", true)
       }
-
       // Apply date range filter to the main order fetch
       if (dateRange.start) {
         query = query.gte("created_at", dateRange.start + "T00:00:00.000Z")
@@ -361,18 +335,14 @@ const Reports: React.FC = () => {
       if (dateRange.end) {
         query = query.lte("created_at", dateRange.end + "T23:59:59.999Z")
       }
-
       const { data, error } = await query
-
       if (error) throw error
-
       // Add courier name based on view mode
       const ordersWithCourierNames = (data || []).map((order: any) => ({
         ...order,
         courier_name: viewMode === "active" ? order.assigned_courier?.name : order.original_courier?.name,
         courier_id: viewMode === "active" ? order.assigned_courier?.id : order.original_courier?.id,
       }))
-
       setOrders(ordersWithCourierNames)
       // Pass the date range to calculateStats
       calculateStats(courier.id, dateRange.start, dateRange.end)
@@ -384,34 +354,28 @@ const Reports: React.FC = () => {
       setLoadingOrders(false)
     }
   }
-
   const calculateStats = async (courierId: string, startDate: string, endDate: string) => {
     // Convert date strings to ISO format for Supabase query
     const startOfDay = startDate ? startDate + "T00:00:00.000Z" : null
     const endOfDay = endDate ? endDate + "T23:59:59.999Z" : null
-
     // Get active orders stats for the selected date range
     let activeOrdersQuery = supabase
       .from("orders")
       .select("*")
       .eq("assigned_courier_id", courierId)
       .eq("archived", false)
-
     if (startOfDay) {
       activeOrdersQuery = activeOrdersQuery.gte("created_at", startOfDay)
     }
     if (endOfDay) {
       activeOrdersQuery = activeOrdersQuery.lte("created_at", endOfDay)
     }
-
     const { data: activeOrdersData, error: activeOrdersError } = await activeOrdersQuery
-
     if (activeOrdersError) {
       console.error("Error fetching active orders for stats:", activeOrdersError)
       addDebugInfo(`Error fetching active orders for stats: ${activeOrdersError.message}`)
       return
     }
-
     const activeOrders = activeOrdersData || []
     const totalOrders = activeOrders.length
     const deliveredOrders = activeOrders.filter((order) => order.status === "delivered").length
@@ -423,31 +387,25 @@ const Reports: React.FC = () => {
       .reduce((sum, order) => sum + order.total_order_fees, 0)
     const averageOrderValue = totalOrders > 0 ? totalAmount / totalOrders : 0
     const completionRate = totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0
-
     // Get archived orders count using original_courier_id for the selected date range
     let archivedOrdersQuery = supabase
       .from("orders")
       .select("id")
       .eq("original_courier_id", courierId)
       .eq("archived", true)
-
     if (startOfDay) {
       archivedOrdersQuery = archivedOrdersQuery.gte("created_at", startOfDay)
     }
     if (endOfDay) {
       archivedOrdersQuery = archivedOrdersQuery.lte("created_at", endOfDay)
     }
-
     const { data: archivedData, error: archivedError } = await archivedOrdersQuery
-
     if (archivedError) {
       console.error("Error fetching archived orders for stats:", archivedError)
       addDebugInfo(`Error fetching archived orders for stats: ${archivedError.message}`)
       return
     }
-
     const archivedOrders = archivedData?.length || 0
-
     setCourierStats({
       totalOrders,
       deliveredOrders,
@@ -461,10 +419,8 @@ const Reports: React.FC = () => {
     })
     addDebugInfo(`Calculated stats for ${courierId} for range ${startDate} to ${endDate}`)
   }
-
   const filterOrders = () => {
     let filtered = [...orders]
-
     if (searchTerm) {
       filtered = filtered.filter(
         (order) =>
@@ -473,11 +429,9 @@ const Reports: React.FC = () => {
           order.mobile_number.includes(searchTerm),
       )
     }
-
     if (statusFilter) {
       filtered = filtered.filter((order) => order.status === statusFilter)
     }
-
     // Date range filtering is now primarily handled in fetchOrdersForCourier,
     // but keeping this here for consistency with local filtering if 'orders' state
     // isn't always perfectly aligned with the date range (e.g., if orders are added/removed
@@ -488,23 +442,19 @@ const Reports: React.FC = () => {
         return orderDate >= dateRange.start
       })
     }
-
     if (dateRange.end) {
       filtered = filtered.filter((order) => {
         const orderDate = new Date(order.created_at).toISOString().split("T")[0]
         return orderDate <= dateRange.end
       })
     }
-
     setFilteredOrders(filtered)
   }
-
   const exportOrdersCsv = () => {
     if (filteredOrders.length === 0) {
       alert(translate("noExportData"))
       return
     }
-
     const dataToExport = filteredOrders.map((order) => ({
       order_id: order.order_id,
       customer_name: order.customer_name,
@@ -525,29 +475,24 @@ const Reports: React.FC = () => {
       created_at: new Date(order.created_at).toLocaleString(),
       updated_at: new Date(order.updated_at).toLocaleString(),
     }))
-
     const csv = Papa.unparse(dataToExport)
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const filename = `courier-orders-${selectedCourier?.name || "unknown"}-${viewMode}-${dateRange.start || getTodayDate()}.csv`
     saveAs(blob, filename)
     alert(translate("exportSuccess"))
   }
-
   const clearFilters = () => {
     setSearchTerm("")
     setStatusFilter("")
     setDateRange({ start: "", end: "" })
   }
-
   const resetToToday = () => {
     const today = getTodayDate()
     setDateRange({ start: today, end: today })
     setSearchTerm("")
     setStatusFilter("")
   }
-
   // Removed clearAllNotifications from here as it's now in AuthContext.tsx
-
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || {
       label: status,
@@ -557,7 +502,6 @@ const Reports: React.FC = () => {
       icon: Activity,
     }
     const StatusIcon = config.icon
-
     return (
       <div
         className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${config.bgColor} ${config.color}`}
@@ -567,12 +511,10 @@ const Reports: React.FC = () => {
       </div>
     )
   }
-
   const openOrderModal = (order: Order) => {
     setSelectedOrder(order)
     setShowOrderModal(true)
   }
-
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "new":
@@ -585,7 +527,6 @@ const Reports: React.FC = () => {
         return <Bell className="w-4 h-4 text-gray-600" />
     }
   }
-
   const getNotificationColor = (type: string) => {
     switch (type) {
       case "new":
@@ -598,7 +539,6 @@ const Reports: React.FC = () => {
         return "border-l-gray-500 bg-gray-50"
     }
   }
-
   const getDateRangeText = () => {
     const today = getTodayDate()
     if (dateRange.start === today && dateRange.end === today) {
@@ -612,7 +552,6 @@ const Reports: React.FC = () => {
     }
     return translate("allDates") // Fallback if no dates selected
   }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -642,7 +581,6 @@ const Reports: React.FC = () => {
                     </span>
                   )}
                 </button>
-
                 {showNotifications && (
                   <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-lg z-50">
                     <div className="p-4 border-b border-gray-200">
@@ -683,27 +621,9 @@ const Reports: React.FC = () => {
                   </div>
                 )}
               </div>
-
               {/* Sound Toggle */}
               <button
-                onClick={() => {
-                  // This will toggle the soundEnabled state in AuthContext
-                  // and trigger the playNotificationSound to respect the new state.
-                  // We don't directly set soundEnabled here, it's managed by AuthContext.
-                  // For demonstration, we can call playNotificationSound to show the effect.
-                  // In a real app, you might expose a `toggleSound` function from AuthContext.
-                  // For now, I'll simulate the toggle by calling playNotificationSound.
-                  // A better approach would be to add `setSoundEnabled` to AuthContextType.
-                  // Let's add `setSoundEnabled` to AuthContextType.
-                  // This is already done in the AuthContext.tsx update.
-                  // So, we need to consume `setSoundEnabled` from `useAuth`.
-                  // Re-checking AuthContextType, `setSoundEnabled` is not exposed.
-                  // Let's add it to AuthContextType and AuthProvider.
-                  // Correction: `setSoundEnabled` is not directly exposed, but `soundEnabled` is.
-                  // The `playNotificationSound` function itself checks `soundEnabled`.
-                  // To toggle, we need a way to update `soundEnabled` in AuthContext.
-                  // I will add `setSoundEnabled` to AuthContextType and AuthProvider.
-                }}
+                onClick={() => setSoundEnabled(!soundEnabled)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                   soundEnabled
                     ? "bg-green-100 text-green-700 hover:bg-green-200"
@@ -713,9 +633,6 @@ const Reports: React.FC = () => {
                 {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                 <span className="hidden sm:inline">{soundEnabled ? translate("soundOn") : translate("soundOff")}</span>
               </button>
-
-              
-
               {/* Refresh Button */}
               <button
                 onClick={() => selectedCourier && fetchOrdersForCourier(selectedCourier)}
@@ -728,7 +645,6 @@ const Reports: React.FC = () => {
           </div>
         </div>
       </div>
-
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Courier List Sidebar */}
@@ -784,7 +700,6 @@ const Reports: React.FC = () => {
               </div>
             </div>
           </div>
-
           {/* Main Content */}
           <div className="lg:col-span-3">
             {selectedCourier ? (
@@ -827,7 +742,6 @@ const Reports: React.FC = () => {
                     </div>
                   </div>
                 )}
-
                 {/* Performance Statistics */}
                 {courierStats && (
                   <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -861,7 +775,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-blue-800">{translate("totalOrders")}</p>
                         </div>
-
                         <div className="bg-green-50 border border-green-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center">
@@ -874,7 +787,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-green-800">{translate("deliveredOrders")}</p>
                         </div>
-
                         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
@@ -887,7 +799,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-orange-800">{translate("returnedOrders")}</p>
                         </div>
-
                         <div className="bg-red-50 border border-red-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center">
@@ -900,7 +811,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-red-800">{translate("canceledOrders")}</p>
                         </div>
-
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-gray-600 rounded-xl flex items-center justify-center">
@@ -913,7 +823,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-gray-800">{translate("archivedOrders")}</p>
                         </div>
-
                         <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center">
@@ -928,7 +837,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-purple-800">{translate("totalAmount")}</p>
                         </div>
-
                         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-yellow-600 rounded-xl flex items-center justify-center">
@@ -943,7 +851,6 @@ const Reports: React.FC = () => {
                           </div>
                           <p className="text-sm font-medium text-yellow-800">{translate("averageOrderValue")}</p>
                         </div>
-
                         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6">
                           <div className="flex items-center justify-between mb-4">
                             <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center">
@@ -962,7 +869,6 @@ const Reports: React.FC = () => {
                     </div>
                   </div>
                 )}
-
                 {/* Filters and Export Section */}
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
@@ -994,7 +900,6 @@ const Reports: React.FC = () => {
                           />
                         </div>
                       </div>
-
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">تصفية حسب الحالة</label>
                         <select
@@ -1011,7 +916,6 @@ const Reports: React.FC = () => {
                           <option value="return">مرتجع</option>
                         </select>
                       </div>
-
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">من تاريخ</label>
                         <input
@@ -1021,7 +925,6 @@ const Reports: React.FC = () => {
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
-
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">إلى تاريخ</label>
                         <input
@@ -1032,7 +935,6 @@ const Reports: React.FC = () => {
                         />
                       </div>
                     </div>
-
                     <div className="flex flex-wrap gap-3">
                       <button
                         onClick={resetToToday}
@@ -1060,7 +962,6 @@ const Reports: React.FC = () => {
                     </div>
                   </div>
                 </div>
-
                 {/* Orders List */}
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
@@ -1136,7 +1037,6 @@ const Reports: React.FC = () => {
                                   </button>
                                 </div>
                               </div>
-
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div
                                   className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
@@ -1152,7 +1052,6 @@ const Reports: React.FC = () => {
                                     </a>
                                   </div>
                                 </div>
-
                                 <div
                                   className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
                                 >
@@ -1164,7 +1063,6 @@ const Reports: React.FC = () => {
                                     </p>
                                   </div>
                                 </div>
-
                                 <div
                                   className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
                                 >
@@ -1174,7 +1072,6 @@ const Reports: React.FC = () => {
                                     <p className={`text-sm font-medium ${statusStyle.color}`}>{order.payment_method}</p>
                                   </div>
                                 </div>
-
                                 <div
                                   className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
                                 >
@@ -1192,7 +1089,6 @@ const Reports: React.FC = () => {
                                     </p>
                                   </div>
                                 </div>
-
                                 {order.order_proofs && order.order_proofs.length > 0 && (
                                   <div
                                     className={`flex items-center gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
@@ -1206,15 +1102,14 @@ const Reports: React.FC = () => {
                                     </div>
                                   </div>
                                 )}
-
                                 <div
                                   className={`flex items-start gap-3 p-3 rounded-lg ${statusStyle.bgColor} bg-opacity-50`}
                                 >
                                   <MapPin className={`w-4 h-4 ${statusStyle.color} opacity-70 mt-0.5`} />
                                   <div>
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>العنوان</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>{translate("notes")}</p>
                                     <p className={`text-sm font-medium ${statusStyle.color} line-clamp-2`}>
-                                      {order.address}
+                                      {order.notes}
                                     </p>
                                   </div>
                                 </div>
@@ -1257,7 +1152,6 @@ const Reports: React.FC = () => {
             )}
           </div>
         </div>
-
         {/* Order Details Modal */}
         {showOrderModal && selectedOrder && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1286,7 +1180,6 @@ const Reports: React.FC = () => {
                   </button>
                 </div>
               </div>
-
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div className="space-y-4">
@@ -1297,7 +1190,6 @@ const Reports: React.FC = () => {
                         <span className="text-gray-900 font-medium">{selectedOrder.customer_name}</span>
                       </div>
                     </div>
-
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <label className="block text-sm font-medium text-gray-700 mb-2">{translate("phone")}</label>
                       <div className="flex items-center gap-2">
@@ -1310,21 +1202,18 @@ const Reports: React.FC = () => {
                         </a>
                       </div>
                     </div>
-
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("address")}</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{translate("notes")}</label>
                       <div className="flex items-start gap-2">
                         <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                        <span className="text-gray-900">{selectedOrder.address}</span>
+                        <span className="text-gray-900">{selectedOrder.notes}</span>
                       </div>
                     </div>
-
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <label className="block text-sm font-medium text-gray-700 mb-2">{translate("status")}</label>
                       {getStatusBadge(selectedOrder.status)}
                     </div>
                   </div>
-
                   <div className="space-y-4">
                     <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                       <label className="block text-sm font-medium text-green-700 mb-2">{translate("totalFees")}</label>
@@ -1335,7 +1224,6 @@ const Reports: React.FC = () => {
                         </span>
                       </div>
                     </div>
-
                     {selectedOrder.delivery_fee && (
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1344,7 +1232,6 @@ const Reports: React.FC = () => {
                         <span className="text-gray-900 font-medium">{selectedOrder.delivery_fee.toFixed(2)} ج.م</span>
                       </div>
                     )}
-
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         {translate("paymentMethod")}
@@ -1357,7 +1244,6 @@ const Reports: React.FC = () => {
                         </span>
                       </div>
                     </div>
-
                     {selectedOrder.collected_by && (
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1368,7 +1254,6 @@ const Reports: React.FC = () => {
                     )}
                   </div>
                 </div>
-
                 {(selectedOrder.internal_comment || selectedOrder.notes) && (
                   <div className="space-y-4 mb-6">
                     {selectedOrder.internal_comment && (
@@ -1387,7 +1272,6 @@ const Reports: React.FC = () => {
                     )}
                   </div>
                 )}
-
                 {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-3">{translate("proofImages")}</label>
@@ -1405,7 +1289,7 @@ const Reports: React.FC = () => {
                             <img
                               src={src || "/placeholder.svg"}
                               alt={translate("clickToOpen")}
-                              className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                              className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor:pointer hover:shadow-md transition-shadow"
                             />
                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-lg transition-all flex items-center justify-center">
                               <ExternalLink className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -1416,7 +1300,6 @@ const Reports: React.FC = () => {
                     </div>
                   </div>
                 )}
-
                 <div className="pt-6 border-t border-gray-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                     <div className="flex items-center gap-2">
@@ -1447,5 +1330,4 @@ const Reports: React.FC = () => {
     </div>
   )
 }
-
 export default Reports
