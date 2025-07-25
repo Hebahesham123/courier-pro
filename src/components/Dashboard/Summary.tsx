@@ -228,12 +228,24 @@ const Summary: React.FC = () => {
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
 
-  // Add state for editing fees
+  // Add state for editing fees with improved input handling
   const [orderFees, setOrderFees] = useState<Record<string, Partial<Order>>>({});
   const [savingFeeOrderId, setSavingFeeOrderId] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  // Add local input state to prevent re-render issues during typing
+  const [localInputValues, setLocalInputValues] = useState<Record<string, Record<string, string>>>({});
 
-  const handleFeeChange = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", value: number | string) => {
+  const handleFeeChange = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", value: string) => {
+    // Update local input state immediately for responsive UI
+    setLocalInputValues(prev => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [feeType]: value
+      }
+    }));
+
+    // Update the actual state
     const numValue = value === "" ? null : Number(value);
     setOrderFees((prev) => ({
       ...prev,
@@ -242,6 +254,15 @@ const Summary: React.FC = () => {
   };
 
   const handleFeeRemove = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee") => {
+    // Clear local input state
+    setLocalInputValues(prev => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [feeType]: ""
+      }
+    }));
+
     setOrderFees((prev) => ({
       ...prev,
       [orderId]: { ...prev[orderId], [feeType]: null },
@@ -268,6 +289,13 @@ const Summary: React.FC = () => {
         return updated;
       });
       
+      // Clear local input values
+      setLocalInputValues(prev => {
+        const updated = { ...prev };
+        delete updated[orderId];
+        return updated;
+      });
+      
       setEditingOrderId(null);
       await fetchSummary();
     } catch (error) {
@@ -283,7 +311,27 @@ const Summary: React.FC = () => {
       delete updated[orderId];
       return updated;
     });
+    
+    // Clear local input values
+    setLocalInputValues(prev => {
+      const updated = { ...prev };
+      delete updated[orderId];
+      return updated;
+    });
+    
     setEditingOrderId(null);
+  };
+
+  // Helper to get input value (local state takes precedence)
+  const getInputValue = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", order: Order) => {
+    const localValue = localInputValues[orderId]?.[feeType];
+    if (localValue !== undefined) {
+      return localValue;
+    }
+    
+    const pendingFees = orderFees[orderId];
+    const currentValue = pendingFees?.[feeType] !== undefined ? pendingFees[feeType] : order[feeType];
+    return currentValue || "";
   };
 
   // Helper to get total fees for an order (including pending changes)
@@ -300,7 +348,7 @@ const Summary: React.FC = () => {
   const getTotalFees = (orders: Order[]) =>
     orders.reduce((acc, o) => acc + getOrderTotalFees(o), 0);
 
-  // Fee editing component
+  // Fee editing component with improved inputs
   const FeeEditor: React.FC<{ order: Order; compact?: boolean }> = ({ order, compact = false }) => {
     if (user?.role !== "admin") return null;
     
@@ -385,10 +433,12 @@ const Summary: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
-                value={currentHoldFee || ""}
+                min="0"
+                value={getInputValue(order.id, "hold_fee", order)}
                 onChange={e => handleFeeChange(order.id, "hold_fee", e.target.value)}
-                className="border rounded px-2 py-1 w-20 text-center"
-                placeholder="0"
+                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0.00"
+                dir="ltr"
               />
               <button
                 type="button"
@@ -407,10 +457,12 @@ const Summary: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
-                value={currentAdminFee || ""}
+                min="0"
+                value={getInputValue(order.id, "admin_delivery_fee", order)}
                 onChange={e => handleFeeChange(order.id, "admin_delivery_fee", e.target.value)}
-                className="border rounded px-2 py-1 w-20 text-center"
-                placeholder="0"
+                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0.00"
+                dir="ltr"
               />
               <button
                 type="button"
@@ -429,10 +481,12 @@ const Summary: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
-                value={currentExtraFee || ""}
+                min="0"
+                value={getInputValue(order.id, "extra_fee", order)}
                 onChange={e => handleFeeChange(order.id, "extra_fee", e.target.value)}
-                className="border rounded px-2 py-1 w-20 text-center"
-                placeholder="0"
+                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0.00"
+                dir="ltr"
               />
               <button
                 type="button"
@@ -987,15 +1041,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-blue-300">
-                            <span className="text-sm font-bold text-blue-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-blue-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-blue-300`}>
+                            <span className={`text-sm font-bold text-blue-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-blue-900`}>
                               {metrics.assigned.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-blue-700">المحصل (تقديري):</span>
-                            <span className="font-bold text-xl text-blue-900">
+                            <span className={`text-sm font-bold text-blue-700`}>المحصل (تقديري):</span>
+                            <span className={`font-bold text-xl text-blue-900`}>
                               {metrics.assigned.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1020,15 +1074,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-green-300">
-                            <span className="text-sm font-bold text-green-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-green-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-green-300`}>
+                            <span className={`text-sm font-bold text-green-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-green-900`}>
                               {metrics.delivered.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-green-700">المحصل فعلياً:</span>
-                            <span className="font-bold text-xl text-green-900">
+                            <span className={`text-sm font-bold text-green-700`}>المحصل فعلياً:</span>
+                            <span className={`font-bold text-xl text-green-900`}>
                               {metrics.delivered.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1053,15 +1107,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-red-300">
-                            <span className="text-sm font-bold text-red-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-red-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-red-300`}>
+                            <span className={`text-sm font-bold text-red-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-red-900`}>
                               {metrics.canceled.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-red-700">المحصل (رسوم فقط):</span>
-                            <span className="font-bold text-xl text-red-900">
+                          <div className={`flex justify-between items-center`}>
+                            <span className={`text-sm font-bold text-red-700`}>المحصل (رسوم فقط):</span>
+                            <span className={`font-bold text-xl text-red-900`}>
                               {metrics.canceled.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1086,15 +1140,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-yellow-300">
-                            <span className="text-sm font-bold text-yellow-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-yellow-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-yellow-300`}>
+                            <span className={`text-sm font-bold text-yellow-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-yellow-900`}>
                               {metrics.partial.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-yellow-700">المحصل فعلياً:</span>
-                            <span className="font-bold text-xl text-yellow-900">
+                          <div className={`flex justify-between items-center`}>
+                            <span className={`text-sm font-bold text-yellow-700`}>المحصل فعلياً:</span>
+                            <span className={`font-bold text-xl text-yellow-900`}>
                               {metrics.partial.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1119,15 +1173,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-orange-300">
-                            <span className="text-sm font-bold text-orange-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-orange-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-orange-300`}>
+                            <span className={`text-sm font-bold text-orange-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-orange-900`}>
                               {metrics.returned.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-orange-700">المحصل (رسوم فقط):</span>
-                            <span className="font-bold text-xl text-orange-900">
+                          <div className={`flex justify-between items-center`}>
+                            <span className={`text-sm font-bold text-orange-700`}>المحصل (رسوم فقط):</span>
+                            <span className={`font-bold text-xl text-orange-900`}>
                               {metrics.returned.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1152,15 +1206,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-indigo-300">
-                            <span className="text-sm font-bold text-indigo-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-indigo-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-indigo-300`}>
+                            <span className={`text-sm font-bold text-indigo-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-indigo-900`}>
                               {metrics.receivingPart.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-indigo-700">المحصل فعلياً:</span>
-                            <span className="font-bold text-xl text-indigo-900">
+                          <div className={`flex justify-between items-center`}>
+                            <span className={`text-sm font-bold text-indigo-700`}>المحصل فعلياً:</span>
+                            <span className={`font-bold text-xl text-indigo-900`}>
                               {metrics.receivingPart.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1185,15 +1239,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center pt-2 border-t border-purple-300">
-                            <span className="text-sm font-bold text-purple-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-purple-900">
+                          <div className={`flex justify-between items-center pt-2 border-t border-purple-300`}>
+                            <span className={`text-sm font-bold text-purple-700`}>القيمة الأصلية:</span>
+                            <span className={`font-bold text-xl text-purple-900`}>
                               {metrics.handToHand.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-bold text-purple-700">المحصل فعلياً:</span>
-                            <span className="font-bold text-xl text-purple-900">
+                          <div className={`flex justify-between items-center`}>
+                            <span className={`text-sm font-bold text-purple-700`}>المحصل فعلياً:</span>
+                            <span className={`font-bold text-xl text-purple-900`}>
                               {metrics.handToHand.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1959,7 +2013,7 @@ const Summary: React.FC = () => {
                         {isCourier ? "الملغاة" : "الطلبات الملغاة"}
                       </h3>
                       <p className={`text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.canceled.count} طلب
+                        {metrics.canceled.count} طلb
                       </p>
                     </div>
                   </div>
