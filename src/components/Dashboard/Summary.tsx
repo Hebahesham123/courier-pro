@@ -26,6 +26,9 @@ import {
   AlertCircle,
   Receipt,
   RefreshCw,
+  Edit3,
+  Save,
+  Trash2,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -54,6 +57,9 @@ interface Order {
   updated_at: string
   notes?: string | null
   order_proofs?: OrderProof[]
+  hold_fee?: number | null;
+  admin_delivery_fee?: number | null;
+  extra_fee?: number | null;
 }
 
 interface CourierSummary {
@@ -222,6 +228,234 @@ const Summary: React.FC = () => {
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
 
+  // Add state for editing fees
+  const [orderFees, setOrderFees] = useState<Record<string, Partial<Order>>>({});
+  const [savingFeeOrderId, setSavingFeeOrderId] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+
+  const handleFeeChange = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", value: number | string) => {
+    const numValue = value === "" ? null : Number(value);
+    setOrderFees((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], [feeType]: numValue },
+    }));
+  };
+
+  const handleFeeRemove = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee") => {
+    setOrderFees((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], [feeType]: null },
+    }));
+  };
+
+  const handleSaveFees = async (orderId: string) => {
+    const fees = orderFees[orderId];
+    if (!fees) return;
+    
+    setSavingFeeOrderId(orderId);
+    
+    try {
+      const { error } = await supabase.from("orders").update(fees).eq("id", orderId);
+      if (error) {
+        console.error("Error updating fees:", error);
+        return;
+      }
+      
+      // Clear the editing state for this order
+      setOrderFees((prev) => {
+        const updated = { ...prev };
+        delete updated[orderId];
+        return updated;
+      });
+      
+      setEditingOrderId(null);
+      await fetchSummary();
+    } catch (error) {
+      console.error("Error saving fees:", error);
+    } finally {
+      setSavingFeeOrderId(null);
+    }
+  };
+
+  const handleCancelEdit = (orderId: string) => {
+    setOrderFees((prev) => {
+      const updated = { ...prev };
+      delete updated[orderId];
+      return updated;
+    });
+    setEditingOrderId(null);
+  };
+
+  // Helper to get total fees for an order (including pending changes)
+  const getOrderTotalFees = (order: Order) => {
+    const pendingFees = orderFees[order.id];
+    const holdFee = pendingFees?.hold_fee !== undefined ? pendingFees.hold_fee : order.hold_fee;
+    const adminFee = pendingFees?.admin_delivery_fee !== undefined ? pendingFees.admin_delivery_fee : order.admin_delivery_fee;
+    const extraFee = pendingFees?.extra_fee !== undefined ? pendingFees.extra_fee : order.extra_fee;
+    
+    return Number(holdFee || 0) + Number(adminFee || 0) + Number(extraFee || 0);
+  };
+
+  // Helper to get total fees for a list of orders
+  const getTotalFees = (orders: Order[]) =>
+    orders.reduce((acc, o) => acc + getOrderTotalFees(o), 0);
+
+  // Fee editing component
+  const FeeEditor: React.FC<{ order: Order; compact?: boolean }> = ({ order, compact = false }) => {
+    if (user?.role !== "admin") return null;
+    
+    const isEditing = editingOrderId === order.id;
+    const isSaving = savingFeeOrderId === order.id;
+    const pendingFees = orderFees[order.id] || {};
+    
+    const currentHoldFee = pendingFees.hold_fee !== undefined ? pendingFees.hold_fee : order.hold_fee;
+    const currentAdminFee = pendingFees.admin_delivery_fee !== undefined ? pendingFees.admin_delivery_fee : order.admin_delivery_fee;
+    const currentExtraFee = pendingFees.extra_fee !== undefined ? pendingFees.extra_fee : order.extra_fee;
+    
+    if (!isEditing) {
+      return (
+        <div className={`${compact ? "mt-2" : "mt-4"} p-3 bg-gray-50 rounded-lg border`}>
+          <div className="flex items-center justify-between mb-3">
+            <h6 className={`font-semibold text-gray-800 ${compact ? "text-sm" : "text-base"}`}>
+              الرسوم الإضافية
+            </h6>
+            <button
+              onClick={() => setEditingOrderId(order.id)}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              <Edit3 className="w-3 h-3" />
+              تعديل
+            </button>
+          </div>
+          
+          <div className={`space-y-2 ${compact ? "text-xs" : "text-sm"}`}>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">رسوم الحجز:</span>
+              <span className="font-medium">{Number(currentHoldFee || 0).toFixed(2)} ج.م</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">رسوم التوصيل الإدارية:</span>
+              <span className="font-medium">{Number(currentAdminFee || 0).toFixed(2)} ج.م</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">رسوم إضافية:</span>
+              <span className="font-medium">{Number(currentExtraFee || 0).toFixed(2)} ج.م</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+              <span className="font-semibold text-gray-700">إجمالي الرسوم:</span>
+              <span className="font-bold text-red-600">
+                {getOrderTotalFees(order).toFixed(2)} ج.م
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className={`${compact ? "mt-2" : "mt-4"} p-3 bg-blue-50 rounded-lg border border-blue-200`}>
+        <div className="flex items-center justify-between mb-3">
+          <h6 className={`font-semibold text-blue-800 ${compact ? "text-sm" : "text-base"}`}>
+            تعديل الرسوم الإضافية
+          </h6>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSaveFees(order.id)}
+              disabled={isSaving}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              <Save className="w-3 h-3" />
+              {isSaving ? "حفظ..." : "حفظ"}
+            </button>
+            <button
+              onClick={() => handleCancelEdit(order.id)}
+              disabled={isSaving}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
+            >
+              <X className="w-3 h-3" />
+              إلغاء
+            </button>
+          </div>
+        </div>
+        
+        <div className={`space-y-3 ${compact ? "text-xs" : "text-sm"}`}>
+          <div className="flex items-center justify-between">
+            <label className="text-gray-700 font-medium">رسوم الحجز:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                value={currentHoldFee || ""}
+                onChange={e => handleFeeChange(order.id, "hold_fee", e.target.value)}
+                className="border rounded px-2 py-1 w-20 text-center"
+                placeholder="0"
+              />
+              <button
+                type="button"
+                onClick={() => handleFeeRemove(order.id, "hold_fee")}
+                className="text-red-500 hover:text-red-700 transition-colors"
+                title="حذف"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <label className="text-gray-700 font-medium">رسوم التوصيل الإدارية:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                value={currentAdminFee || ""}
+                onChange={e => handleFeeChange(order.id, "admin_delivery_fee", e.target.value)}
+                className="border rounded px-2 py-1 w-20 text-center"
+                placeholder="0"
+              />
+              <button
+                type="button"
+                onClick={() => handleFeeRemove(order.id, "admin_delivery_fee")}
+                className="text-red-500 hover:text-red-700 transition-colors"
+                title="حذف"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <label className="text-gray-700 font-medium">رسوم إضافية:</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                value={currentExtraFee || ""}
+                onChange={e => handleFeeChange(order.id, "extra_fee", e.target.value)}
+                className="border rounded px-2 py-1 w-20 text-center"
+                placeholder="0"
+              />
+              <button
+                type="button"
+                onClick={() => handleFeeRemove(order.id, "extra_fee")}
+                className="text-red-500 hover:text-red-700 transition-colors"
+                title="حذف"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex justify-between items-center pt-2 border-t border-blue-300">
+            <span className="font-semibold text-blue-700">إجمالي الرسوم:</span>
+            <span className="font-bold text-blue-800">
+              {getOrderTotalFees(order).toFixed(2)} ج.م
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     fetchSummary()
     const subscription = supabase
@@ -323,12 +557,15 @@ const Summary: React.FC = () => {
     if (order.status === "canceled") {
       orderAmount = 0
     } else if (order.status === "return") {
-      // For return orders, only count delivery fees if any, not the order amount
       orderAmount = 0
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
-    return orderAmount + deliveryAmount
+    // Subtract hold_fee, admin_delivery_fee, and extra_fee
+    const holdFee = Number(order.hold_fee || 0)
+    const adminFee = Number(order.admin_delivery_fee || 0)
+    const extraFee = Number(order.extra_fee || 0)
+    return orderAmount + deliveryAmount - holdFee - adminFee - extraFee
   }
 
   // Helper function to check if order should be included in calculations
@@ -411,32 +648,40 @@ const Summary: React.FC = () => {
   const calculateAccountingMetrics = () => {
     const filteredOrders = selectedCourier
       ? allOrders.filter((o) => o.assigned_courier_id === selectedCourier.courierId)
-      : allOrders
+      : allOrders;
 
     // Overall Totals
-    const totalOrdersCount = filteredOrders.length
-    const totalOrdersOriginalValue = filteredOrders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0)
+    const totalOrdersCount = filteredOrders.length;
+    const totalOrdersOriginalValue =
+      filteredOrders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0);
+
+    // Fee sums
+    const totalHoldFees = filteredOrders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0);
+    const totalExtraFees = filteredOrders.reduce((acc, o) => acc + Number(o.extra_fee || 0), 0);
+    const totalAdminDeliveryFees = filteredOrders.reduce((acc, o) => acc + Number(o.admin_delivery_fee || 0), 0);
+    const totalAllFees = totalHoldFees + totalExtraFees + totalAdminDeliveryFees;
+    const adjustedTotal = totalOrdersOriginalValue - totalAllFees;
 
     // Status-based Metrics
     const getStatusMetrics = (status: string) => {
-      const orders = filteredOrders.filter((o) => o.status === status)
-      const count = orders.length
-      const originalValue = orders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0)
-      const courierCollected = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
-      return { count, originalValue, courierCollected, orders }
-    }
+      const orders = filteredOrders.filter((o) => o.status === status);
+      const count = orders.length;
+      const originalValue = orders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0);
+      const courierCollected = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0);
+      return { count, originalValue, courierCollected, orders };
+    };
 
-    const assigned = getStatusMetrics("assigned")
-    const delivered = getStatusMetrics("delivered")
-    const canceled = getStatusMetrics("canceled")
-    const partial = getStatusMetrics("partial")
-    const returned = getStatusMetrics("return")
-    const receivingPart = getStatusMetrics("receiving_part")
-    const handToHand = getStatusMetrics("hand_to_hand")
+    const assigned = getStatusMetrics("assigned");
+    const delivered = getStatusMetrics("delivered");
+    const canceled = getStatusMetrics("canceled");
+    const partial = getStatusMetrics("partial");
+    const returned = getStatusMetrics("return");
+    const receivingPart = getStatusMetrics("receiving_part");
+    const handToHand = getStatusMetrics("hand_to_hand");
 
     // Delivery Fees and Partial Amounts
-    const totalDeliveryFeesFromAllOrders = filteredOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0)
-    const totalPartialAmounts = filteredOrders.reduce((acc, o) => acc + Number(o.partial_paid_amount || 0), 0)
+    const totalDeliveryFeesFromAllOrders = filteredOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0);
+    const totalPartialAmounts = filteredOrders.reduce((acc, o) => acc + Number(o.partial_paid_amount || 0), 0);
 
     // Accounting Difference (This logic might need re-evaluation based on exact definition)
     // For now, keep it as is, but it's more of an admin-level metric.
@@ -447,15 +692,15 @@ const Summary: React.FC = () => {
         partial.courierCollected +
         returned.courierCollected +
         receivingPart.courierCollected +
-        handToHand.courierCollected)
+        handToHand.courierCollected);
 
     // Payment method breakdowns (for orders where courier actually collected money)
     const getPaymentMethodMetrics = (filterFn: (order: Order) => boolean) => {
-      const orders = filteredOrders.filter((o) => filterFn(o) && shouldIncludeOrder(o))
-      const count = orders.length
-      const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
-      return { count, amount, orders }
-    }
+      const orders = filteredOrders.filter((o) => filterFn(o) && shouldIncludeOrder(o));
+      const count = orders.length;
+      const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0);
+      return { count, amount, orders };
+    };
 
     // Updated paymob orders calculation - exclude visa_machine
     const paymobOrders = getPaymentMethodMetrics((o) => {
@@ -499,6 +744,10 @@ const Summary: React.FC = () => {
     return {
       totalOrdersCount,
       totalOrdersOriginalValue,
+      totalHoldFees,
+      totalExtraFees,
+      totalAdminDeliveryFees,
+      adjustedTotal,
       assigned,
       delivered,
       canceled,
@@ -698,10 +947,24 @@ const Summary: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                            <span className="text-sm font-bold text-gray-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-xl text-gray-900">
-                              {metrics.totalOrdersOriginalValue.toFixed(2)} ج.م
-                            </span>
+                            <span className="font-bold text-gray-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-gray-900">{metrics.totalOrdersOriginalValue.toFixed(2)} ج.م</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-700">إجمالي رسوم الحجز:</span>
+                            <span className="text-sm text-gray-900">{metrics.totalHoldFees.toFixed(2)} ج.م</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-700">إجمالي رسوم إضافية:</span>
+                            <span className="text-sm text-gray-900">{metrics.totalExtraFees.toFixed(2)} ج.م</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-700">إجمالي رسوم التوصيل (إدارية):</span>
+                            <span className="text-sm text-gray-900">{metrics.totalAdminDeliveryFees.toFixed(2)} ج.م</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2 border-t border-gray-400">
+                            <span className="font-bold text-purple-700">الإجمالي بعد الخصم:</span>
+                            <span className="font-bold text-purple-900">{metrics.adjustedTotal.toFixed(2)} ج.م</span>
                           </div>
                         </div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
@@ -1358,6 +1621,9 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
+                        
+                        {/* Fee Editor Component */}
+                        <FeeEditor order={order} />
                       </div>
                     )
                   })}
@@ -1556,6 +1822,22 @@ const Summary: React.FC = () => {
                       <span className={`font-bold text-gray-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {metrics.totalOrdersOriginalValue.toFixed(0)} ج.م
                       </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">إجمالي رسوم الحجز:</span>
+                      <span className="text-sm text-gray-900">{metrics.totalHoldFees.toFixed(2)} ج.م</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">إجمالي رسوم إضافية:</span>
+                      <span className="text-sm text-gray-900">{metrics.totalExtraFees.toFixed(2)} ج.م</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-700">إجمالي رسوم التوصيل (إدارية):</span>
+                      <span className="text-sm text-gray-900">{metrics.totalAdminDeliveryFees.toFixed(2)} ج.م</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-400">
+                      <span className="font-bold text-purple-700">الإجمالي بعد الخصم:</span>
+                      <span className="font-bold text-purple-900">{metrics.adjustedTotal.toFixed(2)} ج.م</span>
                     </div>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
@@ -2477,6 +2759,9 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
+                        
+                        {/* Fee Editor Component */}
+                        <FeeEditor order={order} compact={isCourier} />
                       </div>
                     )
                   })}

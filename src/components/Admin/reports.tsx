@@ -1220,7 +1220,7 @@ const Reports: React.FC = () => {
                                 >
                                   <MapPin className={`w-4 h-4 ${statusStyle.color} opacity-70 mt-0.5`} />
                                   <div>
-                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>ملاحظات</p>
+                                    <p className={`text-xs ${statusStyle.color} opacity-70`}>العنوان</p>
                                     <p className={`text-sm font-medium ${statusStyle.color} line-clamp-2`}>
                                       {order.address}
                                     </p>
@@ -1240,6 +1240,12 @@ const Reports: React.FC = () => {
                                   </div>
                                 )}
                               </div>
+                              {order.internal_comment && (
+                                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                  <label className="block text-xs font-medium text-yellow-700 mb-1">{translate("internalComment")}</label>
+                                  <p className="text-xs text-gray-900">{order.internal_comment}</p>
+                                </div>
+                              )}
                             </div>
                           )
                         })}
