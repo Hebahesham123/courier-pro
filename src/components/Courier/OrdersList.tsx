@@ -994,6 +994,21 @@ const OrdersList: React.FC = () => {
                         {getDisplayPaymentMethod(order)}
                       </p>
                     </div>
+                    {/* Notes Display */}
+                    {order.notes && (
+                      <div
+                        className={`border rounded-lg p-1.5 text-xs ${
+                          isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
+                        }`}
+                      >
+                        <div className="flex items-start gap-1">
+                          <FileText className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
+                          <p className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`} title={order.notes}>
+                            {order.notes.length > 30 ? order.notes.substring(0, 30) + "..." : order.notes}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     {/* Edit Button */}
                     {canEditOrder(order) ? (
                       <button
@@ -1073,6 +1088,16 @@ const OrdersList: React.FC = () => {
                       <MapPin className="w-4 h-4 text-blue-200" />
                       <p className="text-blue-100 text-sm">{selectedOrder.address}</p>
                     </div>
+                    {/* Notes Display in Modal Header */}
+                    {selectedOrder.notes && (
+                      <div className="flex items-start gap-2 mt-3 p-2 bg-blue-500 rounded-lg">
+                        <FileText className="w-4 h-4 text-blue-200 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-blue-100 text-xs font-medium mb-1">ملاحظات الإدارة:</p>
+                          <p className="text-blue-100 text-sm leading-relaxed">{selectedOrder.notes}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => setModalOpen(false)}
