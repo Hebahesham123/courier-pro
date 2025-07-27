@@ -146,12 +146,10 @@ const OrdersList: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false)
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
-
-  // Scroll functionality
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [showScrollButtons, setShowScrollButtons] = useState(false)
   const [canScrollUp, setCanScrollUp] = useState(false)
   const [canScrollDown, setCanScrollDown] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
   const getTodayDateString = () => {
@@ -176,51 +174,74 @@ const OrdersList: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
 
-  // Scroll functionality
-  const checkScrollButtons = () => {
-    if (!scrollContainerRef.current) return
-
-    const container = scrollContainerRef.current
-    const { scrollTop, scrollHeight, clientHeight } = container
-
-    setCanScrollUp(scrollTop > 0)
-    setCanScrollDown(scrollTop < scrollHeight - clientHeight - 10)
-    setShowScrollButtons(scrollHeight > clientHeight)
-  }
-
-  const scrollUp = () => {
-    if (!scrollContainerRef.current) return
-    scrollContainerRef.current.scrollBy({
-      top: -300,
-      behavior: "smooth",
-    })
-  }
-
-  const scrollDown = () => {
-    if (!scrollContainerRef.current) return
-    scrollContainerRef.current.scrollBy({
-      top: 300,
-      behavior: "smooth",
-    })
-  }
-
   useEffect(() => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
 
+  // Scroll detection and button visibility
   useEffect(() => {
-    checkScrollButtons()
-    const container = scrollContainerRef.current
-    if (container) {
-      container.addEventListener("scroll", checkScrollButtons)
-      window.addEventListener("resize", checkScrollButtons)
+    const checkScrollability = () => {
+      if (scrollContainerRef.current) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+        const isScrollable = scrollHeight > clientHeight
+        const isAtTop = scrollTop <= 10
+        const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10
+
+        setShowScrollButtons(isScrollable)
+        setCanScrollUp(!isAtTop && isScrollable)
+        setCanScrollDown(!isAtBottom && isScrollable)
+      }
+    }
+
+    const scrollContainer = scrollContainerRef.current
+    if (scrollContainer) {
+      checkScrollability()
+      scrollContainer.addEventListener("scroll", checkScrollability)
+      window.addEventListener("resize", checkScrollability)
 
       return () => {
-        container.removeEventListener("scroll", checkScrollButtons)
-        window.removeEventListener("resize", checkScrollButtons)
+        scrollContainer.removeEventListener("scroll", checkScrollability)
+        window.removeEventListener("resize", checkScrollability)
       }
     }
   }, [orders])
+
+  // Scroll functions
+  const scrollUp = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({
+        top: -window.innerHeight * 0.8,
+        behavior: "smooth",
+      })
+    }
+  }
+
+  const scrollDown = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({
+        top: window.innerHeight * 0.8,
+        behavior: "smooth",
+      })
+    }
+  }
+
+  const scrollToTop = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      })
+    }
+  }
+
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      })
+    }
+  }
 
   // Enhanced payment detection function
   const isOrderPaid = (order: Order) => {
@@ -310,14 +331,12 @@ const OrdersList: React.FC = () => {
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
-
     if (date.toDateString() === today.toDateString()) {
       return "اليوم"
     }
     if (date.toDateString() === yesterday.toDateString()) {
       return "أمس"
     }
-
     const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     const arabicMonths = [
       "يناير",
@@ -333,12 +352,10 @@ const OrdersList: React.FC = () => {
       "نوفمبر",
       "ديسمبر",
     ]
-
     const dayName = arabicDays[date.getDay()]
     const day = date.getDate()
     const month = arabicMonths[date.getMonth()]
     const year = date.getFullYear()
-
     return `${dayName} ${day} ${month} ${year}`
   }
 
@@ -353,7 +370,7 @@ const OrdersList: React.FC = () => {
   }
 
   // Helper function to truncate address
-  const truncateAddress = (address: string, maxLength = 25) => {
+  const truncateAddress = (address: string, maxLength = 15) => {
     if (address.length <= maxLength) return address
     return address.substring(0, maxLength) + "..."
   }
@@ -380,6 +397,12 @@ const OrdersList: React.FC = () => {
     return order.updated_at !== order.created_at
   }
 
+  // Helper function to extract numeric part from order_id for sorting
+  const getOrderNumber = (orderId: string) => {
+    const match = orderId.match(/\d+/)
+    return match ? Number.parseInt(match[0], 10) : 0
+  }
+
   const fetchOrders = async () => {
     setLoading(true)
     try {
@@ -401,21 +424,28 @@ const OrdersList: React.FC = () => {
 
       if (error) throw error
 
+      // Sort by order number (numeric part of order_id)
       const sortedData = (data || []).sort((a, b) => {
         const isAEdited = wasOrderEditedByCourier(a)
         const isBEdited = wasOrderEditedByCourier(b)
         const isAAssigned = a.status === "assigned"
         const isBAssigned = b.status === "assigned"
 
+        // First priority: edited orders go to bottom
         if (isAEdited && !isBEdited) return 1
         if (!isAEdited && isBEdited) return -1
 
+        // Second priority: assigned orders go to top (among non-edited)
         if (!isAEdited && !isBEdited) {
           if (isAAssigned && !isBAssigned) return -1
           if (!isAAssigned && isBAssigned) return 1
         }
 
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        // Third priority: sort by order number (ascending - lowest numbers first)
+        const orderNumA = getOrderNumber(a.order_id)
+        const orderNumB = getOrderNumber(b.order_id)
+
+        return orderNumA - orderNumB
       })
 
       setOrders(sortedData)
@@ -501,7 +531,6 @@ const OrdersList: React.FC = () => {
             const canvas = document.createElement("canvas")
             const MAX_WIDTH = 720
             const MAX_HEIGHT = 540
-
             let width = img.width
             let height = img.height
 
@@ -818,43 +847,104 @@ const OrdersList: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-gray-50 relative" dir="rtl" ref={scrollContainerRef}>
+      {/* Scroll Buttons */}
+      {showScrollButtons && (
+        <div className="fixed left-4 top-1/2 transform -translate-y-1/2 z-40 flex flex-col gap-2">
+          {/* Scroll Up Button */}
+          <button
+            onClick={scrollUp}
+            disabled={!canScrollUp}
+            className={`p-3 rounded-full shadow-lg transition-all duration-200 ${
+              canScrollUp
+                ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+            title="التمرير لأعلى"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </button>
+
+          {/* Scroll to Top Button */}
+          <button
+            onClick={scrollToTop}
+            disabled={!canScrollUp}
+            className={`p-2 rounded-full shadow-lg transition-all duration-200 ${
+              canScrollUp
+                ? "bg-green-600 hover:bg-green-700 text-white hover:scale-110"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+            title="الذهاب للأعلى"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
+
+          {/* Scroll to Bottom Button */}
+          <button
+            onClick={scrollToBottom}
+            disabled={!canScrollDown}
+            className={`p-2 rounded-full shadow-lg transition-all duration-200 ${
+              canScrollDown
+                ? "bg-green-600 hover:bg-green-700 text-white hover:scale-110"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+            title="الذهاب للأسفل"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+
+          {/* Scroll Down Button */}
+          <button
+            onClick={scrollDown}
+            disabled={!canScrollDown}
+            className={`p-3 rounded-full shadow-lg transition-all duration-200 ${
+              canScrollDown
+                ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+            title="التمرير لأسفل"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 lg:px-8">
           <div className="text-center space-y-3">
             <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-xl">
               <Package className="w-5 h-5 text-white" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-2xl font-bold text-gray-900">طلبياتي</h1>
-              <p className="text-sm text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">طلبياتي</h1>
+              <p className="text-xs sm:text-sm text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
             </div>
             {/* Date Navigation */}
-            <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="flex items-center justify-center gap-2 mt-4">
               <button
                 onClick={goToPreviousDay}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
+                className="flex items-center gap-1 px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs transition-colors"
               >
                 <ChevronRight className="w-3 h-3" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 text-sm">
+              <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg border border-blue-200 text-xs">
                   <Calendar className="w-3 h-3" />
-                  <span className="font-medium">{formatDateInArabic(selectedDate)}</span>
+                  <span className="font-medium text-xs">{formatDateInArabic(selectedDate)}</span>
                 </div>
                 <input
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-xs"
+                  className="px-1.5 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-xs w-24"
                   title="اختر تاريخ"
                 />
               </div>
               <button
                 onClick={goToNextDay}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors"
+                className="flex items-center gap-1 px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs transition-colors"
               >
                 <span className="hidden sm:inline">التالي</span>
                 <ChevronLeft className="w-3 h-3" />
@@ -864,14 +954,14 @@ const OrdersList: React.FC = () => {
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
                 onClick={goToToday}
-                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs"
               >
                 <CalendarDays className="w-3 h-3" />
                 اليوم
               </button>
               <button
                 onClick={fetchOrders}
-                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-xs"
               >
                 <RefreshCw className="w-3 h-3" />
                 تحديث
@@ -889,7 +979,7 @@ const OrdersList: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 relative">
+      <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 lg:px-8">
         {orders.length === 0 ? (
           /* Empty State */
           <div className="text-center py-12">
@@ -925,291 +1015,256 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="relative">
-            {/* Scrollable Container */}
-            <div
-              ref={scrollContainerRef}
-              className="max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-              style={{ scrollBehavior: "smooth" }}
-            >
-              {/* Orders Grid - Drag-and-drop enabled */}
-              <List
-                values={orders}
-                onChange={({ oldIndex, newIndex }) => {
-                  // Swap only the two cards, do not shift others
-                  if (oldIndex === newIndex) return
-                  setOrders((prev) => {
-                    const newOrders = [...prev]
-                    const temp = newOrders[oldIndex]
-                    newOrders[oldIndex] = newOrders[newIndex]
-                    newOrders[newIndex] = temp
-                    return newOrders
-                  })
-                }}
-                renderList={({ children, props }) => (
-                  <div
-                    className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-4"
-                    {...props}
-                  >
-                    {children}
-                  </div>
-                )}
-                renderItem={({ value: order, props, isDragged, index }) => {
-                  const method = normalizeMethod(order.payment_method)
-                  const statusInfo = getStatusInfo(order.status)
-                  const StatusIcon = statusInfo.icon
-                  const deliveryFee = order.delivery_fee || 0
-                  const partialAmount = order.partial_paid_amount || 0
-                  const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
-                  const isPaid = isOrderPaid(order)
-                  const isEditedOrder = wasOrderEditedByCourier(order)
+          // Orders Grid - Improved mobile responsiveness
+          <List
+            values={orders}
+            onChange={({ oldIndex, newIndex }) => {
+              // Swap only the two cards, do not shift others
+              if (oldIndex === newIndex) return
+              setOrders((prev) => {
+                const newOrders = [...prev]
+                const temp = newOrders[oldIndex]
+                newOrders[oldIndex] = newOrders[newIndex]
+                newOrders[newIndex] = temp
+                return newOrders
+              })
+            }}
+            renderList={({ children, props }) => (
+              <div
+                className="grid gap-1.5 grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10"
+                {...props}
+              >
+                {children}
+              </div>
+            )}
+            renderItem={({ value: order, props, isDragged }) => {
+              const method = normalizeMethod(order.payment_method)
+              const statusInfo = getStatusInfo(order.status)
+              const StatusIcon = statusInfo.icon
+              const deliveryFee = order.delivery_fee || 0
+              const partialAmount = order.partial_paid_amount || 0
+              const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
+              const isPaid = isOrderPaid(order)
+              const isEditedOrder = wasOrderEditedByCourier(order)
 
-                  return (
-                    <div
-                      {...props}
-                      style={{
-                        ...props.style,
-                        opacity: isDragged ? 0.85 : 1,
-                        zIndex: isDragged ? 1000 : "auto",
-                        boxShadow: isDragged ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6" : undefined,
-                        border: isDragged ? "2px solid #3b82f6" : undefined,
-                        background: isDragged ? "#e0f2fe" : undefined,
-                        transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
-                      }}
-                      key={order.id}
-                      className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
-                        isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
-                      }`}
-                    >
-                      {/* Order Number Badge */}
-                      <div className="absolute top-2 right-2 z-10 bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold shadow text-sm border-2 border-white">
-                        {index + 1}
-                      </div>
-                      {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
-                      {isEditedOrder && (
-                        <>
-                          {/* Diagonal Slash Pattern */}
-                          <div className="absolute inset-0 pointer-events-none z-10">
-                            {/* Main diagonal lines */}
-                            <div className="absolute inset-0">
-                              {[...Array(8)].map((_, i) => (
-                                <div
-                                  key={`slash-${i}`}
-                                  className="absolute bg-red-400 opacity-30"
-                                  style={{
-                                    width: "2px",
-                                    height: "200%",
-                                    left: `${i * 15}%`,
-                                    top: "-50%",
-                                    transform: "rotate(45deg)",
-                                    transformOrigin: "center",
-                                  }}
-                                />
-                              ))}
-                            </div>
-                            {/* Cross diagonal lines */}
-                            <div className="absolute inset-0">
-                              {[...Array(8)].map((_, i) => (
-                                <div
-                                  key={`cross-slash-${i}`}
-                                  className="absolute bg-red-400 opacity-30"
-                                  style={{
-                                    width: "2px",
-                                    height: "200%",
-                                    left: `${i * 15}%`,
-                                    top: "-50%",
-                                    transform: "rotate(-45deg)",
-                                    transformOrigin: "center",
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          {/* Completion Badge */}
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+              return (
+                <div
+                  {...props}
+                  style={{
+                    ...props.style,
+                    opacity: isDragged ? 0.85 : 1,
+                    zIndex: isDragged ? 1000 : "auto",
+                    boxShadow: isDragged ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6" : undefined,
+                    border: isDragged ? "2px solid #3b82f6" : undefined,
+                    background: isDragged ? "#e0f2fe" : undefined,
+                    transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
+                  }}
+                  key={order.id}
+                  className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
+                    isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
+                  }`}
+                >
+                  {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
+                  {isEditedOrder && (
+                    <>
+                      {/* Diagonal Slash Pattern */}
+                      <div className="absolute inset-0 pointer-events-none z-10">
+                        {/* Main diagonal lines */}
+                        <div className="absolute inset-0">
+                          {[...Array(8)].map((_, i) => (
                             <div
-                              className="bg-red-600 text-white px-3 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
-                              style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
-                            >
-                              مكتمل ✓
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      {/* Card Header */}
-                      <div
-                        className={`px-2 py-2 border-b ${
-                          isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-xs font-bold text-gray-900">#{order.order_id}</h3>
-                            <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            {/* Payment Status Indicator */}
+                              key={`slash-${i}`}
+                              className="absolute bg-red-400 opacity-30"
+                              style={{
+                                width: "2px",
+                                height: "200%",
+                                left: `${i * 15}%`,
+                                top: "-50%",
+                                transform: "rotate(45deg)",
+                                transformOrigin: "center",
+                              }}
+                            />
+                          ))}
+                        </div>
+                        {/* Cross diagonal lines */}
+                        <div className="absolute inset-0">
+                          {[...Array(8)].map((_, i) => (
                             <div
-                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                                isPaid
-                                  ? "bg-green-50 text-green-700 border border-green-200"
-                                  : "bg-yellow-50 text-yellow-700 border border-yellow-200"
-                              }`}
-                            >
-                              {isPaid ? (
-                                <>
-                                  <CheckCircle className="w-2.5 h-2.5" />
-                                  <span>مدفوع</span>
-                                </>
-                              ) : (
-                                <>
-                                  <DollarSign className="w-2.5 h-2.5" />
-                                  <span>غير مدفوع</span>
-                                </>
-                              )}
-                            </div>
-                            {/* Status Badge */}
-                            <div
-                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
-                            >
-                              <StatusIcon className="w-2.5 h-2.5" />
-                              <span>{statusInfo.label}</span>
-                            </div>
-                            {/* Edited Badge */}
-                            {isEditedOrder && (
-                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
-                                <Check className="w-2.5 h-2.5" />
-                                <span>تم التعديل</span>
-                              </div>
-                            )}
-                          </div>
+                              key={`cross-slash-${i}`}
+                              className="absolute bg-red-400 opacity-30"
+                              style={{
+                                width: "2px",
+                                height: "200%",
+                                left: `${i * 15}%`,
+                                top: "-50%",
+                                transform: "rotate(-45deg)",
+                                transformOrigin: "center",
+                              }}
+                            />
+                          ))}
                         </div>
                       </div>
-                      {/* Card Content */}
-                      <div className="p-2 space-y-2">
-                        {/* Customer Name */}
-                        <div className="text-center">
-                          <p className="text-xs font-bold text-gray-900" title={order.customer_name}>
-                            {order.customer_name}
-                          </p>
-                        </div>
-                        {/* Address */}
+                      {/* Completion Badge */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                         <div
-                          className={`flex items-start gap-1 border rounded-lg p-1.5 ${
-                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
-                          }`}
+                          className="bg-red-600 text-white px-2 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
+                          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
                         >
-                          <MapPin className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" />
-                          <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
-                            {truncateAddress(order.address, 25)}
-                          </p>
+                          مكتمل ✓
                         </div>
-                        {/* Amount */}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Card Header */}
+                  <div
+                    className={`px-1.5 py-1 border-b ${
+                      isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-xs font-bold text-gray-900 truncate">#{order.order_id}</h3>
+                        <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
+                      </div>
+                      <div className="flex flex-col gap-0.5 ml-1">
+                        {/* Payment Status Indicator */}
                         <div
-                          className={`border rounded-lg p-2 text-center ${
-                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
+                          className={`flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium ${
+                            isPaid
+                              ? "bg-green-50 text-green-700 border border-green-200"
+                              : "bg-yellow-50 text-yellow-700 border border-yellow-200"
                           }`}
                         >
-                          <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
-                            {totalAmount.toFixed(0)}
-                          </p>
-                          <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>جنيه مصري</p>
+                          {isPaid ? (
+                            <>
+                              <CheckCircle className="w-2 h-2" />
+                              <span className="text-xs">مدفوع</span>
+                            </>
+                          ) : (
+                            <>
+                              <DollarSign className="w-2 h-2" />
+                              <span className="text-xs">غير مدفوع</span>
+                            </>
+                          )}
                         </div>
-                        {/* Phone Button */}
-                        <button
-                          onClick={() => handlePhoneClick(order.mobile_number)}
-                          className={`w-full border py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
-                            isEditedOrder
-                              ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
-                              : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
-                          }`}
-                        >
-                          <Phone className="w-3 h-3" />
-                          <span className="font-mono text-xs">{order.mobile_number}</span>
-                        </button>
-                        {/* Payment Method Display */}
+                        {/* Status Badge */}
                         <div
-                          className={`border rounded-lg p-1.5 text-center text-xs ${
-                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
-                          }`}
+                          className={`flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
                         >
-                          <p className={`font-medium ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
-                            {getDisplayPaymentMethod(order)}
-                          </p>
+                          <StatusIcon className="w-2 h-2" />
+                          <span className="text-xs">{statusInfo.label}</span>
                         </div>
-                        {/* Notes Display */}
-                        {order.notes && (
-                          <div
-                            className={`border rounded-lg p-1.5 text-xs ${
-                              isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
-                            }`}
-                          >
-                            <div className="flex items-start gap-1">
-                              <FileText className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                              <p
-                                className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
-                                title={order.notes}
-                              >
-                                {order.notes.length > 30 ? order.notes.substring(0, 30) + "..." : order.notes}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        {/* Edit Button */}
-                        {canEditOrder(order) ? (
-                          <button
-                            onClick={() => openModal(order)}
-                            className={`w-full font-medium py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
-                              isEditedOrder
-                                ? "bg-red-600 hover:bg-red-700 text-white"
-                                : "bg-blue-600 hover:bg-blue-700 text-white"
-                            }`}
-                          >
-                            <Edit className="w-3 h-3" />
-                            تحديث الطلب
-                          </button>
-                        ) : (
-                          <div className="w-full bg-gray-100 text-gray-500 font-medium py-1.5 px-2 rounded-lg text-center text-xs">
-                            مكتمل
+                        {/* Edited Badge */}
+                        {isEditedOrder && (
+                          <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
+                            <Check className="w-2 h-2" />
+                            <span className="text-xs">تم التعديل</span>
                           </div>
                         )}
                       </div>
                     </div>
-                  )
-                }}
-              />
-            </div>
+                  </div>
 
-            {/* Scroll Buttons */}
-            {showScrollButtons && (
-              <div className="fixed left-4 top-1/2 transform -translate-y-1/2 z-30 flex flex-col gap-2">
-                <button
-                  onClick={scrollUp}
-                  disabled={!canScrollUp}
-                  className={`w-12 h-12 rounded-full shadow-lg border-2 border-white transition-all duration-200 flex items-center justify-center ${
-                    canScrollUp
-                      ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                  title="التمرير لأعلى"
-                >
-                  <ChevronUp className="w-6 h-6" />
-                </button>
-                <button
-                  onClick={scrollDown}
-                  disabled={!canScrollDown}
-                  className={`w-12 h-12 rounded-full shadow-lg border-2 border-white transition-all duration-200 flex items-center justify-center ${
-                    canScrollDown
-                      ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                  title="التمرير لأسفل"
-                >
-                  <ChevronDown className="w-6 h-6" />
-                </button>
-              </div>
-            )}
-          </div>
+                  {/* Card Content */}
+                  <div className="p-1.5 space-y-1.5">
+                    {/* Customer Name */}
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-gray-900 truncate" title={order.customer_name}>
+                        {order.customer_name}
+                      </p>
+                    </div>
+
+                    {/* Address */}
+                    <div
+                      className={`flex items-start gap-1 border rounded-lg p-1 ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <MapPin className="w-2.5 h-2.5 text-gray-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
+                        {truncateAddress(order.address, 15)}
+                      </p>
+                    </div>
+
+                    {/* Amount */}
+                    <div
+                      className={`border rounded-lg p-1 text-center ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
+                      }`}
+                    >
+                      <p className={`text-xs font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
+                        {totalAmount.toFixed(0)}
+                      </p>
+                      <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>ج.م</p>
+                    </div>
+
+                    {/* Phone Button */}
+                    <button
+                      onClick={() => handlePhoneClick(order.mobile_number)}
+                      className={`w-full border py-1 px-1.5 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
+                        isEditedOrder
+                          ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                          : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                      }`}
+                    >
+                      <Phone className="w-2.5 h-2.5" />
+                      <span className="font-mono text-xs truncate">{order.mobile_number}</span>
+                    </button>
+
+                    {/* Payment Method Display */}
+                    <div
+                      className={`border rounded-lg p-1 text-center text-xs ${
+                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <p className={`font-medium truncate text-xs ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
+                        {getDisplayPaymentMethod(order)}
+                      </p>
+                    </div>
+
+                    {/* Notes Display */}
+                    {order.notes && (
+                      <div
+                        className={`border rounded-lg p-1 text-xs ${
+                          isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
+                        }`}
+                      >
+                        <div className="flex items-start gap-1">
+                          <FileText className="w-2.5 h-2.5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                          <p
+                            className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
+                            title={order.notes}
+                          >
+                            {order.notes.length > 20 ? order.notes.substring(0, 20) + "..." : order.notes}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Edit Button */}
+                    {canEditOrder(order) ? (
+                      <button
+                        onClick={() => openModal(order)}
+                        className={`w-full font-medium py-1 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
+                          isEditedOrder
+                            ? "bg-red-600 hover:bg-red-700 text-white"
+                            : "bg-blue-600 hover:bg-blue-700 text-white"
+                        }`}
+                      >
+                        <Edit className="w-2.5 h-2.5" />
+                        <span className="text-xs">تحديث</span>
+                      </button>
+                    ) : (
+                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-1 px-1.5 rounded-lg text-center text-xs">
+                        مكتمل
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }}
+          />
         )}
 
         {/* Phone Options Modal */}
@@ -1251,7 +1306,7 @@ const OrdersList: React.FC = () => {
           </div>
         )}
 
-        {/* Update Order Modal */}
+        {/* Update Order Modal - keeping the same as before */}
         {modalOpen && selectedOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
@@ -1285,6 +1340,7 @@ const OrdersList: React.FC = () => {
                   </button>
                 </div>
               </div>
+
               {/* Modal Content */}
               <div className="p-6">
                 <form
@@ -1340,6 +1396,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
                   {/* Status Selection */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">
@@ -1358,6 +1415,7 @@ const OrdersList: React.FC = () => {
                       ))}
                     </select>
                   </div>
+
                   {/* Delivery Fee */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">رسوم التوصيل</label>
@@ -1381,6 +1439,7 @@ const OrdersList: React.FC = () => {
                       رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
                     </p>
                   </div>
+
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(
                     updateData.status,
@@ -1392,64 +1451,62 @@ const OrdersList: React.FC = () => {
                       </h4>
                       {(() => {
                         const currentMethod = normalizeMethod(selectedOrder.payment_method)
-                        const isOrderOriginallyPaidOnlineInModal = isOrderPaid(selectedOrder)
-                        const isOrderUnpaidInModal = !isOrderPaid(selectedOrder)
+                        const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
+                        const isOrderUnpaid = !isOrderPaid(selectedOrder)
                         const currentFee = Number.parseFloat(updateData.delivery_fee) || 0
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
-                        const isReturnStatusInModal = updateData.status === "return"
-                        const isReceivingPartNoFeesInModal =
+                        const isReturnStatus = updateData.status === "return"
+                        const isReceivingPartWithNoFees =
                           updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
-                        const isHandToHandWithNoFeesInModal =
+                        const isHandToHandWithNoFees =
                           updateData.status === "hand_to_hand" && currentFee === 0 && currentPartial === 0
-                        const isCanceledWithNoFeesInModal =
+                        const isCanceledWithNoFees =
                           updateData.status === "canceled" && currentFee === 0 && currentPartial === 0
 
                         // Condition for the "Order Paid" message
                         const showOrderPaidMessage =
-                          isOrderOriginallyPaidOnlineInModal && currentFee === 0 && currentPartial === 0
+                          isOrderOriginallyPaidOnline && currentFee === 0 && currentPartial === 0
 
                         // Condition for the "Order Unpaid" message
                         const showOrderUnpaidMessage =
-                          isOrderUnpaidInModal &&
-                          !isReturnStatusInModal &&
-                          !isHandToHandWithNoFeesInModal &&
-                          !isReceivingPartNoFeesInModal &&
-                          !isCanceledWithNoFeesInModal
+                          isOrderUnpaid &&
+                          !isReturnStatus &&
+                          !isHandToHandWithNoFees &&
+                          !isReceivingPartWithNoFees &&
+                          !isCanceledWithNoFees
 
                         // Condition for "Return Status" message
-                        const showReturnStatusMessage = isReturnStatusInModal
+                        const showReturnStatusMessage = isReturnStatus
 
                         // Condition for "Receiving Part No Fees" message
-                        const showReceivingPartNoFeesMessage = isReceivingPartNoFeesInModal
+                        const showReceivingPartNoFeesMessage = isReceivingPartWithNoFees
 
                         // Condition for "Hand to Hand No Fees" message
-                        const showHandToHandNoFeesMessage = isHandToHandWithNoFeesInModal
+                        const showHandToHandNoFeesMessage = isHandToHandWithNoFees
 
                         // Condition for "Canceled No Fees" message
-                        const showCanceledNoFeesMessage = isCanceledWithNoFeesInModal
+                        const showCanceledNoFeesMessage = isCanceledWithNoFees
 
                         // Condition to show Payment Sub-Type dropdown
                         const showPaymentSubTypeDropdown =
-                          !isReturnStatusInModal &&
-                          !isHandToHandWithNoFeesInModal &&
-                          !isReceivingPartNoFeesInModal &&
-                          !isCanceledWithNoFeesInModal &&
-                          ((isOrderOriginallyPaidOnlineInModal && (currentFee > 0 || currentPartial > 0)) ||
-                            isOrderUnpaidInModal ||
+                          !isReturnStatus &&
+                          !isHandToHandWithNoFees &&
+                          !isReceivingPartWithNoFees &&
+                          !isCanceledWithNoFees &&
+                          ((isOrderOriginallyPaidOnline && (currentFee > 0 || currentPartial > 0)) ||
+                            isOrderUnpaid ||
                             (updateData.status === "canceled" && currentFee > 0) ||
                             (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0)))
 
                         // Condition to show Collected By dropdown
                         const showCollectedByDropdown =
-                          !isReturnStatusInModal &&
-                          !isHandToHandWithNoFeesInModal &&
-                          !isReceivingPartNoFeesInModal &&
-                          !isCanceledWithNoFeesInModal &&
+                          !isReturnStatus &&
+                          !isHandToHandWithNoFees &&
+                          !isReceivingPartWithNoFees &&
+                          !isCanceledWithNoFees &&
                           (currentFee > 0 || currentPartial > 0) &&
-                          (isOrderOriginallyPaidOnlineInModal ||
-                            (!isOrderOriginallyPaidOnlineInModal &&
-                              !isOrderUnpaidInModal &&
-                              updateData.status !== "canceled"))
+                          (isOrderOriginallyPaidOnline ||
+                            (!isOrderOriginallyPaidOnline && !isOrderUnpaid && updateData.status !== "canceled"))
 
                         return (
                           <>
@@ -1465,6 +1522,7 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showReturnStatusMessage && (
                               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-yellow-700">
@@ -1476,6 +1534,7 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showReceivingPartNoFeesMessage && (
                               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-yellow-700">
@@ -1487,6 +1546,7 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showHandToHandNoFeesMessage && (
                               <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-purple-700">
@@ -1498,6 +1558,7 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showCanceledNoFeesMessage && (
                               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-gray-700">
@@ -1509,6 +1570,7 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showOrderUnpaidMessage && (
                               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-orange-700">
@@ -1520,10 +1582,11 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
+
                             {showPaymentSubTypeDropdown && (
                               <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">
-                                  طريقة الدفع {isOrderUnpaidInModal ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
+                                  طريقة الدفع {isOrderUnpaid ? "(للطلب غير المدفوع)" : "(نوع الدفع الفرعي)"}
                                 </label>
                                 <select
                                   value={updateData.payment_sub_type}
@@ -1531,7 +1594,7 @@ const OrdersList: React.FC = () => {
                                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   required={
                                     showPaymentSubTypeDropdown &&
-                                    (isOrderUnpaidInModal ||
+                                    (isOrderUnpaid ||
                                       updateData.collected_by === "courier" ||
                                       (updateData.status === "canceled" && currentFee > 0) ||
                                       (updateData.status === "receiving_part" &&
@@ -1547,6 +1610,7 @@ const OrdersList: React.FC = () => {
                                 </select>
                               </div>
                             )}
+
                             {showCollectedByDropdown && (
                               <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
@@ -1568,6 +1632,7 @@ const OrdersList: React.FC = () => {
                           </>
                         )
                       })()}
+
                       {/* Partial Amount */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">المبلغ المدفوع جزئياً</label>
@@ -1591,6 +1656,7 @@ const OrdersList: React.FC = () => {
                           للطلبات الجزئية - هذا المبلغ منفصل عن قيمة الطلب الأساسية
                         </p>
                       </div>
+
                       {/* Zero Amount Warning */}
                       {["canceled", "return", "hand_to_hand", "receiving_part"].includes(updateData.status) && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -1605,6 +1671,7 @@ const OrdersList: React.FC = () => {
                       )}
                     </div>
                   )}
+
                   {/* Internal Comment */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1619,6 +1686,7 @@ const OrdersList: React.FC = () => {
                       placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
+
                   {/* Image Upload */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1656,6 +1724,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
                   {/* Current Images */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div className="space-y-3">
@@ -1679,6 +1748,7 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   )}
+
                   {/* Action Buttons */}
                   <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button
