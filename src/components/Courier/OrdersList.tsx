@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Edit,
   Phone,
@@ -29,12 +29,13 @@ import {
   HandMetal,
   CheckCircle,
   DollarSign,
-  Move,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
-import { List, arrayMove } from "react-movable"
+import { List } from "react-movable"
 
 interface OrderProof {
   id: string
@@ -146,6 +147,12 @@ const OrdersList: React.FC = () => {
   const [phoneOptionsOpen, setPhoneOptionsOpen] = useState(false)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState<string>("")
 
+  // Scroll functionality
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [showScrollButtons, setShowScrollButtons] = useState(false)
+  const [canScrollUp, setCanScrollUp] = useState(false)
+  const [canScrollDown, setCanScrollDown] = useState(false)
+
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
   const getTodayDateString = () => {
     const today = new Date()
@@ -169,9 +176,51 @@ const OrdersList: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
 
+  // Scroll functionality
+  const checkScrollButtons = () => {
+    if (!scrollContainerRef.current) return
+
+    const container = scrollContainerRef.current
+    const { scrollTop, scrollHeight, clientHeight } = container
+
+    setCanScrollUp(scrollTop > 0)
+    setCanScrollDown(scrollTop < scrollHeight - clientHeight - 10)
+    setShowScrollButtons(scrollHeight > clientHeight)
+  }
+
+  const scrollUp = () => {
+    if (!scrollContainerRef.current) return
+    scrollContainerRef.current.scrollBy({
+      top: -300,
+      behavior: "smooth",
+    })
+  }
+
+  const scrollDown = () => {
+    if (!scrollContainerRef.current) return
+    scrollContainerRef.current.scrollBy({
+      top: 300,
+      behavior: "smooth",
+    })
+  }
+
   useEffect(() => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
+
+  useEffect(() => {
+    checkScrollButtons()
+    const container = scrollContainerRef.current
+    if (container) {
+      container.addEventListener("scroll", checkScrollButtons)
+      window.addEventListener("resize", checkScrollButtons)
+
+      return () => {
+        container.removeEventListener("scroll", checkScrollButtons)
+        window.removeEventListener("resize", checkScrollButtons)
+      }
+    }
+  }, [orders])
 
   // Enhanced payment detection function
   const isOrderPaid = (order: Order) => {
@@ -179,10 +228,8 @@ const OrdersList: React.FC = () => {
     if (order.payment_status) {
       return order.payment_status === "paid"
     }
-
     // Fallback to payment method analysis
     const method = order.payment_method?.toLowerCase() || ""
-
     // Payment gateways and online payments (PAID)
     if (method.includes("paymob") || method.includes("pay mob")) return true
     if (method.includes("valu") || method.includes("val u")) return true
@@ -191,7 +238,6 @@ const OrdersList: React.FC = () => {
     if (method.includes("vodafone cash") || method.includes("vodafone-cash")) return true
     if (method.includes("orange cash") || method.includes("orange-cash")) return true
     if (method.includes("we pay") || method.includes("we-pay") || method.includes("wepay")) return true
-
     // Card payments (PAID)
     if (
       method.includes("visa") ||
@@ -201,7 +247,6 @@ const OrdersList: React.FC = () => {
     )
       return true
     if (method.includes("card") || method.includes("credit") || method.includes("debit")) return true
-
     // International payment gateways (PAID)
     if (
       method.includes("paypal") ||
@@ -210,7 +255,6 @@ const OrdersList: React.FC = () => {
       method.includes("razorpay")
     )
       return true
-
     // Status-based detection (PAID)
     if (
       method.includes("paid") ||
@@ -219,7 +263,6 @@ const OrdersList: React.FC = () => {
       method.includes("success")
     )
       return true
-
     // Cash on delivery and failed payments are NOT paid
     if (method.includes("cash") || method.includes("cod") || method.includes("cash on delivery")) return false
     if (
@@ -229,7 +272,6 @@ const OrdersList: React.FC = () => {
       method.includes("rejected")
     )
       return false
-
     // If we can't identify it clearly, check if it's not explicitly cash/cod
     // This is a conservative approach - assume paid unless explicitly cash/cod
     return !method.includes("cash") && !method.includes("cod") && method.length > 0
@@ -238,9 +280,7 @@ const OrdersList: React.FC = () => {
   // Updated normalize method function
   const normalizeMethod = (method: string) => {
     if (!method) return "cash"
-
     const m = method.toLowerCase()
-
     if (m.includes("paymob")) {
       if (m.includes("valu")) return "valu"
       return "paymob"
@@ -252,9 +292,15 @@ const OrdersList: React.FC = () => {
     if (m.includes("orange cash")) return "orange_cash"
     if (m.includes("we pay")) return "we_pay"
     // All card payments (visa, mastercard, etc.) should be categorized as paymob
-    if (m.includes("visa") || m.includes("mastercard") || m.includes("card") || m.includes("credit") || m.includes("debit")) return "paymob"
+    if (
+      m.includes("visa") ||
+      m.includes("mastercard") ||
+      m.includes("card") ||
+      m.includes("credit") ||
+      m.includes("debit")
+    )
+      return "paymob"
     if (m.includes("cash") || m.includes("cod")) return "cash"
-
     return method
   }
 
@@ -268,7 +314,6 @@ const OrdersList: React.FC = () => {
     if (date.toDateString() === today.toDateString()) {
       return "اليوم"
     }
-
     if (date.toDateString() === yesterday.toDateString()) {
       return "أمس"
     }
@@ -442,8 +487,10 @@ const OrdersList: React.FC = () => {
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !selectedOrder || !user) return
+
     const originalFile = e.target.files[0]
     setImageUploading(true)
+
     try {
       const compressedFile = await new Promise<File>((resolve, reject) => {
         const reader = new FileReader()
@@ -454,8 +501,10 @@ const OrdersList: React.FC = () => {
             const canvas = document.createElement("canvas")
             const MAX_WIDTH = 720
             const MAX_HEIGHT = 540
+
             let width = img.width
             let height = img.height
+
             if (width > height) {
               if (width > MAX_WIDTH) {
                 height *= MAX_WIDTH / width
@@ -467,14 +516,18 @@ const OrdersList: React.FC = () => {
                 height = MAX_HEIGHT
               }
             }
+
             canvas.width = width
             canvas.height = height
+
             const ctx = canvas.getContext("2d")
             if (!ctx) {
               reject(new Error("Failed to get canvas context"))
               return
             }
+
             ctx.drawImage(img, 0, 0, width, height)
+
             canvas.toBlob(
               (blob) => {
                 if (blob) {
@@ -519,6 +572,7 @@ const OrdersList: React.FC = () => {
       if (error) throw error
 
       alert("تم رفع الصورة بنجاح!")
+
       setSelectedOrder((prev) => {
         if (!prev) return prev
         return {
@@ -526,6 +580,7 @@ const OrdersList: React.FC = () => {
           order_proofs: [...(prev.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
         }
       })
+
       setOrders((prev) =>
         prev.map((o) =>
           o.id === selectedOrder.id
@@ -564,6 +619,7 @@ const OrdersList: React.FC = () => {
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
+
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
@@ -833,7 +889,7 @@ const OrdersList: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 relative">
         {orders.length === 0 ? (
           /* Empty State */
           <div className="text-center py-12">
@@ -869,253 +925,291 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         ) : (
-          // Orders Grid - Drag-and-drop enabled
-          <List
-            values={orders}
-            onChange={({ oldIndex, newIndex }) => {
-              // Swap only the two cards, do not shift others
-              if (oldIndex === newIndex) return;
-              setOrders(prev => {
-                const newOrders = [...prev];
-                const temp = newOrders[oldIndex];
-                newOrders[oldIndex] = newOrders[newIndex];
-                newOrders[newIndex] = temp;
-                return newOrders;
-              });
-            }}
-            renderList={({ children, props }) => (
-              <div
-                className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-                {...props}
-              >
-                {children}
-              </div>
-            )}
-            renderItem={({ value: order, props, isDragged, index }) => {
-              const method = normalizeMethod(order.payment_method)
-              const statusInfo = getStatusInfo(order.status)
-              const StatusIcon = statusInfo.icon
-              const deliveryFee = order.delivery_fee || 0
-              const partialAmount = order.partial_paid_amount || 0
-              const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
-              const isPaid = isOrderPaid(order)
-              const isEditedOrder = wasOrderEditedByCourier(order)
-              return (
-                <div
-                  {...props}
-                  style={{
-                    ...props.style,
-                    opacity: isDragged ? 0.85 : 1,
-                    zIndex: isDragged ? 1000 : "auto",
-                    boxShadow: isDragged
-                      ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6"
-                      : undefined,
-                    border: isDragged ? "2px solid #3b82f6" : undefined,
-                    background: isDragged ? "#e0f2fe" : undefined,
-                    transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
-                  }}
-                  key={order.id}
-                  className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
-                    isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
-                  }`}
-                >
-                  {/* Order Number Badge */}
-                  <div className="absolute top-2 right-2 z-10 bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold shadow text-sm border-2 border-white">
-                    {index + 1}
-                  </div>
-                  {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
-                  {isEditedOrder && (
-                    <>
-                      {/* Diagonal Slash Pattern */}
-                      <div className="absolute inset-0 pointer-events-none z-10">
-                        {/* Main diagonal lines */}
-                        <div className="absolute inset-0">
-                          {[...Array(8)].map((_, i) => (
-                            <div
-                              key={`slash-${i}`}
-                              className="absolute bg-red-400 opacity-30"
-                              style={{
-                                width: "2px",
-                                height: "200%",
-                                left: `${i * 15}%`,
-                                top: "-50%",
-                                transform: "rotate(45deg)",
-                                transformOrigin: "center",
-                              }}
-                            />
-                          ))}
-                        </div>
-                        {/* Cross diagonal lines */}
-                        <div className="absolute inset-0">
-                          {[...Array(8)].map((_, i) => (
-                            <div
-                              key={`cross-slash-${i}`}
-                              className="absolute bg-red-400 opacity-30"
-                              style={{
-                                width: "2px",
-                                height: "200%",
-                                left: `${i * 15}%`,
-                                top: "-50%",
-                                transform: "rotate(-45deg)",
-                                transformOrigin: "center",
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      {/* Completion Badge */}
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                        <div
-                          className="bg-red-600 text-white px-3 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
-                          style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
-                        >
-                          مكتمل ✓
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {/* Card Header */}
+          <div className="relative">
+            {/* Scrollable Container */}
+            <div
+              ref={scrollContainerRef}
+              className="max-h-[calc(100vh-200px)] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+              style={{ scrollBehavior: "smooth" }}
+            >
+              {/* Orders Grid - Drag-and-drop enabled */}
+              <List
+                values={orders}
+                onChange={({ oldIndex, newIndex }) => {
+                  // Swap only the two cards, do not shift others
+                  if (oldIndex === newIndex) return
+                  setOrders((prev) => {
+                    const newOrders = [...prev]
+                    const temp = newOrders[oldIndex]
+                    newOrders[oldIndex] = newOrders[newIndex]
+                    newOrders[newIndex] = temp
+                    return newOrders
+                  })
+                }}
+                renderList={({ children, props }) => (
                   <div
-                    className={`px-2 py-2 border-b ${
-                      isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
-                    }`}
+                    className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-4"
+                    {...props}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xs font-bold text-gray-900">#{order.order_id}</h3>
-                        <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
+                    {children}
+                  </div>
+                )}
+                renderItem={({ value: order, props, isDragged, index }) => {
+                  const method = normalizeMethod(order.payment_method)
+                  const statusInfo = getStatusInfo(order.status)
+                  const StatusIcon = statusInfo.icon
+                  const deliveryFee = order.delivery_fee || 0
+                  const partialAmount = order.partial_paid_amount || 0
+                  const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
+                  const isPaid = isOrderPaid(order)
+                  const isEditedOrder = wasOrderEditedByCourier(order)
+
+                  return (
+                    <div
+                      {...props}
+                      style={{
+                        ...props.style,
+                        opacity: isDragged ? 0.85 : 1,
+                        zIndex: isDragged ? 1000 : "auto",
+                        boxShadow: isDragged ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6" : undefined,
+                        border: isDragged ? "2px solid #3b82f6" : undefined,
+                        background: isDragged ? "#e0f2fe" : undefined,
+                        transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
+                      }}
+                      key={order.id}
+                      className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
+                        isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
+                      }`}
+                    >
+                      {/* Order Number Badge */}
+                      <div className="absolute top-2 right-2 z-10 bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold shadow text-sm border-2 border-white">
+                        {index + 1}
                       </div>
-                      <div className="flex flex-col gap-1">
-                        {/* Payment Status Indicator */}
+                      {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
+                      {isEditedOrder && (
+                        <>
+                          {/* Diagonal Slash Pattern */}
+                          <div className="absolute inset-0 pointer-events-none z-10">
+                            {/* Main diagonal lines */}
+                            <div className="absolute inset-0">
+                              {[...Array(8)].map((_, i) => (
+                                <div
+                                  key={`slash-${i}`}
+                                  className="absolute bg-red-400 opacity-30"
+                                  style={{
+                                    width: "2px",
+                                    height: "200%",
+                                    left: `${i * 15}%`,
+                                    top: "-50%",
+                                    transform: "rotate(45deg)",
+                                    transformOrigin: "center",
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            {/* Cross diagonal lines */}
+                            <div className="absolute inset-0">
+                              {[...Array(8)].map((_, i) => (
+                                <div
+                                  key={`cross-slash-${i}`}
+                                  className="absolute bg-red-400 opacity-30"
+                                  style={{
+                                    width: "2px",
+                                    height: "200%",
+                                    left: `${i * 15}%`,
+                                    top: "-50%",
+                                    transform: "rotate(-45deg)",
+                                    transformOrigin: "center",
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          {/* Completion Badge */}
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                            <div
+                              className="bg-red-600 text-white px-3 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
+                              style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
+                            >
+                              مكتمل ✓
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      {/* Card Header */}
+                      <div
+                        className={`px-2 py-2 border-b ${
+                          isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-xs font-bold text-gray-900">#{order.order_id}</h3>
+                            <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            {/* Payment Status Indicator */}
+                            <div
+                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                                isPaid
+                                  ? "bg-green-50 text-green-700 border border-green-200"
+                                  : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                              }`}
+                            >
+                              {isPaid ? (
+                                <>
+                                  <CheckCircle className="w-2.5 h-2.5" />
+                                  <span>مدفوع</span>
+                                </>
+                              ) : (
+                                <>
+                                  <DollarSign className="w-2.5 h-2.5" />
+                                  <span>غير مدفوع</span>
+                                </>
+                              )}
+                            </div>
+                            {/* Status Badge */}
+                            <div
+                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
+                            >
+                              <StatusIcon className="w-2.5 h-2.5" />
+                              <span>{statusInfo.label}</span>
+                            </div>
+                            {/* Edited Badge */}
+                            {isEditedOrder && (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>تم التعديل</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Card Content */}
+                      <div className="p-2 space-y-2">
+                        {/* Customer Name */}
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-gray-900" title={order.customer_name}>
+                            {order.customer_name}
+                          </p>
+                        </div>
+                        {/* Address */}
                         <div
-                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                            isPaid
-                              ? "bg-green-50 text-green-700 border border-green-200"
-                              : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                          className={`flex items-start gap-1 border rounded-lg p-1.5 ${
+                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
                           }`}
                         >
-                          {isPaid ? (
-                            <>
-                              <CheckCircle className="w-2.5 h-2.5" />
-                              <span>مدفوع</span>
-                            </>
-                          ) : (
-                            <>
-                              <DollarSign className="w-2.5 h-2.5" />
-                              <span>غير مدفوع</span>
-                            </>
-                          )}
+                          <MapPin className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" />
+                          <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
+                            {truncateAddress(order.address, 25)}
+                          </p>
                         </div>
-                        {/* Status Badge */}
+                        {/* Amount */}
                         <div
-                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
+                          className={`border rounded-lg p-2 text-center ${
+                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
+                          }`}
                         >
-                          <StatusIcon className="w-2.5 h-2.5" />
-                          <span>{statusInfo.label}</span>
+                          <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
+                            {totalAmount.toFixed(0)}
+                          </p>
+                          <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>جنيه مصري</p>
                         </div>
-                        {/* Edited Badge */}
-                        {isEditedOrder && (
-                          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
-                            <Check className="w-2.5 h-2.5" />
-                            <span>تم التعديل</span>
+                        {/* Phone Button */}
+                        <button
+                          onClick={() => handlePhoneClick(order.mobile_number)}
+                          className={`w-full border py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
+                            isEditedOrder
+                              ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                              : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                          }`}
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span className="font-mono text-xs">{order.mobile_number}</span>
+                        </button>
+                        {/* Payment Method Display */}
+                        <div
+                          className={`border rounded-lg p-1.5 text-center text-xs ${
+                            isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                          }`}
+                        >
+                          <p className={`font-medium ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
+                            {getDisplayPaymentMethod(order)}
+                          </p>
+                        </div>
+                        {/* Notes Display */}
+                        {order.notes && (
+                          <div
+                            className={`border rounded-lg p-1.5 text-xs ${
+                              isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
+                            }`}
+                          >
+                            <div className="flex items-start gap-1">
+                              <FileText className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
+                              <p
+                                className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
+                                title={order.notes}
+                              >
+                                {order.notes.length > 30 ? order.notes.substring(0, 30) + "..." : order.notes}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {/* Edit Button */}
+                        {canEditOrder(order) ? (
+                          <button
+                            onClick={() => openModal(order)}
+                            className={`w-full font-medium py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
+                              isEditedOrder
+                                ? "bg-red-600 hover:bg-red-700 text-white"
+                                : "bg-blue-600 hover:bg-blue-700 text-white"
+                            }`}
+                          >
+                            <Edit className="w-3 h-3" />
+                            تحديث الطلب
+                          </button>
+                        ) : (
+                          <div className="w-full bg-gray-100 text-gray-500 font-medium py-1.5 px-2 rounded-lg text-center text-xs">
+                            مكتمل
                           </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                  {/* Card Content */}
-                  <div className="p-2 space-y-2">
-                    {/* Customer Name */}
-                    <div className="text-center">
-                      <p className="text-xs font-bold text-gray-900" title={order.customer_name}>
-                        {order.customer_name}
-                      </p>
-                    </div>
-                    {/* Address */}
-                    <div
-                      className={`flex items-start gap-1 border rounded-lg p-1.5 ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      <MapPin className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
-                        {truncateAddress(order.address, 25)}
-                      </p>
-                    </div>
-                    {/* Amount */}
-                    <div
-                      className={`border rounded-lg p-2 text-center ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
-                      }`}
-                    >
-                      <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
-                        {totalAmount.toFixed(0)}
-                      </p>
-                      <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>جنيه مصري</p>
-                    </div>
-                    {/* Phone Button */}
-                    <button
-                      onClick={() => handlePhoneClick(order.mobile_number)}
-                      className={`w-full border py-1.5 px-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
-                        isEditedOrder
-                          ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
-                          : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
-                      }`}
-                    >
-                      <Phone className="w-3 h-3" />
-                      <span className="font-mono text-xs">{order.mobile_number}</span>
-                    </button>
-                    {/* Payment Method Display */}
-                    <div
-                      className={`border rounded-lg p-1.5 text-center text-xs ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      <p className={`font-medium ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
-                        {getDisplayPaymentMethod(order)}
-                      </p>
-                    </div>
-                    {/* Notes Display */}
-                    {order.notes && (
-                      <div
-                        className={`border rounded-lg p-1.5 text-xs ${
-                          isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
-                        }`}
-                      >
-                        <div className="flex items-start gap-1">
-                          <FileText className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                          <p
-                            className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
-                            title={order.notes}
-                          >
-                            {order.notes.length > 30 ? order.notes.substring(0, 30) + "..." : order.notes}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {/* Edit Button */}
-                    {canEditOrder(order) ? (
-                      <button
-                        onClick={() => openModal(order)}
-                        className={`w-full font-medium py-1.5 px-2 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
-                          isEditedOrder
-                            ? "bg-red-600 hover:bg-red-700 text-white"
-                            : "bg-blue-600 hover:bg-blue-700 text-white"
-                        }`}
-                      >
-                        <Edit className="w-3 h-3" />
-                        تحديث الطلب
-                      </button>
-                    ) : (
-                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-1.5 px-2 rounded-lg text-center text-xs">
-                        مكتمل
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            }}
-          />
+                  )
+                }}
+              />
+            </div>
+
+            {/* Scroll Buttons */}
+            {showScrollButtons && (
+              <div className="fixed left-4 top-1/2 transform -translate-y-1/2 z-30 flex flex-col gap-2">
+                <button
+                  onClick={scrollUp}
+                  disabled={!canScrollUp}
+                  className={`w-12 h-12 rounded-full shadow-lg border-2 border-white transition-all duration-200 flex items-center justify-center ${
+                    canScrollUp
+                      ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                  title="التمرير لأعلى"
+                >
+                  <ChevronUp className="w-6 h-6" />
+                </button>
+                <button
+                  onClick={scrollDown}
+                  disabled={!canScrollDown}
+                  className={`w-12 h-12 rounded-full shadow-lg border-2 border-white transition-all duration-200 flex items-center justify-center ${
+                    canScrollDown
+                      ? "bg-blue-600 hover:bg-blue-700 text-white hover:scale-110"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
+                  title="التمرير لأسفل"
+                >
+                  <ChevronDown className="w-6 h-6" />
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Phone Options Modal */}
