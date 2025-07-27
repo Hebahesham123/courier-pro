@@ -23,12 +23,13 @@ import {
   HandCoins,
   Monitor,
   Calculator,
-  AlertCircle,
   Receipt,
   RefreshCw,
   Edit3,
   Save,
   Trash2,
+  Plus,
+  AlertCircle,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
@@ -57,9 +58,13 @@ interface Order {
   updated_at: string
   notes?: string | null
   order_proofs?: OrderProof[]
-  hold_fee?: number | null;
-  admin_delivery_fee?: number | null;
-  extra_fee?: number | null;
+  hold_fee?: number | null
+  hold_fee_comment?: string | null
+  hold_fee_created_by?: string | null
+  hold_fee_created_at?: string | null
+  admin_delivery_fee?: number | null
+  extra_fee?: number | null
+  payment_status?: string
 }
 
 interface CourierSummary {
@@ -77,7 +82,16 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
   const m = method.toLowerCase().trim()
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
   if (m === "visa_machine") return "visa_machine" // Keep visa_machine separate
-  if (m === "paymob" || (m.includes("visa") && m !== "visa_machine") || m.includes("card")) return "paymob"
+  // All card payments (visa, mastercard, etc.) should be categorized as paymob
+  if (
+    m === "paymob" ||
+    m.includes("visa") ||
+    m.includes("mastercard") ||
+    m.includes("card") ||
+    m.includes("credit") ||
+    m.includes("debit")
+  )
+    return "paymob"
   if (m === "cash") return "cash"
   return "other"
 }
@@ -97,7 +111,6 @@ const getDisplayPaymentMethod = (order: Order): string => {
 const Summary: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
-
   const translate = (key: string) => {
     const translations: Record<string, string> = {
       loading: "جاري التحميل...",
@@ -198,6 +211,19 @@ const Summary: React.FC = () => {
       totalCourierHandledLabel: "إجمالي ما تعامل معه المندوب",
       paymentSubTypeLabel: "نوع الدفع",
       proofImagesLabel: "صور الإثبات",
+      // Hold Fees
+      holdFee: "رسوم الحجز",
+      holdFeeAmount: "مبلغ الحجز",
+      holdFeeComment: "تعليق الحجز",
+      addHoldFee: "إضافة رسوم حجز",
+      editHoldFee: "تعديل رسوم الحجز",
+      removeHoldFee: "إزالة رسوم الحجز",
+      save: "حفظ",
+      cancel: "إلغاء",
+      enterAmount: "أدخل المبلغ",
+      enterComment: "أدخل التعليق",
+      holdFeeAddedBy: "أضيفت بواسطة",
+      holdFeeAddedAt: "تاريخ الإضافة",
     }
     return translations[key] || key
   }
@@ -207,6 +233,12 @@ const Summary: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [selectedOrders, setSelectedOrders] = useState<Order[]>([])
   const [modalTitle, setModalTitle] = useState("")
+
+  // Hold Fee Management States
+  const [editingHoldFee, setEditingHoldFee] = useState<string | null>(null)
+  const [holdFeeAmount, setHoldFeeAmount] = useState("")
+  const [holdFeeComment, setHoldFeeComment] = useState("")
+  const [holdFeeLoading, setHoldFeeLoading] = useState(false)
 
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
   const getTodayDateString = () => {
@@ -227,288 +259,7 @@ const Summary: React.FC = () => {
 
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
-
-  // Add state for editing fees with improved input handling
-  const [orderFees, setOrderFees] = useState<Record<string, Partial<Order>>>({});
-  const [savingFeeOrderId, setSavingFeeOrderId] = useState<string | null>(null);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  // Add local input state to prevent re-render issues during typing
-  const [localInputValues, setLocalInputValues] = useState<Record<string, Record<string, string>>>({});
-
-  const handleFeeChange = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", value: string) => {
-    // Update local input state immediately for responsive UI
-    setLocalInputValues(prev => ({
-      ...prev,
-      [orderId]: {
-        ...prev[orderId],
-        [feeType]: value
-      }
-    }));
-
-    // Update the actual state
-    const numValue = value === "" ? null : Number(value);
-    setOrderFees((prev) => ({
-      ...prev,
-      [orderId]: { ...prev[orderId], [feeType]: numValue },
-    }));
-  };
-
-  const handleFeeRemove = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee") => {
-    // Clear local input state
-    setLocalInputValues(prev => ({
-      ...prev,
-      [orderId]: {
-        ...prev[orderId],
-        [feeType]: ""
-      }
-    }));
-
-    setOrderFees((prev) => ({
-      ...prev,
-      [orderId]: { ...prev[orderId], [feeType]: null },
-    }));
-  };
-
-  const handleSaveFees = async (orderId: string) => {
-    const fees = orderFees[orderId];
-    if (!fees) return;
-    
-    setSavingFeeOrderId(orderId);
-    
-    try {
-      const { error } = await supabase.from("orders").update(fees).eq("id", orderId);
-      if (error) {
-        console.error("Error updating fees:", error);
-        return;
-      }
-      
-      // Clear the editing state for this order
-      setOrderFees((prev) => {
-        const updated = { ...prev };
-        delete updated[orderId];
-        return updated;
-      });
-      
-      // Clear local input values
-      setLocalInputValues(prev => {
-        const updated = { ...prev };
-        delete updated[orderId];
-        return updated;
-      });
-      
-      setEditingOrderId(null);
-      await fetchSummary();
-    } catch (error) {
-      console.error("Error saving fees:", error);
-    } finally {
-      setSavingFeeOrderId(null);
-    }
-  };
-
-  const handleCancelEdit = (orderId: string) => {
-    setOrderFees((prev) => {
-      const updated = { ...prev };
-      delete updated[orderId];
-      return updated;
-    });
-    
-    // Clear local input values
-    setLocalInputValues(prev => {
-      const updated = { ...prev };
-      delete updated[orderId];
-      return updated;
-    });
-    
-    setEditingOrderId(null);
-  };
-
-  // Helper to get input value (local state takes precedence)
-  const getInputValue = (orderId: string, feeType: "hold_fee" | "admin_delivery_fee" | "extra_fee", order: Order) => {
-    const localValue = localInputValues[orderId]?.[feeType];
-    if (localValue !== undefined) {
-      return localValue;
-    }
-    
-    const pendingFees = orderFees[orderId];
-    const currentValue = pendingFees?.[feeType] !== undefined ? pendingFees[feeType] : order[feeType];
-    return currentValue || "";
-  };
-
-  // Helper to get total fees for an order (including pending changes)
-  const getOrderTotalFees = (order: Order) => {
-    const pendingFees = orderFees[order.id];
-    const holdFee = pendingFees?.hold_fee !== undefined ? pendingFees.hold_fee : order.hold_fee;
-    const adminFee = pendingFees?.admin_delivery_fee !== undefined ? pendingFees.admin_delivery_fee : order.admin_delivery_fee;
-    const extraFee = pendingFees?.extra_fee !== undefined ? pendingFees.extra_fee : order.extra_fee;
-    
-    return Number(holdFee || 0) + Number(adminFee || 0) + Number(extraFee || 0);
-  };
-
-  // Helper to get total fees for a list of orders
-  const getTotalFees = (orders: Order[]) =>
-    orders.reduce((acc, o) => acc + getOrderTotalFees(o), 0);
-
-  // Fee editing component with improved inputs
-  const FeeEditor: React.FC<{ order: Order; compact?: boolean }> = ({ order, compact = false }) => {
-    if (user?.role !== "admin") return null;
-    
-    const isEditing = editingOrderId === order.id;
-    const isSaving = savingFeeOrderId === order.id;
-    const pendingFees = orderFees[order.id] || {};
-    
-    const currentHoldFee = pendingFees.hold_fee !== undefined ? pendingFees.hold_fee : order.hold_fee;
-    const currentAdminFee = pendingFees.admin_delivery_fee !== undefined ? pendingFees.admin_delivery_fee : order.admin_delivery_fee;
-    const currentExtraFee = pendingFees.extra_fee !== undefined ? pendingFees.extra_fee : order.extra_fee;
-    
-    if (!isEditing) {
-      return (
-        <div className={`${compact ? "mt-2" : "mt-4"} p-3 bg-gray-50 rounded-lg border`}>
-          <div className="flex items-center justify-between mb-3">
-            <h6 className={`font-semibold text-gray-800 ${compact ? "text-sm" : "text-base"}`}>
-              الرسوم الإضافية
-            </h6>
-            <button
-              onClick={() => setEditingOrderId(order.id)}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
-            >
-              <Edit3 className="w-3 h-3" />
-              تعديل
-            </button>
-          </div>
-          
-          <div className={`space-y-2 ${compact ? "text-xs" : "text-sm"}`}>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">رسوم الحجز:</span>
-              <span className="font-medium">{Number(currentHoldFee || 0).toFixed(2)} ج.م</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">رسوم التوصيل الإدارية:</span>
-              <span className="font-medium">{Number(currentAdminFee || 0).toFixed(2)} ج.م</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600">رسوم إضافية:</span>
-              <span className="font-medium">{Number(currentExtraFee || 0).toFixed(2)} ج.م</span>
-            </div>
-            <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-              <span className="font-semibold text-gray-700">إجمالي الرسوم:</span>
-              <span className="font-bold text-red-600">
-                {getOrderTotalFees(order).toFixed(2)} ج.م
-              </span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <div className={`${compact ? "mt-2" : "mt-4"} p-3 bg-blue-50 rounded-lg border border-blue-200`}>
-        <div className="flex items-center justify-between mb-3">
-          <h6 className={`font-semibold text-blue-800 ${compact ? "text-sm" : "text-base"}`}>
-            تعديل الرسوم الإضافية
-          </h6>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleSaveFees(order.id)}
-              disabled={isSaving}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50"
-            >
-              <Save className="w-3 h-3" />
-              {isSaving ? "حفظ..." : "حفظ"}
-            </button>
-            <button
-              onClick={() => handleCancelEdit(order.id)}
-              disabled={isSaving}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
-            >
-              <X className="w-3 h-3" />
-              إلغاء
-            </button>
-          </div>
-        </div>
-        
-        <div className={`space-y-3 ${compact ? "text-xs" : "text-sm"}`}>
-          <div className="flex items-center justify-between">
-            <label className="text-gray-700 font-medium">رسوم الحجز:</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={getInputValue(order.id, "hold_fee", order)}
-                onChange={e => handleFeeChange(order.id, "hold_fee", e.target.value)}
-                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0.00"
-                dir="ltr"
-              />
-              <button
-                type="button"
-                onClick={() => handleFeeRemove(order.id, "hold_fee")}
-                className="text-red-500 hover:text-red-700 transition-colors"
-                title="حذف"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <label className="text-gray-700 font-medium">رسوم التوصيل الإدارية:</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={getInputValue(order.id, "admin_delivery_fee", order)}
-                onChange={e => handleFeeChange(order.id, "admin_delivery_fee", e.target.value)}
-                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0.00"
-                dir="ltr"
-              />
-              <button
-                type="button"
-                onClick={() => handleFeeRemove(order.id, "admin_delivery_fee")}
-                className="text-red-500 hover:text-red-700 transition-colors"
-                title="حذف"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <label className="text-gray-700 font-medium">رسوم إضافية:</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={getInputValue(order.id, "extra_fee", order)}
-                onChange={e => handleFeeChange(order.id, "extra_fee", e.target.value)}
-                className="border border-gray-300 rounded px-3 py-1 w-24 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0.00"
-                dir="ltr"
-              />
-              <button
-                type="button"
-                onClick={() => handleFeeRemove(order.id, "extra_fee")}
-                className="text-red-500 hover:text-red-700 transition-colors"
-                title="حذف"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex justify-between items-center pt-2 border-t border-blue-300">
-            <span className="font-semibold text-blue-700">إجمالي الرسوم:</span>
-            <span className="font-bold text-blue-800">
-              {getOrderTotalFees(order).toFixed(2)} ج.م
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const isAdmin = user?.role === "admin"
 
   useEffect(() => {
     fetchSummary()
@@ -518,6 +269,7 @@ const Summary: React.FC = () => {
         fetchSummary()
       })
       .subscribe()
+
     return () => {
       subscription.unsubscribe().catch(console.error)
     }
@@ -542,12 +294,14 @@ const Summary: React.FC = () => {
           .gte("created_at", `${dateRange.startDate}T00:00:00`)
           .lte("created_at", `${dateRange.endDate}T23:59:59`)
         orders = (data ?? []) as Order[]
-        setSummaryList([{ courierId: user.id, courierName: user.name || translate("courier") }])
+        const courierName = user.name ?? translate("courier")
+        setSummaryList([{ courierId: user.id, courierName: courierName }])
         setAllOrders(orders)
       } else {
         // For admin users
         const { data: couriers } = await supabase.from("users").select("id, name").eq("role", "courier")
-        setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name })))
+        setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name ?? "مندوب" })))
+
         if (selectedCourier) {
           // If a courier is selected, fetch only their orders
           const { data } = await supabase
@@ -589,6 +343,128 @@ const Summary: React.FC = () => {
     }
   }
 
+  // Hold Fee Management Functions
+  const handleEditHoldFee = (orderId: string, currentAmount?: number, currentComment?: string) => {
+    setEditingHoldFee(orderId)
+    setHoldFeeAmount(currentAmount ? currentAmount.toString() : "")
+    setHoldFeeComment(currentComment || "")
+  }
+
+  const handleSaveHoldFee = async (orderId: string) => {
+    if (!isAdmin) return
+
+    setHoldFeeLoading(true)
+    try {
+      const amount = Number.parseFloat(holdFeeAmount) || 0
+      const { error } = await supabase
+        .from("orders")
+        .update({
+          hold_fee: amount > 0 ? amount : null,
+          hold_fee_comment: amount > 0 ? holdFeeComment : null,
+          hold_fee_created_by: amount > 0 ? user?.id : null,
+          hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+        })
+        .eq("id", orderId)
+
+      if (error) throw error
+
+      // Update local state
+      setAllOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: amount > 0 ? amount : null,
+                hold_fee_comment: amount > 0 ? holdFeeComment : null,
+                hold_fee_created_by: amount > 0 ? user?.id : null,
+                hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+              }
+            : order,
+        ),
+      )
+
+      setSelectedOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: amount > 0 ? amount : null,
+                hold_fee_comment: amount > 0 ? holdFeeComment : null,
+                hold_fee_created_by: amount > 0 ? user?.id : null,
+                hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+              }
+            : order,
+        ),
+      )
+
+      setEditingHoldFee(null)
+      setHoldFeeAmount("")
+      setHoldFeeComment("")
+    } catch (error) {
+      console.error("Error saving hold fee:", error)
+    } finally {
+      setHoldFeeLoading(false)
+    }
+  }
+
+  const handleRemoveHoldFee = async (orderId: string) => {
+    if (!isAdmin) return
+
+    setHoldFeeLoading(true)
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({
+          hold_fee: null,
+          hold_fee_comment: null,
+          hold_fee_created_by: null,
+          hold_fee_created_at: null,
+        })
+        .eq("id", orderId)
+
+      if (error) throw error
+
+      // Update local state
+      setAllOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: null,
+                hold_fee_comment: null,
+                hold_fee_created_by: null,
+                hold_fee_created_at: null,
+              }
+            : order,
+        ),
+      )
+
+      setSelectedOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: null,
+                hold_fee_comment: null,
+                hold_fee_created_by: null,
+                hold_fee_created_at: null,
+              }
+            : order,
+        ),
+      )
+    } catch (error) {
+      console.error("Error removing hold fee:", error)
+    } finally {
+      setHoldFeeLoading(false)
+    }
+  }
+
+  const handleCancelHoldFeeEdit = () => {
+    setEditingHoldFee(null)
+    setHoldFeeAmount("")
+    setHoldFeeComment("")
+  }
+
   // Helper function to get the actual order amount the courier handled
   const getCourierOrderAmount = (order: Order): number => {
     if (Number(order.partial_paid_amount || 0) > 0) {
@@ -608,6 +484,7 @@ const Summary: React.FC = () => {
   const getTotalCourierAmount = (order: Order): number => {
     let orderAmount = 0
     const deliveryAmount = Number(order.delivery_fee || 0)
+
     if (order.status === "canceled") {
       orderAmount = 0
     } else if (order.status === "return") {
@@ -615,10 +492,12 @@ const Summary: React.FC = () => {
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
+
     // Subtract hold_fee, admin_delivery_fee, and extra_fee
     const holdFee = Number(order.hold_fee || 0)
     const adminFee = Number(order.admin_delivery_fee || 0)
     const extraFee = Number(order.extra_fee || 0)
+
     return orderAmount + deliveryAmount - holdFee - adminFee - extraFee
   }
 
@@ -702,40 +581,39 @@ const Summary: React.FC = () => {
   const calculateAccountingMetrics = () => {
     const filteredOrders = selectedCourier
       ? allOrders.filter((o) => o.assigned_courier_id === selectedCourier.courierId)
-      : allOrders;
+      : allOrders
 
     // Overall Totals
-    const totalOrdersCount = filteredOrders.length;
-    const totalOrdersOriginalValue =
-      filteredOrders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0);
+    const totalOrdersCount = filteredOrders.length
+    const totalOrdersOriginalValue = filteredOrders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0)
 
     // Fee sums
-    const totalHoldFees = filteredOrders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0);
-    const totalExtraFees = filteredOrders.reduce((acc, o) => acc + Number(o.extra_fee || 0), 0);
-    const totalAdminDeliveryFees = filteredOrders.reduce((acc, o) => acc + Number(o.admin_delivery_fee || 0), 0);
-    const totalAllFees = totalHoldFees + totalExtraFees + totalAdminDeliveryFees;
-    const adjustedTotal = totalOrdersOriginalValue - totalAllFees;
+    const totalHoldFees = filteredOrders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0)
+    const totalExtraFees = filteredOrders.reduce((acc, o) => acc + Number(o.extra_fee || 0), 0)
+    const totalAdminDeliveryFees = filteredOrders.reduce((acc, o) => acc + Number(o.admin_delivery_fee || 0), 0)
+    const totalAllFees = totalHoldFees + totalExtraFees + totalAdminDeliveryFees
+    const adjustedTotal = totalOrdersOriginalValue - totalAllFees
 
     // Status-based Metrics
     const getStatusMetrics = (status: string) => {
-      const orders = filteredOrders.filter((o) => o.status === status);
-      const count = orders.length;
-      const originalValue = orders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0);
-      const courierCollected = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0);
-      return { count, originalValue, courierCollected, orders };
-    };
+      const orders = filteredOrders.filter((o) => o.status === status)
+      const count = orders.length
+      const originalValue = orders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0)
+      const courierCollected = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
+      return { count, originalValue, courierCollected, orders }
+    }
 
-    const assigned = getStatusMetrics("assigned");
-    const delivered = getStatusMetrics("delivered");
-    const canceled = getStatusMetrics("canceled");
-    const partial = getStatusMetrics("partial");
-    const returned = getStatusMetrics("return");
-    const receivingPart = getStatusMetrics("receiving_part");
-    const handToHand = getStatusMetrics("hand_to_hand");
+    const assigned = getStatusMetrics("assigned")
+    const delivered = getStatusMetrics("delivered")
+    const canceled = getStatusMetrics("canceled")
+    const partial = getStatusMetrics("partial")
+    const returned = getStatusMetrics("return")
+    const receivingPart = getStatusMetrics("receiving_part")
+    const handToHand = getStatusMetrics("hand_to_hand")
 
     // Delivery Fees and Partial Amounts
-    const totalDeliveryFeesFromAllOrders = filteredOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0);
-    const totalPartialAmounts = filteredOrders.reduce((acc, o) => acc + Number(o.partial_paid_amount || 0), 0);
+    const totalDeliveryFeesFromAllOrders = filteredOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0)
+    const totalPartialAmounts = filteredOrders.reduce((acc, o) => acc + Number(o.partial_paid_amount || 0), 0)
 
     // Accounting Difference (This logic might need re-evaluation based on exact definition)
     // For now, keep it as is, but it's more of an admin-level metric.
@@ -746,25 +624,29 @@ const Summary: React.FC = () => {
         partial.courierCollected +
         returned.courierCollected +
         receivingPart.courierCollected +
-        handToHand.courierCollected);
+        handToHand.courierCollected)
 
     // Payment method breakdowns (for orders where courier actually collected money)
     const getPaymentMethodMetrics = (filterFn: (order: Order) => boolean) => {
-      const orders = filteredOrders.filter((o) => filterFn(o) && shouldIncludeOrder(o));
-      const count = orders.length;
-      const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0);
-      return { count, amount, orders };
-    };
+      const orders = filteredOrders.filter((o) => filterFn(o) && shouldIncludeOrder(o))
+      const count = orders.length
+      const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
+      return { count, amount, orders }
+    }
 
-    // Updated paymob orders calculation - exclude visa_machine
+    // Updated paymob orders calculation - only include delivered orders
     const paymobOrders = getPaymentMethodMetrics((o) => {
       const displayMethod = getDisplayPaymentMethod(o)
       const normalizedDisplay = normalizePaymentMethod(displayMethod)
       const normalizedOriginal = normalizePaymentMethod(o.payment_method)
-      
-      // Include if:
-      // 1. Display method normalizes to paymob AND it's not visa_machine
-      // 2. Original payment method is paymob and no collected_by is set (original online payment)
+      const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
+      // If it's valu, don't count as paymob
+      if (isValu) return false
+      // Only include delivered orders for paymob
+      if (o.status !== "delivered") return false
+      // If it's paid and delivered, count as paymob
+      if (o.payment_status === "paid") return true
+      // Existing logic for delivered orders only
       return (
         (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
         (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
@@ -773,9 +655,11 @@ const Summary: React.FC = () => {
 
     const valuOrders = getPaymentMethodMetrics(
       (o) =>
-        normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
-        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by),
+        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
+          (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)) &&
+        o.status === "delivered",
     )
+
     const visaMachineOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "visa_machine")
     const instapayOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "instapay")
     const walletOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "wallet")
@@ -940,6 +824,7 @@ const Summary: React.FC = () => {
             </div>
           </div>
         </div>
+
         {/* Navigation Tabs */}
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
@@ -967,12 +852,12 @@ const Summary: React.FC = () => {
             </button>
           </div>
         </div>
+
         {showAnalytics ? (
           /* Detailed Accounting Dashboard */
           <div className="max-w-7xl mx-auto px-6 pb-8">
             {(() => {
               const metrics = calculateAccountingMetrics()
-
               return (
                 <div className="space-y-8">
                   {/* 📦 Order Summary Section */}
@@ -983,7 +868,6 @@ const Summary: React.FC = () => {
                       </div>
                       <h2 className="text-xl font-bold text-gray-900">📦 ملخص الطلبات</h2>
                     </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                       {/* Total Orders */}
                       <div
@@ -1002,23 +886,9 @@ const Summary: React.FC = () => {
                         <div className="space-y-2">
                           <div className="flex justify-between items-center pt-2 border-t border-gray-300">
                             <span className="font-bold text-gray-700">القيمة الأصلية:</span>
-                            <span className="font-bold text-gray-900">{metrics.totalOrdersOriginalValue.toFixed(2)} ج.م</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-700">إجمالي رسوم الحجز:</span>
-                            <span className="text-sm text-gray-900">{metrics.totalHoldFees.toFixed(2)} ج.م</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-700">إجمالي رسوم إضافية:</span>
-                            <span className="text-sm text-gray-900">{metrics.totalExtraFees.toFixed(2)} ج.م</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-700">إجمالي رسوم التوصيل (إدارية):</span>
-                            <span className="text-sm text-gray-900">{metrics.totalAdminDeliveryFees.toFixed(2)} ج.م</span>
-                          </div>
-                          <div className="flex justify-between items-center pt-2 border-t border-gray-400">
-                            <span className="font-bold text-purple-700">الإجمالي بعد الخصم:</span>
-                            <span className="font-bold text-purple-900">{metrics.adjustedTotal.toFixed(2)} ج.م</span>
+                            <span className="font-bold text-gray-900">
+                              {metrics.totalOrdersOriginalValue.toFixed(2)} ج.م
+                            </span>
                           </div>
                         </div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
@@ -1041,15 +911,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-blue-300`}>
-                            <span className={`text-sm font-bold text-blue-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-blue-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-blue-300">
+                            <span className="text-sm font-bold text-blue-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-blue-900">
                               {metrics.assigned.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className={`text-sm font-bold text-blue-700`}>المحصل (تقديري):</span>
-                            <span className={`font-bold text-xl text-blue-900`}>
+                            <span className="text-sm font-bold text-blue-700">المحصل (تقديري):</span>
+                            <span className="font-bold text-xl text-blue-900">
                               {metrics.assigned.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1074,15 +944,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-green-300`}>
-                            <span className={`text-sm font-bold text-green-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-green-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-green-300">
+                            <span className="text-sm font-bold text-green-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-green-900">
                               {metrics.delivered.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className={`text-sm font-bold text-green-700`}>المحصل فعلياً:</span>
-                            <span className={`font-bold text-xl text-green-900`}>
+                            <span className="text-sm font-bold text-green-700">المحصل فعلياً:</span>
+                            <span className="font-bold text-xl text-green-900">
                               {metrics.delivered.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1107,15 +977,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-red-300`}>
-                            <span className={`text-sm font-bold text-red-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-red-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-red-300">
+                            <span className="text-sm font-bold text-red-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-red-900">
                               {metrics.canceled.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className={`flex justify-between items-center`}>
-                            <span className={`text-sm font-bold text-red-700`}>المحصل (رسوم فقط):</span>
-                            <span className={`font-bold text-xl text-red-900`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-red-700">المحصل (رسوم فقط):</span>
+                            <span className="font-bold text-xl text-red-900">
                               {metrics.canceled.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1140,15 +1010,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-yellow-300`}>
-                            <span className={`text-sm font-bold text-yellow-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-yellow-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-yellow-300">
+                            <span className="text-sm font-bold text-yellow-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-yellow-900">
                               {metrics.partial.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className={`flex justify-between items-center`}>
-                            <span className={`text-sm font-bold text-yellow-700`}>المحصل فعلياً:</span>
-                            <span className={`font-bold text-xl text-yellow-900`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-yellow-700">المحصل فعلياً:</span>
+                            <span className="font-bold text-xl text-yellow-900">
                               {metrics.partial.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1173,15 +1043,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-orange-300`}>
-                            <span className={`text-sm font-bold text-orange-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-orange-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-orange-300">
+                            <span className="text-sm font-bold text-orange-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-orange-900">
                               {metrics.returned.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className={`flex justify-between items-center`}>
-                            <span className={`text-sm font-bold text-orange-700`}>المحصل (رسوم فقط):</span>
-                            <span className={`font-bold text-xl text-orange-900`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-orange-700">المحصل (رسوم فقط):</span>
+                            <span className="font-bold text-xl text-orange-900">
                               {metrics.returned.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1206,15 +1076,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-indigo-300`}>
-                            <span className={`text-sm font-bold text-indigo-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-indigo-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-indigo-300">
+                            <span className="text-sm font-bold text-indigo-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-indigo-900">
                               {metrics.receivingPart.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className={`flex justify-between items-center`}>
-                            <span className={`text-sm font-bold text-indigo-700`}>المحصل فعلياً:</span>
-                            <span className={`font-bold text-xl text-indigo-900`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-indigo-700">المحصل فعلياً:</span>
+                            <span className="font-bold text-xl text-indigo-900">
                               {metrics.receivingPart.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1239,15 +1109,15 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <div className={`flex justify-between items-center pt-2 border-t border-purple-300`}>
-                            <span className={`text-sm font-bold text-purple-700`}>القيمة الأصلية:</span>
-                            <span className={`font-bold text-xl text-purple-900`}>
+                          <div className="flex justify-between items-center pt-2 border-t border-purple-300">
+                            <span className="text-sm font-bold text-purple-700">القيمة الأصلية:</span>
+                            <span className="font-bold text-xl text-purple-900">
                               {metrics.handToHand.originalValue.toFixed(2)} ج.م
                             </span>
                           </div>
-                          <div className={`flex justify-between items-center`}>
-                            <span className={`text-sm font-bold text-purple-700`}>المحصل فعلياً:</span>
-                            <span className={`font-bold text-xl text-purple-900`}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-purple-700">المحصل فعلياً:</span>
+                            <span className="font-bold text-xl text-purple-900">
                               {metrics.handToHand.courierCollected.toFixed(2)} ج.م
                             </span>
                           </div>
@@ -1259,8 +1129,6 @@ const Summary: React.FC = () => {
                     </div>
                   </div>
 
-                 
-
                   {/* 💳 Payment Breakdown */}
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -1269,7 +1137,6 @@ const Summary: React.FC = () => {
                       </div>
                       <h2 className="text-xl font-bold text-gray-900">💳 تفصيل طرق الدفع</h2>
                     </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
                       {/* Visa Machine */}
                       {metrics.visaMachineOrders.count > 0 && (
@@ -1289,6 +1156,7 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
+
                       {/* Instapay */}
                       {metrics.instapayOrders.count > 0 && (
                         <div
@@ -1307,6 +1175,7 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
+
                       {/* Wallet */}
                       {metrics.walletOrders.count > 0 && (
                         <div
@@ -1325,6 +1194,7 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
+
                       {/* Cash on Hand */}
                       {metrics.cashOnHandOrders.count > 0 && (
                         <div
@@ -1343,6 +1213,7 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
+
                       {/* Total COD */}
                       {metrics.totalCODOrders.count > 0 && (
                         <div
@@ -1382,26 +1253,54 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-                      {/* Paymob */}
-                      {metrics.paymobOrders.count > 0 && (
-                        <div
-                          className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob")}
-                        >
-                          <div className="flex items-center gap-3 mb-3">
-                            <CreditCard className="w-6 h-6 text-blue-600" />
-                            <h4 className="font-semibold text-blue-900">Paymob</h4>
+
+                      {/* Paymob - Updated logic to include prepaid delivered orders (not valu) */}
+                      {(() => {
+                        const orders = allOrders.filter((o) => {
+                          const displayMethod = getDisplayPaymentMethod(o)
+                          const normalizedDisplay = normalizePaymentMethod(displayMethod)
+                          const normalizedOriginal = normalizePaymentMethod(o.payment_method)
+                          const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
+                          // If it's valu, don't count as paymob
+                          if (isValu) return false
+                          // Only include delivered orders for paymob
+                          if (o.status !== "delivered") return false
+                          // If it's paid and delivered, count as paymob
+                          if (o.payment_status === "paid") return true
+                          // Existing logic for delivered orders only
+                          return (
+                            (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
+                            (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
+                          )
+                        })
+                        const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
+                        return orders.length > 0 ? (
+                          <div
+                            className={`bg-blue-50 border-2 border-blue-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                              isCourier ? "p-3" : "p-4"
+                            }`}
+                            onClick={() => openOrders(orders, "طلبات paymob")}
+                          >
+                            <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
+                              <CreditCard className={`text-blue-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                              <h4 className={`font-semibold text-blue-900 ${isCourier ? "text-xs" : "text-base"}`}>
+                                Paymob
+                              </h4>
+                            </div>
+                            <div className="space-y-1">
+                              <p className={`font-bold text-blue-900 ${isCourier ? "text-lg" : "text-2xl"}`}>
+                                {orders.length}
+                              </p>
+                              <p className={`font-semibold text-blue-700 ${isCourier ? "text-sm" : "text-lg"}`}>
+                                {amount.toFixed(0)} ج.م
+                              </p>
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-2xl font-bold text-blue-900">{metrics.paymobOrders.count}</p>
-                            <p className="text-lg font-semibold text-blue-700">
-                              {metrics.paymobOrders.amount.toFixed(2)} ج.م
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                        ) : null
+                      })()}
                     </div>
                   </div>
+
                   {/* 🧾 Total Hand to Accounting */}
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
                     <div className="flex items-center gap-3 mb-6">
@@ -1410,7 +1309,6 @@ const Summary: React.FC = () => {
                       </div>
                       <h2 className="text-xl font-bold text-gray-900">🧾 إجمالي ما يسلم للمحاسبة</h2>
                     </div>
-
                     <div className="bg-green-50 border-2 border-green-200 rounded-xl p-8 text-center">
                       <div className="text-4xl font-bold text-green-900 mb-2">
                         {metrics.totalHandToAccounting.toFixed(2)} ج.م
@@ -1472,6 +1370,7 @@ const Summary: React.FC = () => {
             </div>
           </div>
         )}
+
         {/* Orders Modal */}
         {selectedOrders.length > 0 && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1497,6 +1396,7 @@ const Summary: React.FC = () => {
                   <X className="w-6 h-6" />
                 </button>
               </div>
+
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
@@ -1505,6 +1405,8 @@ const Summary: React.FC = () => {
                     const deliveryFee = Number(order.delivery_fee || 0)
                     const totalCourierAmount = getTotalCourierAmount(order)
                     const displayPaymentMethod = getDisplayPaymentMethod(order)
+                    const holdFee = Number(order.hold_fee || 0)
+
                     return (
                       <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1540,7 +1442,7 @@ const Summary: React.FC = () => {
                                 </a>
                               </div>
                               <div className="flex items-start gap-3">
-                                <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center mt-0.5">
+                                <div className={`bg-red-100 rounded flex items-center justify-center mt-0.5`}>
                                   <Package className="w-3 h-3 text-red-600" />
                                 </div>
                                 <span className="text-sm text-gray-600">العنوان:</span>
@@ -1561,6 +1463,7 @@ const Summary: React.FC = () => {
                               </div>
                             </div>
                           </div>
+
                           {/* Financial Information */}
                           <div className="space-y-4">
                             <div className="bg-white rounded-lg p-4 border border-gray-200">
@@ -1596,7 +1499,94 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-                                {totalCourierAmount > 0 && (
+
+                                {/* Hold Fee Section */}
+                                {isAdmin && (
+                                  <div className="border-t border-gray-200 pt-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4 text-orange-500" />
+                                        {translate("holdFee")}:
+                                      </span>
+                                      {!editingHoldFee || editingHoldFee !== order.id ? (
+                                        <div className="flex items-center gap-2">
+                                          {holdFee > 0 ? (
+                                            <>
+                                              <span className="font-semibold text-orange-600">
+                                                -{holdFee.toFixed(2)} {translate("EGP")}
+                                              </span>
+                                              <button
+  onClick={() =>
+    handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+  }
+                                                className="text-blue-600 hover:text-blue-800 p-1"
+                                                disabled={holdFeeLoading}
+                                              >
+                                                <Edit3 className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                onClick={() => handleRemoveHoldFee(order.id)}
+                                                className="text-red-600 hover:text-red-800 p-1"
+                                                disabled={holdFeeLoading}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleEditHoldFee(order.id)}
+                                              className="text-green-600 hover:text-green-800 p-1 flex items-center gap-1"
+                                              disabled={holdFeeLoading}
+                                            >
+                                              <Plus className="w-3 h-3" />
+                                              <span className="text-xs">{translate("addHoldFee")}</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="number"
+                                            value={holdFeeAmount}
+                                            onChange={(e) => setHoldFeeAmount(e.target.value)}
+                                            placeholder={translate("enterAmount")}
+                                            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            disabled={holdFeeLoading}
+                                          />
+                                          <button
+                                            onClick={() => handleSaveHoldFee(order.id)}
+                                            className="text-green-600 hover:text-green-800 p-1"
+                                            disabled={holdFeeLoading}
+                                          >
+                                            <Save className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={handleCancelHoldFeeEdit}
+                                            className="text-gray-600 hover:text-gray-800 p-1"
+                                            disabled={holdFeeLoading}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {editingHoldFee === order.id && (
+                                      <input
+                                        type="text"
+                                        value={holdFeeComment}
+                                        onChange={(e) => setHoldFeeComment(e.target.value)}
+                                        placeholder={translate("enterComment")}
+                                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 mt-1"
+                                        disabled={holdFeeLoading}
+                                      />
+                                    )}
+                                    {holdFee > 0 && order.hold_fee_comment && (
+                                      <p className="text-xs text-gray-600 mt-1 italic">"{order.hold_fee_comment}"</p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {totalCourierAmount !== 0 && (
                                   <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                                     <span className="text-sm font-semibold text-gray-700">
                                       {translate("totalCourierHandledLabel")}:
@@ -1608,6 +1598,7 @@ const Summary: React.FC = () => {
                                 )}
                               </div>
                             </div>
+
                             {/* Payment Information */}
                             <div className="space-y-2">
                               {order.payment_sub_type && (
@@ -1637,6 +1628,7 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
+
                         {/* Comment */}
                         {order.internal_comment && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1651,6 +1643,7 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
+
                         {/* Proof Images */}
                         {order.order_proofs && order.order_proofs.length > 0 && (
                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -1675,9 +1668,6 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        
-                        {/* Fee Editor Component */}
-                        <FeeEditor order={order} />
                       </div>
                     )
                   })}
@@ -1689,12 +1679,17 @@ const Summary: React.FC = () => {
       </div>
     )
   }
+
   // Get the current courier to display (either selected courier for admin or current user for courier)
   const currentCourier =
-    user.role === "courier" ? { courierId: user.id, courierName: user.name || translate("courier") } : selectedCourier
+    user.role === "courier" ? { courierId: user.id, courierName: user.name ?? translate("courier") } : selectedCourier
+
+  // Make sure all conditional returns are properly handled
   if (!currentCourier) return null
+
   // For courier view, show their detailed accounting dashboard
   const metrics = calculateAccountingMetrics()
+
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
       {/* Header - Mobile Optimized for Couriers */}
@@ -1823,6 +1818,7 @@ const Summary: React.FC = () => {
             </div>
           </div>
         </div>
+
         {/* Main Content - Mobile Optimized for Couriers */}
         <div className={`max-w-7xl mx-auto ${isCourier ? "px-3 py-4" : "px-6 py-8"}`}>
           <div className={`space-y-${isCourier ? "4" : "8"}`}>
@@ -1840,7 +1836,6 @@ const Summary: React.FC = () => {
                   {isCourier ? "📦 الطلبات" : "📦 ملخص الطلبات"}
                 </h2>
               </div>
-
               <div
                 className={`grid ${
                   isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6"
@@ -1876,22 +1871,6 @@ const Summary: React.FC = () => {
                       <span className={`font-bold text-gray-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {metrics.totalOrdersOriginalValue.toFixed(0)} ج.م
                       </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-700">إجمالي رسوم الحجز:</span>
-                      <span className="text-sm text-gray-900">{metrics.totalHoldFees.toFixed(2)} ج.م</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-700">إجمالي رسوم إضافية:</span>
-                      <span className="text-sm text-gray-900">{metrics.totalExtraFees.toFixed(2)} ج.م</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-700">إجمالي رسوم التوصيل (إدارية):</span>
-                      <span className="text-sm text-gray-900">{metrics.totalAdminDeliveryFees.toFixed(2)} ج.م</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-400">
-                      <span className="font-bold text-purple-700">الإجمالي بعد الخصم:</span>
-                      <span className="font-bold text-purple-900">{metrics.adjustedTotal.toFixed(2)} ج.م</span>
                     </div>
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
@@ -2013,7 +1992,7 @@ const Summary: React.FC = () => {
                         {isCourier ? "الملغاة" : "الطلبات الملغاة"}
                       </h3>
                       <p className={`text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
-                        {metrics.canceled.count} طلb
+                        {metrics.canceled.count} طلب
                       </p>
                     </div>
                   </div>
@@ -2104,7 +2083,7 @@ const Summary: React.FC = () => {
                     </div>
                     <div>
                       <h3 className={`font-bold text-orange-900 ${isCourier ? "text-sm" : "text-lg"}`}>
-                        {isCourier ? "المؤجله" : "الطلبات المؤجله"}
+                        {isCourier ? "المؤجلة" : "الطلبات المؤجله"}
                       </h3>
                       <p className={`text-orange-700 ${isCourier ? "text-xs" : "text-sm"}`}>
                         {metrics.returned.count} طلب
@@ -2230,8 +2209,6 @@ const Summary: React.FC = () => {
               </div>
             </div>
 
-            
-
             {/* 💳 Payment Breakdown */}
             <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
               <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
@@ -2246,7 +2223,6 @@ const Summary: React.FC = () => {
                   {isCourier ? "💳 طرق الدفع" : "💳 تفصيل طرق الدفع"}
                 </h2>
               </div>
-
               <div
                 className={`grid ${
                   isCourier
@@ -2287,6 +2263,7 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
+
                 {/* Instapay */}
                 {(() => {
                   const orders = allOrders.filter(
@@ -2320,6 +2297,7 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
+
                 {/* Wallet */}
                 {(() => {
                   const orders = allOrders.filter(
@@ -2353,6 +2331,7 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
+
                 {/* Cash on Hand */}
                 {(() => {
                   const orders = allOrders.filter(
@@ -2386,6 +2365,7 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
+
                 {/* Total COD - Hidden for mobile */}
                 {!isCourier &&
                   (() => {
@@ -2421,7 +2401,6 @@ const Summary: React.FC = () => {
                     const displayMethod = getDisplayPaymentMethod(o)
                     const normalizedDisplay = normalizePaymentMethod(displayMethod)
                     const normalizedOriginal = normalizePaymentMethod(o.payment_method)
-                    
                     return (
                       (normalizedDisplay === "valu" || (normalizedOriginal === "valu" && !o.collected_by)) &&
                       shouldIncludeOrder(o) &&
@@ -2453,19 +2432,25 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-                {/* Paymob - Updated logic to exclude visa_machine */}
+
+                {/* Paymob - Updated logic to include only delivered orders (not valu) */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
                     const displayMethod = getDisplayPaymentMethod(o)
                     const normalizedDisplay = normalizePaymentMethod(displayMethod)
                     const normalizedOriginal = normalizePaymentMethod(o.payment_method)
-                    
+                    const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
+                    // If it's valu, don't count as paymob
+                    if (isValu) return false
+                    // Only include delivered orders for paymob
+                    if (o.status !== "delivered") return false
+                    // If it's paid and delivered, count as paymob
+                    if (o.payment_status === "paid") return true
+                    // Existing logic for delivered orders only
                     return (
-                      // Include if display method normalizes to paymob AND it's not visa_machine
                       (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
-                      // OR original payment method is paymob and no collected_by is set (original online payment)
                       (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
-                    ) && shouldIncludeOrder(o) && o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2492,6 +2477,7 @@ const Summary: React.FC = () => {
                 })()}
               </div>
             </div>
+
             {/* 🧾 Total Hand to Accounting */}
             <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
               <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
@@ -2506,7 +2492,6 @@ const Summary: React.FC = () => {
                   {isCourier ? "للمحاسبة" : "🧾 إجمالي ما يسلم للمحاسبة"}
                 </h2>
               </div>
-
               <div
                 className={`bg-green-50 border-2 border-green-200 rounded-xl text-center ${isCourier ? "p-6" : "p-8"}`}
               >
@@ -2536,6 +2521,7 @@ const Summary: React.FC = () => {
             </div>
           </div>
         </div>
+
         {/* Orders Modal - Mobile Optimized */}
         {selectedOrders.length > 0 && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2548,9 +2534,7 @@ const Summary: React.FC = () => {
               <div className={`bg-blue-600 text-white flex items-center justify-between ${isCourier ? "p-4" : "p-6"}`}>
                 <div className="flex items-center gap-4">
                   <div
-                    className={`bg-blue-500 rounded-lg flex items-center justify-center ${
-                      isCourier ? "w-8 h-8" : "w-10 h-10"
-                    }`}
+                    className={`bg-blue-500 rounded-lg flex items-center justify-center ${isCourier ? "w-8 h-8" : "w-10 h-10"}`}
                   >
                     <Filter className={`${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
@@ -2569,6 +2553,7 @@ const Summary: React.FC = () => {
                   <X className={`${isCourier ? "w-5 h-5" : "w-6 h-6"}`} />
                 </button>
               </div>
+
               {/* Modal Content */}
               <div className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}>
                 <div className={`space-y-${isCourier ? "3" : "4"}`}>
@@ -2577,6 +2562,8 @@ const Summary: React.FC = () => {
                     const deliveryFee = Number(order.delivery_fee || 0)
                     const totalCourierAmount = getTotalCourierAmount(order)
                     const displayPaymentMethod = getDisplayPaymentMethod(order)
+                    const holdFee = Number(order.hold_fee || 0)
+
                     return (
                       <div
                         key={order.id}
@@ -2635,8 +2622,8 @@ const Summary: React.FC = () => {
                                 <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>العنوان:</span>
                                 <span className={`text-gray-800 flex-1 ${isCourier ? "text-xs" : "text-sm"}`}>
                                   {isCourier
-                                    ? order.address.length > 30
-                                      ? order.address.substring(0, 30) + "..."
+                                    ? order.address.length > 50
+                                      ? order.address.substring(0, 50) + "..."
                                       : order.address
                                     : order.address}
                                 </span>
@@ -2656,6 +2643,7 @@ const Summary: React.FC = () => {
                               </div>
                             </div>
                           </div>
+
                           {/* Financial Information */}
                           <div className={`space-y-${isCourier ? "3" : "4"}`}>
                             <div className={`bg-white rounded-lg border border-gray-200 ${isCourier ? "p-3" : "p-4"}`}>
@@ -2704,7 +2692,94 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-                                {totalCourierAmount > 0 && (
+
+                                {/* Hold Fee Section */}
+                                {isAdmin && (
+                                  <div className="border-t border-gray-200 pt-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4 text-orange-500" />
+                                        {translate("holdFee")}:
+                                      </span>
+                                      {!editingHoldFee || editingHoldFee !== order.id ? (
+                                        <div className="flex items-center gap-2">
+                                          {holdFee > 0 ? (
+                                            <>
+                                              <span className="font-semibold text-orange-600">
+                                                -{holdFee.toFixed(2)} {translate("EGP")}
+                                              </span>
+                                             <button
+  onClick={() =>
+    handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+  }                                                
+                                                className="text-blue-600 hover:text-blue-800 p-1"
+                                                disabled={holdFeeLoading}
+                                              >
+                                                <Edit3 className="w-3 h-3" />
+                                              </button>
+                                              <button
+                                                onClick={() => handleRemoveHoldFee(order.id)}
+                                                className="text-red-600 hover:text-red-800 p-1"
+                                                disabled={holdFeeLoading}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleEditHoldFee(order.id)}
+                                              className="text-green-600 hover:text-green-800 p-1 flex items-center gap-1"
+                                              disabled={holdFeeLoading}
+                                            >
+                                              <Plus className="w-3 h-3" />
+                                              <span className="text-xs">{translate("addHoldFee")}</span>
+                                            </button>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="number"
+                                            value={holdFeeAmount}
+                                            onChange={(e) => setHoldFeeAmount(e.target.value)}
+                                            placeholder={translate("enterAmount")}
+                                            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            disabled={holdFeeLoading}
+                                          />
+                                          <button
+                                            onClick={() => handleSaveHoldFee(order.id)}
+                                            className="text-green-600 hover:text-green-800 p-1"
+                                            disabled={holdFeeLoading}
+                                          >
+                                            <Save className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={handleCancelHoldFeeEdit}
+                                            className="text-gray-600 hover:text-gray-800 p-1"
+                                            disabled={holdFeeLoading}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {editingHoldFee === order.id && (
+                                      <input
+                                        type="text"
+                                        value={holdFeeComment}
+                                        onChange={(e) => setHoldFeeComment(e.target.value)}
+                                        placeholder={translate("enterComment")}
+                                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 mt-1"
+                                        disabled={holdFeeLoading}
+                                      />
+                                    )}
+                                    {holdFee > 0 && order.hold_fee_comment && (
+                                      <p className="text-xs text-gray-600 mt-1 italic">"{order.hold_fee_comment}"</p>
+                                    )}
+                                  </div>
+                                )}
+
+                                {totalCourierAmount !== 0 && (
                                   <div className={`flex justify-between items-center pt-3 border-t border-gray-200`}>
                                     <span
                                       className={`font-semibold text-gray-700 ${isCourier ? "text-xs" : "text-sm"}`}
@@ -2720,6 +2795,7 @@ const Summary: React.FC = () => {
                                 )}
                               </div>
                             </div>
+
                             {/* Payment Information */}
                             <div className={`space-y-${isCourier ? "1" : "2"}`}>
                               {order.payment_sub_type && (
@@ -2761,6 +2837,7 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         </div>
+
                         {/* Comment */}
                         {order.internal_comment && (
                           <div className={`mt-4 pt-4 border-t border-gray-200`}>
@@ -2785,6 +2862,7 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
+
                         {/* Proof Images */}
                         {order.order_proofs && order.order_proofs.length > 0 && (
                           <div className={`mt-4 pt-4 border-t border-gray-200`}>
@@ -2813,9 +2891,6 @@ const Summary: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        
-                        {/* Fee Editor Component */}
-                        <FeeEditor order={order} compact={isCourier} />
                       </div>
                     )
                   })}

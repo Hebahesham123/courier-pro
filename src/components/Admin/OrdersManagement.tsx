@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -13,7 +12,6 @@ import {
   Save,
   X,
   Package,
-  Users,
   Phone,
   CreditCard,
   Hash,
@@ -35,9 +33,10 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  DollarSign,
 } from "lucide-react"
-import { supabase } from "../../lib/supabase" // Assuming this path is correct based on your original code
-import { useLanguage } from "../../contexts/LanguageContext" // Assuming this path is correct
+import { supabase } from "../../lib/supabase"
+import { useLanguage } from "../../contexts/LanguageContext"
 
 interface Order {
   id: string
@@ -48,6 +47,7 @@ interface Order {
   mobile_number: string
   total_order_fees: number
   payment_method: string
+  payment_status: "paid" | "pending" | "cod" // New field
   status: string
   assigned_courier_id: string | null
   original_courier_id?: string | null
@@ -135,14 +135,22 @@ const OrdersManagement: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false)
 
   const [filters, setFilters] = useState({
-    couriers: [] as string[], // Changed to array for multi-select
-    statuses: [] as string[], // Added for multi-select status
+    couriers: [] as string[],
+    statuses: [] as string[],
+    paymentStatuses: [] as string[], // New filter for payment status
     mobile: "",
     payment: "",
     orderId: "",
   })
 
-  const { t } = useLanguage() // Assuming useLanguage hook provides a translate function 't'
+  // Separate state for text input filters that don't auto-apply
+  const [textFilters, setTextFilters] = useState({
+    mobile: "",
+    payment: "",
+    orderId: "",
+  })
+
+  const { t } = useLanguage()
 
   // Check if mobile
   useEffect(() => {
@@ -157,7 +165,7 @@ const OrdersManagement: React.FC = () => {
   useEffect(() => {
     fetchOrders()
     fetchCouriers()
-  }, [viewMode, selectedDate, filters]) // Added filters to dependency array to re-fetch on filter change
+  }, [viewMode, selectedDate, filters.couriers, filters.statuses, filters.paymentStatuses])
 
   // Auto-hide messages after 5 seconds
   useEffect(() => {
@@ -183,7 +191,7 @@ const OrdersManagement: React.FC = () => {
         .select(
           `
           id, order_id, customer_name, address, billing_city, mobile_number, total_order_fees,
-          payment_method, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
+          payment_method, payment_status, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
@@ -206,6 +214,11 @@ const OrdersManagement: React.FC = () => {
         query = query.in("status", filters.statuses)
       }
 
+      // Apply payment status filter
+      if (filters.paymentStatuses.length > 0) {
+        query = query.in("payment_status", filters.paymentStatuses)
+      }
+
       if (filters.mobile) query = query.ilike("mobile_number", `%${filters.mobile}%`)
       if (filters.payment) query = query.ilike("payment_method", `%${filters.payment}%`)
       if (filters.orderId) query = query.ilike("order_id", `%${filters.orderId}%`)
@@ -219,6 +232,7 @@ const OrdersManagement: React.FC = () => {
           ...order,
           courier_name: order.users?.name || null,
         })) || []
+
       setOrders(ordersWithCourierNames)
     } catch (error: any) {
       setError("Failed to fetch orders / فشل تحميل الطلبات: " + error.message)
@@ -231,11 +245,35 @@ const OrdersManagement: React.FC = () => {
     try {
       const { data: allUsers, error } = await supabase.from("users").select("id, name, email, role")
       if (error) throw error
+
       const courierUsers = allUsers?.filter((user) => user.role?.toLowerCase() === "courier") || []
       setCouriers(courierUsers)
     } catch (error: any) {
       setError("Failed to fetch couriers / فشل تحميل المندوبين: " + error.message)
     }
+  }
+
+  // Payment status badge
+  const getPaymentMethodBadge = (method: string) => {
+    const colors = {
+      cash: "bg-orange-100 text-orange-800 border-orange-200",
+      card: "bg-blue-100 text-blue-800 border-blue-200",
+      valu: "bg-purple-100 text-purple-800 border-purple-200",
+      partial: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      paid: "bg-green-100 text-green-800 border-green-200",
+      paymob: "bg-green-100 text-green-800 border-green-200",
+      fawry: "bg-green-100 text-green-800 border-green-200",
+    }
+
+    const displayMethod = method === "paid" ? "Paid Online" : method
+
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[method as keyof typeof colors] || colors.paid}`}
+      >
+        {displayMethod}
+      </span>
+    )
   }
 
   // Date navigation functions
@@ -337,6 +375,7 @@ const OrdersManagement: React.FC = () => {
           mobile_number: order.mobile_number,
           total_order_fees: order.total_order_fees,
           payment_method: order.payment_method,
+          payment_status: order.payment_status,
           status: order.status,
           assigned_courier_id: order.assigned_courier_id,
           notes: order.notes,
@@ -401,6 +440,7 @@ const OrdersManagement: React.FC = () => {
           assigned_courier_id: selectedCourier,
           status: "assigned",
         }
+
         if (!order.original_courier_id && order.assigned_courier_id) {
           updateData.original_courier_id = order.assigned_courier_id
         } else if (!order.original_courier_id) {
@@ -447,9 +487,11 @@ const OrdersManagement: React.FC = () => {
           archived_at: new Date().toISOString(),
           assigned_courier_id: null,
         }
+
         if (!order.original_courier_id && order.assigned_courier_id) {
           updateData.original_courier_id = order.assigned_courier_id
         }
+
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
         if (error) throw error
       }
@@ -493,6 +535,7 @@ const OrdersManagement: React.FC = () => {
             assigned_courier_id: order.original_courier_id,
           })
           .eq("id", order.id)
+
         if (error) throw error
       }
 
@@ -519,6 +562,7 @@ const OrdersManagement: React.FC = () => {
 
     try {
       const { error } = await supabase.from("orders").delete().in("id", selectedOrders)
+
       if (error) throw error
 
       await fetchOrders()
@@ -548,13 +592,27 @@ const OrdersManagement: React.FC = () => {
 
   const clearFilters = () => {
     setFilters({
-      couriers: [], // Reset to empty array
-      statuses: [], // Reset to empty array
+      couriers: [],
+      statuses: [],
+      paymentStatuses: [],
       mobile: "",
       payment: "",
       orderId: "",
     })
-    // No need to call fetchOrders here, as setting filters will trigger useEffect
+    setTextFilters({
+      mobile: "",
+      payment: "",
+      orderId: "",
+    })
+  }
+
+  const applyTextFilters = () => {
+    setFilters(prev => ({
+      ...prev,
+      mobile: textFilters.mobile,
+      payment: textFilters.payment,
+      orderId: textFilters.orderId,
+    }))
   }
 
   const getStatusBadge = (status: string) => {
@@ -578,6 +636,25 @@ const OrdersManagement: React.FC = () => {
   // Helper function to determine if an order is assigned
   const isOrderAssigned = (order: Order) => {
     return order.assigned_courier_id !== null && order.assigned_courier_id !== undefined
+  }
+
+  // Payment status badge
+  const getPaymentStatusBadge = (status: string) => {
+    const colors = {
+      paid: "bg-green-100 text-green-800 border-green-200",
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      cod: "bg-orange-100 text-orange-800 border-orange-200",
+    }
+
+    const displayStatus = status === "cod" ? "عند التسليم" : status === "paid" ? "مدفوع" : "معلق"
+
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[status as keyof typeof colors] || colors.pending}`}
+      >
+        {displayStatus}
+      </span>
+    )
   }
 
   if (loading) {
@@ -663,9 +740,28 @@ const OrdersManagement: React.FC = () => {
           </div>
         </div>
 
+        {/* Payment Status */}
+        <div className="flex items-center gap-2">{getPaymentMethodBadge(order.payment_method)}</div>
+
         {/* Expanded Details */}
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-gray-200">
+            {/* Payment Status Edit */}
+            {isEditing && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">حالة الدفع</label>
+                <select
+                  value={edited.payment_status ?? order.payment_status}
+                  onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="paid">مدفوع</option>
+                  <option value="pending">معلق</option>
+                  <option value="cod">عند التسليم</option>
+                </select>
+              </div>
+            )}
+
             {/* Notes */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">الملاحظات</label>
@@ -692,6 +788,7 @@ const OrdersManagement: React.FC = () => {
                 </div>
               )}
             </div>
+
             {/* Address */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">العنوان</label>
@@ -717,6 +814,7 @@ const OrdersManagement: React.FC = () => {
                 </div>
               )}
             </div>
+
             {/* City */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">المدينة</label>
@@ -731,6 +829,7 @@ const OrdersManagement: React.FC = () => {
                 <span className="text-sm text-gray-900">{order.billing_city}</span>
               )}
             </div>
+
             {/* Payment Method */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">طريقة الدفع</label>
@@ -745,6 +844,7 @@ const OrdersManagement: React.FC = () => {
                 <span className="text-sm text-gray-900">{order.payment_method}</span>
               )}
             </div>
+
             {/* Status */}
             {isEditing && (
               <div className="space-y-2">
@@ -762,6 +862,7 @@ const OrdersManagement: React.FC = () => {
                 </select>
               </div>
             )}
+
             {/* Courier */}
             {isEditing && (
               <div className="space-y-2">
@@ -780,6 +881,7 @@ const OrdersManagement: React.FC = () => {
                 </select>
               </div>
             )}
+
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
               {isEditing ? (
@@ -837,27 +939,22 @@ const OrdersManagement: React.FC = () => {
           scrollbar-width: thin;
           scrollbar-color: #CBD5E0 #F7FAFC;
         }
-
         .scrollbar-always::-webkit-scrollbar {
           width: 12px;
           height: 12px;
         }
-
         .scrollbar-always::-webkit-scrollbar-track {
           background: #F7FAFC;
           border-radius: 6px;
         }
-
         .scrollbar-always::-webkit-scrollbar-thumb {
           background: #CBD5E0;
           border-radius: 6px;
           border: 2px solid #F7FAFC;
         }
-
         .scrollbar-always::-webkit-scrollbar-thumb:hover {
           background: #A0AEC0;
         }
-
         .scrollbar-always::-webkit-scrollbar-corner {
           background: #F7FAFC;
         }
@@ -1006,7 +1103,7 @@ const OrdersManagement: React.FC = () => {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1030,12 +1127,28 @@ const OrdersManagement: React.FC = () => {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">المندوبين المتاحين</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{couriers.length}</p>
-                <p className="text-xs text-gray-500 mt-1">Available Couriers</p>
+                <p className="text-sm font-medium text-gray-600">الطلبات المدفوعة</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {orders.filter((order) => order.payment_status === "paid").length}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Paid Orders</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <Users className="w-6 h-6 text-green-600" />
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">عند التسليم</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {orders.filter((order) => order.payment_status === "cod").length}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">COD Orders</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </div>
@@ -1078,7 +1191,7 @@ const OrdersManagement: React.FC = () => {
               </div>
               <h3 className="text-lg font-semibold text-gray-900">مرشحات البحث</h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               {/* Couriers as checkboxes */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">اختر المندوبين</label>
@@ -1105,6 +1218,7 @@ const OrdersManagement: React.FC = () => {
                   ))}
                 </div>
               </div>
+
               {/* Statuses as checkboxes */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">اختر الحالات</label>
@@ -1131,6 +1245,38 @@ const OrdersManagement: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Payment Status Filter */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">حالة الدفع</label>
+                <div className="flex flex-col gap-2 max-h-32 overflow-y-auto pl-2 border border-gray-200 rounded-lg">
+                  {[
+                    { key: "paid", label: "مدفوع" },
+                    { key: "pending", label: "معلق" },
+                    { key: "cod", label: "عند التسليم" },
+                  ].map((status) => (
+                    <label key={status.key} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={filters.paymentStatuses.includes(status.key)}
+                        onChange={() => {
+                          setFilters((prev) => {
+                            const alreadySelected = prev.paymentStatuses.includes(status.key)
+                            return {
+                              ...prev,
+                              paymentStatuses: alreadySelected
+                                ? prev.paymentStatuses.filter((s) => s !== status.key)
+                                : [...prev.paymentStatuses, status.key],
+                            }
+                          })
+                        }}
+                      />
+                      <span>{status.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               {/* Phone filter */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">رقم الهاتف</label>
@@ -1139,26 +1285,15 @@ const OrdersManagement: React.FC = () => {
                   <input
                     type="text"
                     placeholder="رقم الهاتف"
-                    value={filters.mobile}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, mobile: e.target.value }))}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={textFilters.mobile}
+                    onChange={(e) => setTextFilters((prev) => ({ ...prev, mobile: e.target.value }))}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      textFilters.mobile !== filters.mobile ? 'border-orange-300 bg-orange-50' : 'border-gray-300'
+                    }`}
                   />
                 </div>
               </div>
-              {/* Payment filter */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">طريقة الدفع</label>
-                <div className="relative">
-                  <CreditCard className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="طريقة الدفع"
-                    value={filters.payment}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, payment: e.target.value }))}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
+
               {/* Order ID filter */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">رقم الطلب</label>
@@ -1167,16 +1302,21 @@ const OrdersManagement: React.FC = () => {
                   <input
                     type="text"
                     placeholder="رقم الطلب"
-                    value={filters.orderId}
-                    onChange={(e) => setFilters((prev) => ({ ...prev, orderId: e.target.value }))}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={textFilters.orderId}
+                    onChange={(e) => setTextFilters((prev) => ({ ...prev, orderId: e.target.value }))}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      textFilters.orderId !== filters.orderId ? 'border-orange-300 bg-orange-50' : 'border-gray-300'
+                    }`}
                   />
                 </div>
               </div>
             </div>
             <div className="flex gap-3">
               <button
-                onClick={fetchOrders}
+                onClick={() => {
+                  applyTextFilters()
+                  fetchOrders()
+                }}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Search className="w-4 h-4" />
@@ -1276,6 +1416,7 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
+
         {successMessage && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
             <div className="flex items-center gap-3 text-green-800">
@@ -1331,6 +1472,9 @@ const OrdersManagement: React.FC = () => {
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
                       طريقة الدفع
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
+                      حالة الدفع
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
                       الحالة
@@ -1519,6 +1663,21 @@ const OrdersManagement: React.FC = () => {
                             />
                           ) : (
                             <span className="text-sm text-gray-900">{order.payment_method}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {isEditing ? (
+                            <select
+                              value={edited.payment_status ?? order.payment_status}
+                              onChange={(e) => handleEditChange(order.id, "payment_status", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="paid">مدفوع</option>
+                              <option value="pending">معلق</option>
+                              <option value="cod">عند التسليم</option>
+                            </select>
+                          ) : (
+                            getPaymentStatusBadge(order.payment_status)
                           )}
                         </td>
                         <td className="px-6 py-4">

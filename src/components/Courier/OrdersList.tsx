@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect } from "react"
 import {
@@ -30,10 +29,12 @@ import {
   HandMetal,
   CheckCircle,
   DollarSign,
+  Move,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
+import { List, arrayMove } from "react-movable"
 
 interface OrderProof {
   id: string
@@ -49,6 +50,7 @@ interface Order {
   total_order_fees: number
   delivery_fee: number | null
   payment_method: string
+  payment_status?: string
   payment_sub_type: string | null
   status: string
   partial_paid_amount: number | null
@@ -125,7 +127,11 @@ const allCollectionMethods: Record<string, string> = {
   paymob: "باي موب",
   valu: "فاليو",
   courier: "المندوب",
-  visa: "فيزا", // Added for display consistency
+  fawry: "فوري",
+  instapay: "إنستاباي",
+  vodafone_cash: "فودافون كاش",
+  orange_cash: "أورانج كاش",
+  we_pay: "وي باي",
 }
 
 // Cloudinary config
@@ -144,7 +150,7 @@ const OrdersList: React.FC = () => {
   const getTodayDateString = () => {
     const today = new Date()
     const year = today.getFullYear()
-    const month = (today.getMonth() + 1).toString().padStart(2, "0") // Months are 0-indexed
+    const month = (today.getMonth() + 1).toString().padStart(2, "0")
     const day = today.getDate().toString().padStart(2, "0")
     return `${year}-${month}-${day}`
   }
@@ -167,28 +173,89 @@ const OrdersList: React.FC = () => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
 
-  // Helper function to check if payment method is a card payment (but NOT visa_machine)
-  const isCardPayment = (method: string) => {
-    const cardKeywords = ["card", "credit", "debit", "visa", "mastercard", "amex", "discover"]
-    // Exclude visa_machine from being considered a card payment for online purposes
-    if (method === "visa_machine") return false
-    return cardKeywords.some((keyword) => method.toLowerCase().includes(keyword))
-  }
-
-  // Updated normalize method function to handle card payments as visa, but exclude visa_machine
-  const normalizeMethod = (method: string) => {
-    if (method?.includes("paymob.valu")) return "valu"
-    // Only treat as 'visa' if it's paymob or card payment, but NOT visa_machine
-    if (method === "visa_machine") return "visa_machine" // Keep visa_machine separate
-    if (method?.includes("paymob") || isCardPayment(method)) return "visa"
-    return method
-  }
-
-  // Helper function to check if order is paid online (excluding visa_machine)
+  // Enhanced payment detection function
   const isOrderPaid = (order: Order) => {
-    const method = normalizeMethod(order.payment_method)
-    // Only consider valu and visa (online payments) as paid, not visa_machine
-    return ["visa", "valu"].includes(method)
+    // First check if payment_status is explicitly set
+    if (order.payment_status) {
+      return order.payment_status === "paid"
+    }
+
+    // Fallback to payment method analysis
+    const method = order.payment_method?.toLowerCase() || ""
+
+    // Payment gateways and online payments (PAID)
+    if (method.includes("paymob") || method.includes("pay mob")) return true
+    if (method.includes("valu") || method.includes("val u")) return true
+    if (method.includes("fawry")) return true
+    if (method.includes("instapay") || method.includes("insta pay")) return true
+    if (method.includes("vodafone cash") || method.includes("vodafone-cash")) return true
+    if (method.includes("orange cash") || method.includes("orange-cash")) return true
+    if (method.includes("we pay") || method.includes("we-pay") || method.includes("wepay")) return true
+
+    // Card payments (PAID)
+    if (
+      method.includes("visa") ||
+      method.includes("mastercard") ||
+      method.includes("amex") ||
+      method.includes("discover")
+    )
+      return true
+    if (method.includes("card") || method.includes("credit") || method.includes("debit")) return true
+
+    // International payment gateways (PAID)
+    if (
+      method.includes("paypal") ||
+      method.includes("stripe") ||
+      method.includes("square") ||
+      method.includes("razorpay")
+    )
+      return true
+
+    // Status-based detection (PAID)
+    if (
+      method.includes("paid") ||
+      method.includes("completed") ||
+      method.includes("successful") ||
+      method.includes("success")
+    )
+      return true
+
+    // Cash on delivery and failed payments are NOT paid
+    if (method.includes("cash") || method.includes("cod") || method.includes("cash on delivery")) return false
+    if (
+      method.includes("failed") ||
+      method.includes("cancelled") ||
+      method.includes("declined") ||
+      method.includes("rejected")
+    )
+      return false
+
+    // If we can't identify it clearly, check if it's not explicitly cash/cod
+    // This is a conservative approach - assume paid unless explicitly cash/cod
+    return !method.includes("cash") && !method.includes("cod") && method.length > 0
+  }
+
+  // Updated normalize method function
+  const normalizeMethod = (method: string) => {
+    if (!method) return "cash"
+
+    const m = method.toLowerCase()
+
+    if (m.includes("paymob")) {
+      if (m.includes("valu")) return "valu"
+      return "paymob"
+    }
+    if (m.includes("valu")) return "valu"
+    if (m.includes("fawry")) return "fawry"
+    if (m.includes("instapay")) return "instapay"
+    if (m.includes("vodafone cash")) return "vodafone_cash"
+    if (m.includes("orange cash")) return "orange_cash"
+    if (m.includes("we pay")) return "we_pay"
+    // All card payments (visa, mastercard, etc.) should be categorized as paymob
+    if (m.includes("visa") || m.includes("mastercard") || m.includes("card") || m.includes("credit") || m.includes("debit")) return "paymob"
+    if (m.includes("cash") || m.includes("cod")) return "cash"
+
+    return method
   }
 
   // Helper function to format date in Arabic
@@ -198,16 +265,14 @@ const OrdersList: React.FC = () => {
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
 
-    // Check if it's today
     if (date.toDateString() === today.toDateString()) {
       return "اليوم"
     }
-    // Check if it's yesterday
+
     if (date.toDateString() === yesterday.toDateString()) {
       return "أمس"
     }
 
-    // Arabic day names
     const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     const arabicMonths = [
       "يناير",
@@ -267,14 +332,12 @@ const OrdersList: React.FC = () => {
 
   // Helper function to check if order was edited by courier
   const wasOrderEditedByCourier = (order: Order) => {
-    // If updated_at is different from created_at, it means the order was edited
     return order.updated_at !== order.created_at
   }
 
   const fetchOrders = async () => {
     setLoading(true)
     try {
-      // Create date range for the selected day
       const startDate = new Date(selectedDate)
       startDate.setHours(0, 0, 0, 0)
       const endDate = new Date(selectedDate)
@@ -282,37 +345,31 @@ const OrdersList: React.FC = () => {
 
       const { data, error } = await supabase
         .from("orders")
-        .select(
-          `
-        *,
-        order_proofs (id, image_data)
-        `,
-        )
+        .select(`
+          *,
+          order_proofs (id, image_data)
+        `)
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
-        .order("created_at", { ascending: false }) // Initial sort from DB, will re-sort in JS
+        .order("created_at", { ascending: false })
 
       if (error) throw error
 
-      // Custom sort: 'assigned' orders first, then edited orders at bottom
       const sortedData = (data || []).sort((a, b) => {
         const isAEdited = wasOrderEditedByCourier(a)
         const isBEdited = wasOrderEditedByCourier(b)
         const isAAssigned = a.status === "assigned"
         const isBAssigned = b.status === "assigned"
 
-        // All edited orders go to bottom regardless of status
         if (isAEdited && !isBEdited) return 1
         if (!isAEdited && isBEdited) return -1
 
-        // Among non-edited orders, assigned orders go to top
         if (!isAEdited && !isBEdited) {
           if (isAAssigned && !isBAssigned) return -1
           if (!isAAssigned && isBAssigned) return 1
         }
 
-        // If both have same edit state and status, sort by created_at descending
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       })
 
@@ -344,34 +401,29 @@ const OrdersList: React.FC = () => {
 
   const openModal = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-    const isOrderOriginallyPaidOnline = ["valu", "visa"].includes(method)
+    const isOrderOriginallyPaidOnline = isOrderPaid(order)
 
     let initialDeliveryFee = order.delivery_fee?.toString() || ""
     let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
     let initialCollectedBy = order.collected_by || ""
     let initialPaymentSubType = order.payment_sub_type || ""
 
-    // If status is 'return' or 'receiving_part' with no fees, set fees to 0 and clear collection method
     if (
       order.status === "return" ||
       (order.status === "receiving_part" && !order.delivery_fee && !order.partial_paid_amount)
     ) {
       initialDeliveryFee = "0"
       initialPartialPaidAmount = "0"
-      initialCollectedBy = "" // Courier cannot choose payment method
-      initialPaymentSubType = "" // Courier cannot choose payment method
+      initialCollectedBy = ""
+      initialPaymentSubType = ""
     } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
-      // If order was originally paid online and no fees were previously added, pre-fill collected_by with that method
       initialCollectedBy = method
-      initialPaymentSubType = "" // Clear sub-type for online payments
+      initialPaymentSubType = ""
     } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
-      // For unpaid orders (not canceled), collected_by is implicitly courier
       initialCollectedBy = "courier"
     } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
-      // For canceled orders with fees, collected_by is implicitly courier
       initialCollectedBy = "courier"
     } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
-      // For canceled orders with no fees, clear everything so it calculates to zero
       initialCollectedBy = ""
       initialPaymentSubType = ""
     }
@@ -392,7 +444,6 @@ const OrdersList: React.FC = () => {
     if (!e.target.files || !selectedOrder || !user) return
     const originalFile = e.target.files[0]
     setImageUploading(true)
-
     try {
       const compressedFile = await new Promise<File>((resolve, reject) => {
         const reader = new FileReader()
@@ -405,7 +456,6 @@ const OrdersList: React.FC = () => {
             const MAX_HEIGHT = 540
             let width = img.width
             let height = img.height
-
             if (width > height) {
               if (width > MAX_WIDTH) {
                 height *= MAX_WIDTH / width
@@ -417,7 +467,6 @@ const OrdersList: React.FC = () => {
                 height = MAX_HEIGHT
               }
             }
-
             canvas.width = width
             canvas.height = height
             const ctx = canvas.getContext("2d")
@@ -457,8 +506,8 @@ const OrdersList: React.FC = () => {
         method: "POST",
         body: formData,
       })
-      const data = await res.json()
 
+      const data = await res.json()
       if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
       const { error } = await supabase.from("order_proofs").insert({
@@ -495,26 +544,21 @@ const OrdersList: React.FC = () => {
   }
 
   const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
-    // For hand_to_hand with no fees, return 0
     if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
       return 0
     }
-    // For canceled, returned, hand_to_hand, or receiving_part orders
+
     if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
-      // If no fees are entered, the total is 0
       if (deliveryFee === 0 && partialAmount === 0) {
         return 0
       }
-      // If fees are entered, the total is the sum of those fees
       return deliveryFee + partialAmount
     }
-    // For partial orders
+
     if (currentStatus === "partial") {
-      // The total is the partial amount if greater than 0, otherwise 0
       return partialAmount > 0 ? partialAmount : 0
     }
-    // For delivered, assigned, or any other status not explicitly handled above
-    // The total is the original total_order_fees
+
     return order.total_order_fees
   }
 
@@ -523,12 +567,11 @@ const OrdersList: React.FC = () => {
     setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
-      const isOrderOriginallyPaidOnline = ["valu", "visa"].includes(method)
+      const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
       const isOrderUnpaid = !isOrderPaid(selectedOrder)
 
       const updatePayload: any = {
         status: updateData.status,
-        // Set updated_at to current time to mark as edited
         updated_at: new Date().toISOString(),
       }
 
@@ -540,7 +583,6 @@ const OrdersList: React.FC = () => {
       const isHandToHandWithNoFees = updateData.status === "hand_to_hand" && fee === 0 && partial === 0
       const isCanceledWithNoFees = updateData.status === "canceled" && fee === 0 && partial === 0
 
-      // If status is 'return' or 'receiving_part' with no fees, or 'canceled' with no fees, force fees to 0 and clear collection info
       if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
         fee = 0
         partial = 0
@@ -559,14 +601,12 @@ const OrdersList: React.FC = () => {
         ["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(updateData.status)
       ) {
         if (isReturnStatus || isReceivingPartWithNoFees || isCanceledWithNoFees) {
-          // Already handled above: fees are 0, collected_by and payment_sub_type are null
+          // Already handled above
         } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
         } else if (isOrderOriginallyPaidOnline) {
-          // Case: Order was originally paid online (Valu/Visa)
           if (fee > 0 || partial > 0) {
-            // If delivery fees or partial amount are added, courier CAN choose payment method for these additional fees
             if (!updateData.collected_by) {
               alert("يرجى اختيار طريقة تحصيل للرسوم الإضافية.")
               return
@@ -578,12 +618,10 @@ const OrdersList: React.FC = () => {
             updatePayload.collected_by = updateData.collected_by
             updatePayload.payment_sub_type = updateData.payment_sub_type
           } else {
-            // No additional fees, keep original online payment method
-            updatePayload.collected_by = method // Force collected_by to original online payment method
-            updatePayload.payment_sub_type = null // Clear sub-type for online payments
+            updatePayload.collected_by = method
+            updatePayload.payment_sub_type = null
           }
         } else if (updateData.status === "canceled" && fee > 0) {
-          // Courier can choose payment method ONLY if canceled AND delivery fees are added
           if (!updateData.payment_sub_type) {
             alert("يرجى اختيار نوع الدفع الفرعي للمندوب عند إضافة رسوم التوصيل لطلب ملغي.")
             return
@@ -591,17 +629,14 @@ const OrdersList: React.FC = () => {
           updatePayload.collected_by = "courier"
           updatePayload.payment_sub_type = updateData.payment_sub_type
         } else if (isOrderUnpaid) {
-          // For other unpaid orders (not canceled with fees), allow choosing payment method directly
           if (updateData.payment_sub_type) {
             updatePayload.collected_by = "courier"
             updatePayload.payment_sub_type = updateData.payment_sub_type
           } else {
-            // If no sub-type selected for unpaid orders, clear collected_by
             updatePayload.collected_by = null
             updatePayload.payment_sub_type = null
           }
         } else if (fee > 0 || partial > 0) {
-          // This covers cases where order was not online paid, not unpaid, and has fees
           const collected = updateData.collected_by
           if (!collected) {
             alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
@@ -619,12 +654,10 @@ const OrdersList: React.FC = () => {
             updatePayload.payment_sub_type = null
           }
         } else {
-          // If no delivery fees and no partial amount, clear collection info
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
         }
       } else {
-        // For assigned status, clear collection info
         updatePayload.collected_by = null
         updatePayload.payment_sub_type = null
       }
@@ -660,14 +693,12 @@ const OrdersList: React.FC = () => {
   }
 
   const canEditOrder = (order: Order) => {
-    // Allow editing for assigned orders or if it's the assigned courier
     return order.assigned_courier_id === user?.id || order.status === "assigned"
   }
 
   // Helper function to get display payment method
   const getDisplayPaymentMethod = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
-
     // If collected_by and payment_sub_type are set, prioritize them for display
     if (order.collected_by && allCollectionMethods[order.collected_by]) {
       if (
@@ -679,7 +710,12 @@ const OrdersList: React.FC = () => {
       }
       // If collected_by is set but no sub-type (e.g., for online payments or non-courier collection)
       if (order.collected_by === "valu") return `${allCollectionMethods.valu} (مدفوع)`
-      if (order.collected_by === "visa") return `${allCollectionMethods.visa} (مدفوع)`
+      if (order.collected_by === "paymob") return `${allCollectionMethods.paymob} (مدفوع)`
+      if (order.collected_by === "fawry") return `${allCollectionMethods.fawry} (مدفوع)`
+      if (order.collected_by === "instapay") return `${allCollectionMethods.instapay} (مدفوع)`
+      if (order.collected_by === "vodafone_cash") return `${allCollectionMethods.vodafone_cash} (مدفوع)`
+      if (order.collected_by === "orange_cash") return `${allCollectionMethods.orange_cash} (مدفوع)`
+      if (order.collected_by === "we_pay") return `${allCollectionMethods.we_pay} (مدفوع)`
       return allCollectionMethods[order.collected_by]
     }
 
@@ -687,10 +723,24 @@ const OrdersList: React.FC = () => {
     if (method === "valu") {
       return `${allCollectionMethods.valu} (مدفوع)`
     }
-    if (method === "visa") {
-      return `${allCollectionMethods.visa} (مدفوع)`
+    if (method === "paymob") {
+      return `${allCollectionMethods.paymob} (مدفوع)`
     }
-
+    if (method === "fawry") {
+      return `${allCollectionMethods.fawry} (مدفوع)`
+    }
+    if (method === "instapay") {
+      return `${allCollectionMethods.instapay} (مدفوع)`
+    }
+    if (method === "vodafone_cash") {
+      return `${allCollectionMethods.vodafone_cash} (مدفوع)`
+    }
+    if (method === "orange_cash") {
+      return `${allCollectionMethods.orange_cash} (مدفوع)`
+    }
+    if (method === "we_pay") {
+      return `${allCollectionMethods.we_pay} (مدفوع)`
+    }
     return order.payment_method === "cash_on_delivery" ? "الدفع عند الاستلام" : order.payment_method
   }
 
@@ -819,27 +869,60 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Orders Grid - Smaller Cards with More Columns */
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {orders.map((order) => {
+          // Orders Grid - Drag-and-drop enabled
+          <List
+            values={orders}
+            onChange={({ oldIndex, newIndex }) => {
+              // Swap only the two cards, do not shift others
+              if (oldIndex === newIndex) return;
+              setOrders(prev => {
+                const newOrders = [...prev];
+                const temp = newOrders[oldIndex];
+                newOrders[oldIndex] = newOrders[newIndex];
+                newOrders[newIndex] = temp;
+                return newOrders;
+              });
+            }}
+            renderList={({ children, props }) => (
+              <div
+                className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                {...props}
+              >
+                {children}
+              </div>
+            )}
+            renderItem={({ value: order, props, isDragged, index }) => {
               const method = normalizeMethod(order.payment_method)
-              const isOrderOriginallyPaidOnline = ["paymob", "valu"].includes(method)
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
               const partialAmount = order.partial_paid_amount || 0
               const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
               const isPaid = isOrderPaid(order)
-              // Determine if the order was edited by courier
               const isEditedOrder = wasOrderEditedByCourier(order)
-
               return (
                 <div
+                  {...props}
+                  style={{
+                    ...props.style,
+                    opacity: isDragged ? 0.85 : 1,
+                    zIndex: isDragged ? 1000 : "auto",
+                    boxShadow: isDragged
+                      ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6"
+                      : undefined,
+                    border: isDragged ? "2px solid #3b82f6" : undefined,
+                    background: isDragged ? "#e0f2fe" : undefined,
+                    transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
+                  }}
                   key={order.id}
                   className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
                     isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
                   }`}
                 >
+                  {/* Order Number Badge */}
+                  <div className="absolute top-2 right-2 z-10 bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold shadow text-sm border-2 border-white">
+                    {index + 1}
+                  </div>
                   {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
                   {isEditedOrder && (
                     <>
@@ -891,7 +974,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </>
                   )}
-
                   {/* Card Header */}
                   <div
                     className={`px-2 py-2 border-b ${
@@ -941,7 +1023,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   {/* Card Content */}
                   <div className="p-2 space-y-2">
                     {/* Customer Name */}
@@ -1003,7 +1084,10 @@ const OrdersList: React.FC = () => {
                       >
                         <div className="flex items-start gap-1">
                           <FileText className="w-3 h-3 text-yellow-600 mt-0.5 flex-shrink-0" />
-                          <p className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`} title={order.notes}>
+                          <p
+                            className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
+                            title={order.notes}
+                          >
                             {order.notes.length > 30 ? order.notes.substring(0, 30) + "..." : order.notes}
                           </p>
                         </div>
@@ -1030,8 +1114,8 @@ const OrdersList: React.FC = () => {
                   </div>
                 </div>
               )
-            })}
-          </div>
+            }}
+          />
         )}
 
         {/* Phone Options Modal */}
@@ -1107,7 +1191,6 @@ const OrdersList: React.FC = () => {
                   </button>
                 </div>
               </div>
-
               {/* Modal Content */}
               <div className="p-6">
                 <form
@@ -1153,7 +1236,7 @@ const OrdersList: React.FC = () => {
                             selectedOrder,
                             Number.parseFloat(updateData.delivery_fee) || 0,
                             Number.parseFloat(updateData.partial_paid_amount) || 0,
-                            updateData.status, // Pass the status from updateData for modal calculations
+                            updateData.status,
                           ).toFixed(2)}{" "}
                           ج.م
                         </span>
@@ -1163,7 +1246,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   {/* Status Selection */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">
@@ -1182,7 +1264,6 @@ const OrdersList: React.FC = () => {
                       ))}
                     </select>
                   </div>
-
                   {/* Delivery Fee */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">رسوم التوصيل</label>
@@ -1206,7 +1287,6 @@ const OrdersList: React.FC = () => {
                       رسوم التوصيل منفصلة تماماً عن قيمة الطلب الأساسية ولا تُضاف إليها
                     </p>
                   </div>
-
                   {/* Collection Fields */}
                   {["partial", "canceled", "delivered", "hand_to_hand", "return", "receiving_part"].includes(
                     updateData.status,
@@ -1218,7 +1298,7 @@ const OrdersList: React.FC = () => {
                       </h4>
                       {(() => {
                         const currentMethod = normalizeMethod(selectedOrder.payment_method)
-                        const isOrderOriginallyPaidOnlineInModal = ["valu", "visa"].includes(currentMethod)
+                        const isOrderOriginallyPaidOnlineInModal = isOrderPaid(selectedOrder)
                         const isOrderUnpaidInModal = !isOrderPaid(selectedOrder)
                         const currentFee = Number.parseFloat(updateData.delivery_fee) || 0
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
@@ -1260,10 +1340,10 @@ const OrdersList: React.FC = () => {
                           !isHandToHandWithNoFeesInModal &&
                           !isReceivingPartNoFeesInModal &&
                           !isCanceledWithNoFeesInModal &&
-                          ((isOrderOriginallyPaidOnlineInModal && (currentFee > 0 || currentPartial > 0)) || // Online paid, but adding fees
-                            isOrderUnpaidInModal || // Unpaid orders
-                            (updateData.status === "canceled" && currentFee > 0) || // Canceled with fees
-                            (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0))) // Receiving part with fees
+                          ((isOrderOriginallyPaidOnlineInModal && (currentFee > 0 || currentPartial > 0)) ||
+                            isOrderUnpaidInModal ||
+                            (updateData.status === "canceled" && currentFee > 0) ||
+                            (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0)))
 
                         // Condition to show Collected By dropdown
                         const showCollectedByDropdown =
@@ -1271,11 +1351,11 @@ const OrdersList: React.FC = () => {
                           !isHandToHandWithNoFeesInModal &&
                           !isReceivingPartNoFeesInModal &&
                           !isCanceledWithNoFeesInModal &&
-                          (currentFee > 0 || currentPartial > 0) && // Only show if there are fees/partial amount
-                          (isOrderOriginallyPaidOnlineInModal || // Online paid and adding fees
+                          (currentFee > 0 || currentPartial > 0) &&
+                          (isOrderOriginallyPaidOnlineInModal ||
                             (!isOrderOriginallyPaidOnlineInModal &&
                               !isOrderUnpaidInModal &&
-                              updateData.status !== "canceled")) // Not online paid, not unpaid, not canceled, but adding fees
+                              updateData.status !== "canceled"))
 
                         return (
                           <>
@@ -1286,8 +1366,7 @@ const OrdersList: React.FC = () => {
                                   <span className="text-sm font-medium">طلب مدفوع</span>
                                 </div>
                                 <p className="text-xs text-green-600 mt-1">
-                                  هذا الطلب مدفوع بالفعل عبر{" "}
-                                  {currentMethod === "valu" ? allCollectionMethods.valu : allCollectionMethods.visa}.
+                                  هذا الطلب مدفوع بالفعل عبر {allCollectionMethods[currentMethod] || currentMethod}.
                                   طريقة التحصيل لا يمكن تغييرها.
                                 </p>
                               </div>
@@ -1347,7 +1426,6 @@ const OrdersList: React.FC = () => {
                                 </p>
                               </div>
                             )}
-
                             {showPaymentSubTypeDropdown && (
                               <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">
@@ -1375,7 +1453,6 @@ const OrdersList: React.FC = () => {
                                 </select>
                               </div>
                             )}
-
                             {showCollectedByDropdown && (
                               <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">تم تحصيل الدفع بواسطة</label>
@@ -1397,7 +1474,6 @@ const OrdersList: React.FC = () => {
                           </>
                         )
                       })()}
-
                       {/* Partial Amount */}
                       <div className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">المبلغ المدفوع جزئياً</label>
@@ -1421,7 +1497,6 @@ const OrdersList: React.FC = () => {
                           للطلبات الجزئية - هذا المبلغ منفصل عن قيمة الطلب الأساسية
                         </p>
                       </div>
-
                       {/* Zero Amount Warning */}
                       {["canceled", "return", "hand_to_hand", "receiving_part"].includes(updateData.status) && (
                         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -1436,7 +1511,6 @@ const OrdersList: React.FC = () => {
                       )}
                     </div>
                   )}
-
                   {/* Internal Comment */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1451,7 +1525,6 @@ const OrdersList: React.FC = () => {
                       placeholder="أضف أي ملاحظات أو تعليقات..."
                     />
                   </div>
-
                   {/* Image Upload */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1489,7 +1562,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-
                   {/* Current Images */}
                   {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
                     <div className="space-y-3">
@@ -1513,7 +1585,6 @@ const OrdersList: React.FC = () => {
                       </div>
                     </div>
                   )}
-
                   {/* Action Buttons */}
                   <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button

@@ -27,20 +27,66 @@ interface OrderData {
   order_id: string
   customer_name: string
   address: string
-  billing_city: string // Added billing_city
+  billing_city: string
   mobile_number: string
   total_order_fees: number
-  payment_method: "cash" | "card" | "valu" | "partial"
+  payment_method: "cash" | "card" | "valu" | "partial" | "paid"
+  payment_status: "paid" | "pending" | "cod" // New field to track payment status
   notes?: string
 }
 
-const normalizePayment = (value: string): "cash" | "card" | "valu" | "partial" => {
-  const v = value?.toLowerCase()
-  if (v.includes("valu")) return "valu"
-  if (v.includes("partial")) return "partial"
-  if (v.includes("cash")) return "cash"
-  if (v.includes("visa") || v.includes("card")) return "card"
-  return "cash"
+// Improved payment method normalization with Paymob and other gateways
+const normalizePayment = (
+  value: string,
+): { method: "cash" | "card" | "valu" | "partial" | "paid"; status: "paid" | "pending" | "cod" } => {
+  const v = value?.toLowerCase() || ""
+
+  // Check for specific payment methods that are always paid
+  if (v.includes("valu")) return { method: "valu", status: "paid" }
+  if (v.includes("visa") || v.includes("card") || v.includes("credit") || v.includes("mastercard"))
+    return { method: "card", status: "paid" }
+  if (v.includes("partial")) return { method: "partial", status: "paid" }
+
+  // Check for payment gateways (these are always paid)
+  if (v.includes("paymob") || v.includes("pay mob")) return { method: "paid", status: "paid" }
+  if (v.includes("fawry")) return { method: "paid", status: "paid" }
+  if (v.includes("paypal")) return { method: "paid", status: "paid" }
+  if (v.includes("stripe")) return { method: "paid", status: "paid" }
+  if (v.includes("square")) return { method: "paid", status: "paid" }
+  if (v.includes("razorpay")) return { method: "paid", status: "paid" }
+  if (v.includes("instapay")) return { method: "paid", status: "paid" }
+  if (v.includes("vodafone cash") || v.includes("vodafonecash")) return { method: "paid", status: "paid" }
+  if (v.includes("orange cash") || v.includes("orangecash")) return { method: "paid", status: "paid" }
+  if (v.includes("etisalat cash") || v.includes("etisalatcash")) return { method: "paid", status: "paid" }
+  if (v.includes("we pay") || v.includes("wepay")) return { method: "paid", status: "paid" }
+
+  // Check for payment status indicators
+  if (v.includes("paid") || v.includes("completed") || v.includes("success") || v.includes("successful")) {
+    return { method: "paid", status: "paid" }
+  }
+
+  // Check for cash on delivery indicators
+  if (v.includes("cod") || v.includes("cash on delivery")) {
+    return { method: "cash", status: "cod" }
+  }
+
+  // Check for pending indicators
+  if (v.includes("pending") || v.includes("processing") || v.includes("awaiting")) {
+    return { method: "cash", status: "pending" }
+  }
+
+  // Check for failed/cancelled payments
+  if (v.includes("failed") || v.includes("cancelled") || v.includes("canceled") || v.includes("declined")) {
+    return { method: "cash", status: "cod" } // Treat failed payments as COD
+  }
+
+  // Default to cash on delivery for empty or unrecognized values
+  if (!v || v.includes("cash")) {
+    return { method: "cash", status: "cod" }
+  }
+
+  // For any other case, assume it's paid (better to err on the side of paid)
+  return { method: "paid", status: "paid" }
 }
 
 const UploadOrders: React.FC = () => {
@@ -66,9 +112,10 @@ const UploadOrders: React.FC = () => {
       customerName: "Customer Name / اسم العميل",
       mobile: "Mobile / الهاتف",
       address: "Address / العنوان",
-      billingCity: "Billing City / مدينة الفاتورة", // Added translation for billing city
+      billingCity: "Billing City / مدينة الفاتورة",
       totalAmount: "Total Amount / المبلغ الكلي",
       paymentMethod: "Payment Method / طريقة الدفع",
+      paymentStatus: "Payment Status / حالة الدفع",
       notes: "Notes / ملاحظات",
       errorReadingFile: "Error reading file. Please check the format. / خطأ في قراءة الملف، يرجى التحقق من التنسيق.",
       successfullyUploaded: (count: number) => `Successfully uploaded ${count} orders! / تم رفع ${count} طلب بنجاح!`,
@@ -91,10 +138,18 @@ const UploadOrders: React.FC = () => {
         "Upload a Shopify-exported Excel file. We extract order name, customer, phone, total, payment, and notes.",
       shopifyInstructionsAr:
         "ارفع ملف إكسل مُصدَّر من Shopify. سنستخرج اسم الطلب والعميل والهاتف والإجمالي والدفع والملاحظات.",
-      cash: "Cash / نقداً",
+      cash: "Cash (COD) / نقداً عند التسليم",
       card: "Card / بطاقة",
       valu: "ValU / فاليو",
       partial: "Partial / جزئي",
+      paid: "Paid Online / مدفوع إلكترونياً",
+      paymob: "Paymob / بايموب",
+      fawry: "Fawry / فوري",
+      vodafonecash: "Vodafone Cash / فودافون كاش",
+      orangecash: "Orange Cash / أورانج كاش",
+      instapay: "InstaPay / إنستاباي",
+      pending: "Pending / معلق",
+      cod: "Cash on Delivery / الدفع عند التسليم",
     }
     const val = translations[key]
     if (typeof val === "function") {
@@ -110,22 +165,26 @@ const UploadOrders: React.FC = () => {
       if (!order.customer_name) errors.push(`Row ${index + 1}: Missing customer name`)
       if (!order.mobile_number) errors.push(`Row ${index + 1}: Missing mobile number`)
       if (order.total_order_fees <= 0) errors.push(`Row ${index + 1}: Invalid total amount`)
-      // billing_city is optional, so no validation needed unless specified
     })
     return errors
   }
 
   const parseOrders = (jsonData: any[]): OrderData[] => {
-    return jsonData.map((row: any) => ({
-      order_id: String(row["Name"] || ""),
-      customer_name: String(row["Shipping Name"] || row["Billing Name"] || "Unknown"),
-      address: String(row["Shipping Address1"] || row["Shipping Street"] || row["Billing Address1"] || "N/A"),
-      billing_city: String(row["Billing City"] || "N/A"), // Extracting Billing City
-      mobile_number: String(row["Phone"] || row["Shipping Phone"] || row["Billing Phone"] || "N/A"),
-      total_order_fees: Number(row["Total"] || 0),
-      payment_method: normalizePayment(row["Payment Method"] || "cash"),
-      notes: String(row["Notes"] || ""),
-    }))
+    return jsonData.map((row: any) => {
+      const paymentInfo = normalizePayment(row["Payment Method"] || "")
+
+      return {
+        order_id: String(row["Name"] || ""),
+        customer_name: String(row["Shipping Name"] || row["Billing Name"] || "Unknown"),
+        address: String(row["Shipping Address1"] || row["Shipping Street"] || row["Billing Address1"] || "N/A"),
+        billing_city: String(row["Billing City"] || "N/A"),
+        mobile_number: String(row["Phone"] || row["Shipping Phone"] || row["Billing Phone"] || "N/A"),
+        total_order_fees: Number(row["Total"] || 0),
+        payment_method: paymentInfo.method,
+        payment_status: paymentInfo.status,
+        notes: String(row["Notes"] || ""),
+      }
+    })
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -229,16 +288,32 @@ const UploadOrders: React.FC = () => {
 
   const getPaymentMethodBadge = (method: string) => {
     const colors = {
-      cash: "bg-green-100 text-green-800 border-green-200",
+      cash: "bg-orange-100 text-orange-800 border-orange-200",
       card: "bg-blue-100 text-blue-800 border-blue-200",
       valu: "bg-purple-100 text-purple-800 border-purple-200",
       partial: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      paid: "bg-green-100 text-green-800 border-green-200",
     }
     return (
       <span
-        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[method as keyof typeof colors] || colors.cash}`}
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[method as keyof typeof colors] || colors.paid}`}
       >
         {translate(method)}
+      </span>
+    )
+  }
+
+  const getPaymentStatusBadge = (status: string) => {
+    const colors = {
+      paid: "bg-green-100 text-green-800 border-green-200",
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      cod: "bg-orange-100 text-orange-800 border-orange-200",
+    }
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[status as keyof typeof colors] || colors.pending}`}
+      >
+        {translate(status)}
       </span>
     )
   }
@@ -427,9 +502,20 @@ const UploadOrders: React.FC = () => {
                   <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="w-5 h-5 text-green-600" />
-                      <span className="text-sm font-medium text-green-800">{translate("validOrders")}</span>
+                      <span className="text-sm font-medium text-green-800">Paid Orders</span>
                     </div>
-                    <span className="text-lg font-bold text-green-900">{preview.length - validationErrors.length}</span>
+                    <span className="text-lg font-bold text-green-900">
+                      {preview.filter((order) => order.payment_status === "paid").length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-orange-600" />
+                      <span className="text-sm font-medium text-orange-800">COD Orders</span>
+                    </div>
+                    <span className="text-lg font-bold text-orange-900">
+                      {preview.filter((order) => order.payment_status === "cod").length}
+                    </span>
                   </div>
                   {validationErrors.length > 0 && (
                     <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
@@ -448,31 +534,39 @@ const UploadOrders: React.FC = () => {
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Info className="w-5 h-5 text-blue-600" />
-                <h3 className="text-lg font-semibold text-blue-900">
-                  {translate("instructions", "") || "Instructions / التعليمات"}
-                </h3>
+                <h3 className="text-lg font-semibold text-blue-900">Payment Detection</h3>
               </div>
               <div className="space-y-3 text-sm text-blue-800">
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    Export orders from Shopify as Excel (.xlsx) / قم بتصدير الطلبات من Shopify كملف Excel (.xlsx)
+                    <strong>Paid:</strong> Paymob, Fawry, Visa, Card, ValU, Vodafone Cash, Orange Cash, InstaPay,
+                    PayPal, Stripe
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    Ensure columns include: Name, Customer, Phone, Total, Payment Method, **Billing City** / تأكد من
-                    وجود الأعمدة: الاسم، العميل، الهاتف، الإجمالي، طريقة الدفع، **مدينة الفاتورة**
+                    <strong>Paid Status:</strong> Contains "paid", "completed", "success", "successful"
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-                  <span>Review the preview before uploading / راجع المعاينة قبل الرفع</span>
+                  <span>
+                    <strong>COD:</strong> Contains "cod", "cash on delivery", or empty/cash
+                  </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
-                  <span>Fix any validation errors before proceeding / قم بإصلاح أي أخطاء تحقق قبل المتابعة</span>
+                  <span>
+                    <strong>Pending:</strong> Contains "pending", "processing", "awaiting"
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>
+                    <strong>Failed Payments:</strong> Treated as COD - "failed", "cancelled", "declined"
+                  </span>
                 </div>
               </div>
             </div>
@@ -519,13 +613,7 @@ const UploadOrders: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        {translate("address")}
-                      </div>
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        {translate("billingCity")} {/* New column header */}
+                        {translate("billingCity")}
                       </div>
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -542,8 +630,8 @@ const UploadOrders: React.FC = () => {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
-                        {translate("notes")}
+                        <CheckCircle className="w-4 h-4" />
+                        {translate("paymentStatus")}
                       </div>
                     </th>
                   </tr>
@@ -560,11 +648,8 @@ const UploadOrders: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-900">{order.mobile_number}</span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900 line-clamp-2">{order.address}</span>
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">{order.billing_city}</span> {/* Display billing_city */}
+                        <span className="text-sm text-gray-900">{order.billing_city}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-semibold text-green-600">
@@ -572,9 +657,7 @@ const UploadOrders: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">{getPaymentMethodBadge(order.payment_method)}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-500 line-clamp-2">{order.notes || "-"}</span>
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">{getPaymentStatusBadge(order.payment_status)}</td>
                     </tr>
                   ))}
                 </tbody>
