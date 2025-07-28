@@ -1,4 +1,5 @@
 "use client"
+
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import {
@@ -35,7 +36,6 @@ import {
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
-import { List } from "react-movable"
 
 interface OrderProof {
   id: string
@@ -249,8 +249,10 @@ const OrdersList: React.FC = () => {
     if (order.payment_status) {
       return order.payment_status === "paid"
     }
+
     // Fallback to payment method analysis
     const method = order.payment_method?.toLowerCase() || ""
+
     // Payment gateways and online payments (PAID)
     if (method.includes("paymob") || method.includes("pay mob")) return true
     if (method.includes("valu") || method.includes("val u")) return true
@@ -259,6 +261,7 @@ const OrdersList: React.FC = () => {
     if (method.includes("vodafone cash") || method.includes("vodafone-cash")) return true
     if (method.includes("orange cash") || method.includes("orange-cash")) return true
     if (method.includes("we pay") || method.includes("we-pay") || method.includes("wepay")) return true
+
     // Card payments (PAID)
     if (
       method.includes("visa") ||
@@ -268,6 +271,7 @@ const OrdersList: React.FC = () => {
     )
       return true
     if (method.includes("card") || method.includes("credit") || method.includes("debit")) return true
+
     // International payment gateways (PAID)
     if (
       method.includes("paypal") ||
@@ -276,6 +280,7 @@ const OrdersList: React.FC = () => {
       method.includes("razorpay")
     )
       return true
+
     // Status-based detection (PAID)
     if (
       method.includes("paid") ||
@@ -284,6 +289,7 @@ const OrdersList: React.FC = () => {
       method.includes("success")
     )
       return true
+
     // Cash on delivery and failed payments are NOT paid
     if (method.includes("cash") || method.includes("cod") || method.includes("cash on delivery")) return false
     if (
@@ -293,6 +299,7 @@ const OrdersList: React.FC = () => {
       method.includes("rejected")
     )
       return false
+
     // If we can't identify it clearly, check if it's not explicitly cash/cod
     // This is a conservative approach - assume paid unless explicitly cash/cod
     return !method.includes("cash") && !method.includes("cod") && method.length > 0
@@ -302,6 +309,7 @@ const OrdersList: React.FC = () => {
   const normalizeMethod = (method: string) => {
     if (!method) return "cash"
     const m = method.toLowerCase()
+
     if (m.includes("paymob")) {
       if (m.includes("valu")) return "valu"
       return "paymob"
@@ -312,6 +320,7 @@ const OrdersList: React.FC = () => {
     if (m.includes("vodafone cash")) return "vodafone_cash"
     if (m.includes("orange cash")) return "orange_cash"
     if (m.includes("we pay")) return "we_pay"
+
     // All card payments (visa, mastercard, etc.) should be categorized as paymob
     if (
       m.includes("visa") ||
@@ -321,7 +330,9 @@ const OrdersList: React.FC = () => {
       m.includes("debit")
     )
       return "paymob"
+
     if (m.includes("cash") || m.includes("cod")) return "cash"
+
     return method
   }
 
@@ -331,12 +342,14 @@ const OrdersList: React.FC = () => {
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
+
     if (date.toDateString() === today.toDateString()) {
       return "اليوم"
     }
     if (date.toDateString() === yesterday.toDateString()) {
       return "أمس"
     }
+
     const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
     const arabicMonths = [
       "يناير",
@@ -352,10 +365,12 @@ const OrdersList: React.FC = () => {
       "نوفمبر",
       "ديسمبر",
     ]
+
     const dayName = arabicDays[date.getDay()]
     const day = date.getDate()
     const month = arabicMonths[date.getMonth()]
     const year = date.getFullYear()
+
     return `${dayName} ${day} ${month} ${year}`
   }
 
@@ -413,10 +428,12 @@ const OrdersList: React.FC = () => {
 
       const { data, error } = await supabase
         .from("orders")
-        .select(`
+        .select(
+          `
           *,
           order_proofs (id, image_data)
-        `)
+        `,
+        )
         .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
@@ -444,7 +461,6 @@ const OrdersList: React.FC = () => {
         // Third priority: sort by order number (ascending - lowest numbers first)
         const orderNumA = getOrderNumber(a.order_id)
         const orderNumB = getOrderNumber(b.order_id)
-
         return orderNumA - orderNumB
       })
 
@@ -548,13 +564,11 @@ const OrdersList: React.FC = () => {
 
             canvas.width = width
             canvas.height = height
-
             const ctx = canvas.getContext("2d")
             if (!ctx) {
               reject(new Error("Failed to get canvas context"))
               return
             }
-
             ctx.drawImage(img, 0, 0, width, height)
 
             canvas.toBlob(
@@ -588,8 +602,8 @@ const OrdersList: React.FC = () => {
         method: "POST",
         body: formData,
       })
-
       const data = await res.json()
+
       if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
       const { error } = await supabase.from("order_proofs").insert({
@@ -648,8 +662,8 @@ const OrdersList: React.FC = () => {
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
-
     setSaving(true)
+
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
       const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
@@ -784,6 +798,7 @@ const OrdersList: React.FC = () => {
   // Helper function to get display payment method
   const getDisplayPaymentMethod = (order: Order) => {
     const method = normalizeMethod(order.payment_method)
+
     // If collected_by and payment_sub_type are set, prioritize them for display
     if (order.collected_by && allCollectionMethods[order.collected_by]) {
       if (
@@ -826,6 +841,7 @@ const OrdersList: React.FC = () => {
     if (method === "we_pay") {
       return `${allCollectionMethods.we_pay} (مدفوع)`
     }
+
     return order.payment_method === "cash_on_delivery" ? "الدفع عند الاستلام" : order.payment_method
   }
 
@@ -864,7 +880,6 @@ const OrdersList: React.FC = () => {
           >
             <ChevronUp className="w-5 h-5" />
           </button>
-
           {/* Scroll to Top Button */}
           <button
             onClick={scrollToTop}
@@ -878,7 +893,6 @@ const OrdersList: React.FC = () => {
           >
             <ChevronUp className="w-4 h-4" />
           </button>
-
           {/* Scroll to Bottom Button */}
           <button
             onClick={scrollToBottom}
@@ -892,7 +906,6 @@ const OrdersList: React.FC = () => {
           >
             <ChevronDown className="w-4 h-4" />
           </button>
-
           {/* Scroll Down Button */}
           <button
             onClick={scrollDown}
@@ -920,6 +933,7 @@ const OrdersList: React.FC = () => {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">طلبياتي</h1>
               <p className="text-xs sm:text-sm text-gray-600">إدارة ومتابعة طلبات التوصيل</p>
             </div>
+
             {/* Date Navigation */}
             <div className="flex items-center justify-center gap-2 mt-4">
               <button
@@ -950,6 +964,7 @@ const OrdersList: React.FC = () => {
                 <ChevronLeft className="w-3 h-3" />
               </button>
             </div>
+
             {/* Quick Actions */}
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
@@ -967,6 +982,7 @@ const OrdersList: React.FC = () => {
                 تحديث
               </button>
             </div>
+
             <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 mt-3">
               <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
               <span className="text-xs font-medium">
@@ -1016,29 +1032,8 @@ const OrdersList: React.FC = () => {
           </div>
         ) : (
           // Orders Grid - Improved mobile responsiveness
-          <List
-            values={orders}
-            onChange={({ oldIndex, newIndex }) => {
-              // Swap only the two cards, do not shift others
-              if (oldIndex === newIndex) return
-              setOrders((prev) => {
-                const newOrders = [...prev]
-                const temp = newOrders[oldIndex]
-                newOrders[oldIndex] = newOrders[newIndex]
-                newOrders[newIndex] = temp
-                return newOrders
-              })
-            }}
-            renderList={({ children, props }) => (
-              <div
-                className="grid gap-1.5 grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10"
-                {...props}
-              >
-                {children}
-              </div>
-            )}
-            renderItem={({ value: order, props, isDragged }) => {
-              const method = normalizeMethod(order.payment_method)
+          <div className="grid gap-1.5 grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10">
+            {orders.map((order) => {
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
               const deliveryFee = order.delivery_fee || 0
@@ -1049,16 +1044,6 @@ const OrdersList: React.FC = () => {
 
               return (
                 <div
-                  {...props}
-                  style={{
-                    ...props.style,
-                    opacity: isDragged ? 0.85 : 1,
-                    zIndex: isDragged ? 1000 : "auto",
-                    boxShadow: isDragged ? "0 8px 32px 0 rgba(0, 120, 255, 0.25), 0 0 0 4px #3b82f6" : undefined,
-                    border: isDragged ? "2px solid #3b82f6" : undefined,
-                    background: isDragged ? "#e0f2fe" : undefined,
-                    transition: "box-shadow 0.2s, border 0.2s, background 0.2s",
-                  }}
                   key={order.id}
                   className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
                     isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
@@ -1263,8 +1248,8 @@ const OrdersList: React.FC = () => {
                   </div>
                 </div>
               )
-            }}
-          />
+            })}
+          </div>
         )}
 
         {/* Phone Options Modal */}
@@ -1455,6 +1440,7 @@ const OrdersList: React.FC = () => {
                         const isOrderUnpaid = !isOrderPaid(selectedOrder)
                         const currentFee = Number.parseFloat(updateData.delivery_fee) || 0
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
+
                         const isReturnStatus = updateData.status === "return"
                         const isReceivingPartWithNoFees =
                           updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0

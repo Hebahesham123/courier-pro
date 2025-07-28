@@ -1,6 +1,7 @@
 "use client"
+
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import {
   DollarSign,
   CreditCard,
@@ -111,7 +112,8 @@ const getDisplayPaymentMethod = (order: Order): string => {
 const Summary: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
-  const translate = (key: string) => {
+
+  const translate = useRef((key: string) => {
     const translations: Record<string, string> = {
       loading: "جاري التحميل...",
       pleaseLogin: "يرجى تسجيل الدخول",
@@ -226,7 +228,7 @@ const Summary: React.FC = () => {
       holdFeeAddedAt: "تاريخ الإضافة",
     }
     return translations[key] || key
-  }
+  }).current
 
   const [summaryList, setSummaryList] = useState<CourierSummary[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
@@ -241,13 +243,13 @@ const Summary: React.FC = () => {
   const [holdFeeLoading, setHoldFeeLoading] = useState(false)
 
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
-  const getTodayDateString = () => {
+  const getTodayDateString = useCallback(() => {
     const today = new Date()
     const year = today.getFullYear()
     const month = (today.getMonth() + 1).toString().padStart(2, "0") // Months are 0-indexed
     const day = today.getDate().toString().padStart(2, "0")
     return `${year}-${month}-${day}`
-  }
+  }, [])
 
   const [dateRange, setDateRange] = useState<DateRange>({
     startDate: getTodayDateString(),
@@ -261,21 +263,7 @@ const Summary: React.FC = () => {
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
 
-  useEffect(() => {
-    fetchSummary()
-    const subscription = supabase
-      .channel("orders_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        fetchSummary()
-      })
-      .subscribe()
-
-    return () => {
-      subscription.unsubscribe().catch(console.error)
-    }
-  }, [user, dateRange, selectedCourier])
-
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
     try {
@@ -341,7 +329,21 @@ const Summary: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, dateRange, selectedCourier, showAnalytics, getTodayDateString])
+
+  useEffect(() => {
+    fetchSummary()
+    const subscription = supabase
+      .channel("orders_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        fetchSummary()
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe().catch(console.error)
+    }
+  }, [user, dateRange, selectedCourier, fetchSummary])
 
   // Hold Fee Management Functions
   const handleEditHoldFee = (orderId: string, currentAmount?: number, currentComment?: string) => {
@@ -352,7 +354,6 @@ const Summary: React.FC = () => {
 
   const handleSaveHoldFee = async (orderId: string) => {
     if (!isAdmin) return
-
     setHoldFeeLoading(true)
     try {
       const amount = Number.parseFloat(holdFeeAmount) || 0
@@ -382,7 +383,6 @@ const Summary: React.FC = () => {
             : order,
         ),
       )
-
       setSelectedOrders((prev) =>
         prev.map((order) =>
           order.id === orderId
@@ -396,7 +396,6 @@ const Summary: React.FC = () => {
             : order,
         ),
       )
-
       setEditingHoldFee(null)
       setHoldFeeAmount("")
       setHoldFeeComment("")
@@ -409,7 +408,6 @@ const Summary: React.FC = () => {
 
   const handleRemoveHoldFee = async (orderId: string) => {
     if (!isAdmin) return
-
     setHoldFeeLoading(true)
     try {
       const { error } = await supabase
@@ -438,7 +436,6 @@ const Summary: React.FC = () => {
             : order,
         ),
       )
-
       setSelectedOrders((prev) =>
         prev.map((order) =>
           order.id === orderId
@@ -654,43 +651,36 @@ const Summary: React.FC = () => {
     const valuOrders = getPaymentMethodMetrics(
       (o) =>
         normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
-        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)
+        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by),
     )
 
-    const visaMachineOrders = getPaymentMethodMetrics((o) => 
-      o.payment_sub_type === "visa_machine" ||
-      (getDisplayPaymentMethod(o).toLowerCase() === "visa_machine") ||
-      (o.collected_by && o.collected_by.toLowerCase() === "visa_machine")
-    )
-    
-    const instapayOrders = getPaymentMethodMetrics((o) => 
-      o.payment_sub_type === "instapay" ||
-      (getDisplayPaymentMethod(o).toLowerCase() === "instapay") ||
-      (o.collected_by && o.collected_by.toLowerCase() === "instapay")
-    )
-    
-    const walletOrders = getPaymentMethodMetrics((o) => 
-      o.payment_sub_type === "wallet" ||
-      (getDisplayPaymentMethod(o).toLowerCase() === "wallet") ||
-      (o.collected_by && o.collected_by.toLowerCase() === "wallet")
-    )
-    
+    // Strict filtering for specific payment sub-types
+    const visaMachineOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "visa_machine")
+    const instapayOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "instapay")
+    const walletOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "wallet")
+
+    // Refined cashOnHandOrders logic
     const cashOnHandOrders = getPaymentMethodMetrics((o) => {
-      // Check for cash indicators in any payment field
-      const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
-      const originalMethod = (o.payment_method || "").toLowerCase()
-      
-      return (
-        o.payment_sub_type === "on_hand" ||
-        displayMethod === "on_hand" ||
-        displayMethod === "cash" ||
-        originalMethod === "cash" ||
-        (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
-        (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
-        normalizePaymentMethod(displayMethod) === "cash" ||
-        normalizePaymentMethod(originalMethod) === "cash"
-      )
-    })
+  const displayMethod = getDisplayPaymentMethod(o)?.toLowerCase() || ""
+  const originalMethod = (o.payment_method || "").toLowerCase()
+
+  // Explicitly check for 'on_hand' sub-type
+  if (o.payment_sub_type === "on_hand") return true
+
+  // Check for general cash indicators
+  const isGeneralCash =
+    displayMethod === "cash" ||
+    originalMethod === "cash" ||
+    o.collected_by?.toLowerCase() === "cash" ||
+    o.collected_by?.toLowerCase() === "on_hand"
+
+  const isSpecificElectronicCashLike =
+    o.payment_sub_type === "instapay" ||
+    o.payment_sub_type === "wallet" ||
+    o.payment_sub_type === "visa_machine"
+
+  return !!(isGeneralCash && !isSpecificElectronicCashLike)
+})
 
     const totalCODOrders = {
       count: visaMachineOrders.count + instapayOrders.count + walletOrders.count + cashOnHandOrders.count,
@@ -922,7 +912,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-gray-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Assigned Orders */}
                       <div
                         className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -955,7 +944,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-blue-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Delivered Orders */}
                       <div
                         className="bg-green-50 border-2 border-green-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -988,7 +976,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-green-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Canceled Orders */}
                       <div
                         className="bg-red-50 border-2 border-red-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -1021,7 +1008,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-red-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Partial Orders */}
                       <div
                         className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -1054,7 +1040,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-yellow-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Returned Orders */}
                       <div
                         className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -1087,7 +1072,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-orange-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Receiving Part Orders */}
                       <div
                         className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -1120,7 +1104,6 @@ const Summary: React.FC = () => {
                           <Eye className="w-5 h-5 text-indigo-600 mx-auto" />
                         </div>
                       </div>
-
                       {/* Hand-to-Hand Orders */}
                       <div
                         className="bg-purple-50 border-2 border-purple-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
@@ -1183,7 +1166,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Instapay */}
                       {metrics.instapayOrders.count > 0 && (
                         <div
@@ -1202,7 +1184,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Wallet */}
                       {metrics.walletOrders.count > 0 && (
                         <div
@@ -1221,7 +1202,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Cash on Hand */}
                       {metrics.cashOnHandOrders.count > 0 && (
                         <div
@@ -1240,7 +1220,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Total COD */}
                       {metrics.totalCODOrders.count > 0 && (
                         <div
@@ -1280,7 +1259,6 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
-
                       {/* Paymob - Updated logic to include all paymob orders with collected amounts */}
                       {metrics.paymobOrders.count > 0 && (
                         <div
@@ -1397,7 +1375,6 @@ const Summary: React.FC = () => {
                   <X className="w-6 h-6" />
                 </button>
               </div>
-
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
@@ -1407,7 +1384,6 @@ const Summary: React.FC = () => {
                     const totalCourierAmount = getTotalCourierAmount(order)
                     const displayPaymentMethod = getDisplayPaymentMethod(order)
                     const holdFee = Number(order.hold_fee || 0)
-
                     return (
                       <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1500,7 +1476,6 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-
                                 {/* Hold Fee Section */}
                                 {isAdmin && (
                                   <div className="border-t border-gray-200 pt-3">
@@ -1518,7 +1493,7 @@ const Summary: React.FC = () => {
                                               </span>
                                               <button
                                                 onClick={() =>
-                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? "")
                                                 }
                                                 className="text-blue-600 hover:text-blue-800 p-1"
                                                 disabled={holdFeeLoading}
@@ -1586,7 +1561,6 @@ const Summary: React.FC = () => {
                                     )}
                                   </div>
                                 )}
-
                                 {totalCourierAmount !== 0 && (
                                   <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                                     <span className="text-sm font-semibold text-gray-700">
@@ -1878,7 +1852,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-gray-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Assigned Orders */}
                 <div
                   className={`bg-blue-50 border-2 border-blue-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -1925,7 +1898,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-blue-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Delivered Orders */}
                 <div
                   className={`bg-green-50 border-2 border-green-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -1972,7 +1944,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-green-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Canceled Orders */}
                 <div
                   className={`bg-red-50 border-2 border-red-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -2019,7 +1990,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-red-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Partial Orders */}
                 <div
                   className={`bg-yellow-50 border-2 border-yellow-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -2066,7 +2036,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-yellow-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Returned Orders */}
                 <div
                   className={`bg-orange-50 border-2 border-orange-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -2113,7 +2082,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-orange-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Receiving Part Orders */}
                 <div
                   className={`bg-indigo-50 border-2 border-indigo-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -2160,7 +2128,6 @@ const Summary: React.FC = () => {
                     <Eye className={`text-indigo-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
-
                 {/* Hand-to-Hand Orders */}
                 <div
                   className={`bg-purple-50 border-2 border-purple-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
@@ -2234,17 +2201,11 @@ const Summary: React.FC = () => {
                 {/* Visa Machine */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
-                    // Check for visa machine indicators in any payment field
-                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
-                    const originalMethod = (o.payment_method || "").toLowerCase()
-                    
                     return (
-                      o.payment_sub_type === "visa_machine" ||
-                      displayMethod === "visa_machine" ||
-                      originalMethod === "visa_machine" ||
-                      (o.collected_by && o.collected_by.toLowerCase() === "visa_machine")
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.payment_sub_type === "visa_machine" &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2271,21 +2232,14 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-
                 {/* Instapay */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
-                    // Check for instapay indicators in any payment field
-                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
-                    const originalMethod = (o.payment_method || "").toLowerCase()
-                    
                     return (
-                      o.payment_sub_type === "instapay" ||
-                      displayMethod === "instapay" ||
-                      originalMethod === "instapay" ||
-                      (o.collected_by && o.collected_by.toLowerCase() === "instapay")
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.payment_sub_type === "instapay" &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2312,21 +2266,14 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-
                 {/* Wallet */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
-                    // Check for wallet indicators in any payment field
-                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
-                    const originalMethod = (o.payment_method || "").toLowerCase()
-                    
                     return (
-                      o.payment_sub_type === "wallet" ||
-                      displayMethod === "wallet" ||
-                      originalMethod === "wallet" ||
-                      (o.collected_by && o.collected_by.toLowerCase() === "wallet")
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.payment_sub_type === "wallet" &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2353,25 +2300,28 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-
                 {/* Cash on Hand */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
-                    // Check for cash indicators in any payment field
                     const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
                     const originalMethod = (o.payment_method || "").toLowerCase()
-                    
-                    return (
-                      o.payment_sub_type === "on_hand" ||
-                      displayMethod === "on_hand" ||
+
+                    const isGeneralCash =
                       displayMethod === "cash" ||
                       originalMethod === "cash" ||
                       (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
-                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
-                      normalizePaymentMethod(displayMethod) === "cash" ||
-                      normalizePaymentMethod(originalMethod) === "cash"
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand")
+
+                    const isSpecificElectronicCashLike =
+                      o.payment_sub_type === "instapay" ||
+                      o.payment_sub_type === "wallet" ||
+                      o.payment_sub_type === "visa_machine"
+
+                    return (
+                      (o.payment_sub_type === "on_hand" || (isGeneralCash && !isSpecificElectronicCashLike)) &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2398,28 +2348,30 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-
                 {/* Total COD - Hidden for mobile */}
                 {!isCourier &&
                   (() => {
                     const orders = allOrders.filter((o) => {
                       const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
                       const originalMethod = (o.payment_method || "").toLowerCase()
-                      
+
                       return (
                         (o.payment_sub_type === "on_hand" ||
-                        o.payment_sub_type === "instapay" ||
-                        o.payment_sub_type === "wallet" ||
-                        o.payment_sub_type === "visa_machine" ||
-                        displayMethod === "on_hand" ||
-                        displayMethod === "cash" ||
-                        displayMethod === "instapay" ||
-                        displayMethod === "wallet" ||
-                        displayMethod === "visa_machine" ||
-                        originalMethod === "cash" ||
-                        (o.collected_by && ["cash", "on_hand", "instapay", "wallet", "visa_machine"].includes(o.collected_by.toLowerCase())) ||
-                        normalizePaymentMethod(displayMethod) === "cash" ||
-                        normalizePaymentMethod(originalMethod) === "cash") &&
+                          o.payment_sub_type === "instapay" ||
+                          o.payment_sub_type === "wallet" ||
+                          o.payment_sub_type === "visa_machine" ||
+                          displayMethod === "on_hand" ||
+                          displayMethod === "cash" ||
+                          displayMethod === "instapay" ||
+                          displayMethod === "wallet" ||
+                          displayMethod === "visa_machine" ||
+                          originalMethod === "cash" ||
+                          (o.collected_by &&
+                            ["cash", "on_hand", "instapay", "wallet", "visa_machine"].includes(
+                              o.collected_by.toLowerCase(),
+                            )) ||
+                          normalizePaymentMethod(displayMethod) === "cash" ||
+                          normalizePaymentMethod(originalMethod) === "cash") &&
                         getTotalCourierAmount(o) > 0 &&
                         o.assigned_courier_id === currentCourier.courierId
                       )
@@ -2481,7 +2433,6 @@ const Summary: React.FC = () => {
                     </div>
                   ) : null
                 })()}
-
                 {/* Paymob - Updated logic to include all paymob orders with collected amounts */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
@@ -2495,10 +2446,11 @@ const Summary: React.FC = () => {
                     if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) return true
                     // Check for paymob indicators (excluding visa_machine which is separate)
                     return (
-                      (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
-                      (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      ((normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
+                        (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)) &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2545,21 +2497,25 @@ const Summary: React.FC = () => {
               >
                 {(() => {
                   const cashOnHandOrders = allOrders.filter((o) => {
-                    // Check for cash indicators in any payment field
                     const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
                     const originalMethod = (o.payment_method || "").toLowerCase()
-                    
-                    return (
-                      o.payment_sub_type === "on_hand" ||
-                      displayMethod === "on_hand" ||
+
+                    const isGeneralCash =
                       displayMethod === "cash" ||
                       originalMethod === "cash" ||
                       (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
-                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
-                      normalizePaymentMethod(displayMethod) === "cash" ||
-                      normalizePaymentMethod(originalMethod) === "cash"
-                    ) && getTotalCourierAmount(o) > 0 &&
+                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand")
+
+                    const isSpecificElectronicCashLike =
+                      o.payment_sub_type === "instapay" ||
+                      o.payment_sub_type === "wallet" ||
+                      o.payment_sub_type === "visa_machine"
+
+                    return (
+                      (o.payment_sub_type === "on_hand" || (isGeneralCash && !isSpecificElectronicCashLike)) &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
+                    )
                   })
                   const totalHandToAccounting = cashOnHandOrders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return (
@@ -2612,7 +2568,6 @@ const Summary: React.FC = () => {
                   <X className={`${isCourier ? "w-5 h-5" : "w-6 h-6"}`} />
                 </button>
               </div>
-
               {/* Modal Content */}
               <div className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}>
                 <div className={`space-y-${isCourier ? "3" : "4"}`}>
@@ -2622,7 +2577,6 @@ const Summary: React.FC = () => {
                     const totalCourierAmount = getTotalCourierAmount(order)
                     const displayPaymentMethod = getDisplayPaymentMethod(order)
                     const holdFee = Number(order.hold_fee || 0)
-
                     return (
                       <div
                         key={order.id}
@@ -2751,7 +2705,6 @@ const Summary: React.FC = () => {
                                     </span>
                                   </div>
                                 )}
-
                                 {/* Hold Fee Section */}
                                 {isAdmin && (
                                   <div className="border-t border-gray-200 pt-3">
@@ -2769,7 +2722,7 @@ const Summary: React.FC = () => {
                                               </span>
                                               <button
                                                 onClick={() =>
-                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? "")
                                                 }
                                                 className="text-blue-600 hover:text-blue-800 p-1"
                                                 disabled={holdFeeLoading}
@@ -2837,7 +2790,6 @@ const Summary: React.FC = () => {
                                     )}
                                   </div>
                                 )}
-
                                 {totalCourierAmount !== 0 && (
                                   <div className={`flex justify-between items-center pt-3 border-t border-gray-200`}>
                                     <span
