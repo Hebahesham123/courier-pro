@@ -232,6 +232,7 @@ const Summary: React.FC = () => {
 
   const [summaryList, setSummaryList] = useState<CourierSummary[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
+  const [allHoldFeesOrders, setAllHoldFeesOrders] = useState<Order[]>([]) // New state for all hold fees regardless of date
   const [loading, setLoading] = useState(true)
   const [selectedOrders, setSelectedOrders] = useState<Order[]>([])
   const [modalTitle, setModalTitle] = useState("")
@@ -262,6 +263,45 @@ const Summary: React.FC = () => {
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
+
+  // Function to fetch all hold fees data regardless of date range
+  const fetchAllHoldFeesData = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      let holdFeesOrders: Order[] = []
+      if (user.role === "courier") {
+        // For courier users, get all their orders with hold fees
+        const { data } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("assigned_courier_id", user.id)
+          .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+        holdFeesOrders = (data ?? []) as Order[]
+      } else {
+        // For admin users
+        if (selectedCourier) {
+          // If a courier is selected, fetch only their hold fees orders
+          const { data } = await supabase
+            .from("orders")
+            .select("*")
+            .eq("assigned_courier_id", selectedCourier.courierId)
+            .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+          holdFeesOrders = (data ?? []) as Order[]
+        } else if (showAnalytics) {
+          // If showing analytics, fetch ALL hold fees orders from ALL couriers
+          const { data } = await supabase
+            .from("orders")
+            .select("*")
+            .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+          holdFeesOrders = (data ?? []) as Order[]
+        }
+      }
+      setAllHoldFeesOrders(holdFeesOrders)
+    } catch (error) {
+      console.error("Error fetching all hold fees data:", error)
+      setAllHoldFeesOrders([])
+    }
+  }, [user, selectedCourier, showAnalytics])
 
   const fetchSummary = useCallback(async () => {
     if (!user?.id) return
@@ -333,17 +373,19 @@ const Summary: React.FC = () => {
 
   useEffect(() => {
     fetchSummary()
+    fetchAllHoldFeesData() // Also fetch hold fees data
     const subscription = supabase
       .channel("orders_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
         fetchSummary()
+        fetchAllHoldFeesData() // Also refetch hold fees data on changes
       })
       .subscribe()
 
     return () => {
       subscription.unsubscribe().catch(console.error)
     }
-  }, [user, dateRange, selectedCourier, fetchSummary])
+  }, [user, dateRange, selectedCourier, fetchSummary, fetchAllHoldFeesData])
 
   // Hold Fee Management Functions
   const handleEditHoldFee = (orderId: string, currentAmount?: number, currentComment?: string) => {
@@ -371,6 +413,19 @@ const Summary: React.FC = () => {
 
       // Update local state
       setAllOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: amount > 0 ? amount : null,
+                hold_fee_comment: amount > 0 ? holdFeeComment : null,
+                hold_fee_created_by: amount > 0 ? user?.id : null,
+                hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+              }
+            : order,
+        ),
+      )
+      setAllHoldFeesOrders((prev) =>
         prev.map((order) =>
           order.id === orderId
             ? {
@@ -415,8 +470,8 @@ const Summary: React.FC = () => {
         .update({
           hold_fee: null,
           hold_fee_comment: null,
-          hold_fee_created_by: null,
-          hold_fee_created_at: null,
+          hold_fee_created_by: user?.id,
+          hold_fee_created_at: new Date().toISOString(),
         })
         .eq("id", orderId)
 
@@ -430,8 +485,21 @@ const Summary: React.FC = () => {
                 ...order,
                 hold_fee: null,
                 hold_fee_comment: null,
-                hold_fee_created_by: null,
-                hold_fee_created_at: null,
+                hold_fee_created_by: user?.id,
+                hold_fee_created_at: new Date().toISOString(),
+              }
+            : order,
+        ),
+      )
+      setAllHoldFeesOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                hold_fee: null,
+                hold_fee_comment: null,
+                hold_fee_created_by: user?.id,
+                hold_fee_created_at: new Date().toISOString(),
               }
             : order,
         ),
@@ -443,8 +511,8 @@ const Summary: React.FC = () => {
                 ...order,
                 hold_fee: null,
                 hold_fee_comment: null,
-                hold_fee_created_by: null,
-                hold_fee_created_at: null,
+                hold_fee_created_by: user?.id,
+                hold_fee_created_at: new Date().toISOString(),
               }
             : order,
         ),
@@ -1277,6 +1345,79 @@ const Summary: React.FC = () => {
                           </div>
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* 🚨 Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                        <AlertCircle className="w-6 h-6 text-red-600" />
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900">🚨 رسوم الحجز (جميع الأيام)</h2>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Active Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
+                      {(() => {
+                        const orders = allHoldFeesOrders.filter((o) => {
+                          return o.hold_fee && Number(o.hold_fee) > 0
+                        })
+                        const amount = orders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0)
+                        return (
+                          <div
+                            className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group`}
+                            onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز النشطة (جميع الأيام)") : undefined}
+                          >
+                            <div className="flex items-center gap-3 mb-3">
+                              <AlertCircle className={`w-6 h-6 ${orders.length > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'}`}>رسوم حجز نشطة</h4>
+                            </div>
+                            <div className="space-y-1">
+                              <p className={`text-2xl font-bold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'}`}>{orders.length}</p>
+                              <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'}`}>
+                                {amount.toFixed(2)} ج.م
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                      
+                      {/* Removed Hold Fees - ALWAYS VISIBLE with removal date - ALL DAYS */}
+                      {(() => {
+                        const orders = allHoldFeesOrders.filter((o) => {
+                          return !o.hold_fee && o.hold_fee_created_at && o.hold_fee_created_by
+                        })
+                        // Sort by removal date (most recent first)
+                        const sortedOrders = orders.sort((a, b) => 
+                          new Date(b.hold_fee_created_at!).getTime() - new Date(a.hold_fee_created_at!).getTime()
+                        )
+                        return (
+                          <div
+                            className={`${orders.length > 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group`}
+                            onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز المزالة (جميع الأيام)") : undefined}
+                          >
+                            <div className="flex items-center gap-3 mb-3">
+                              <CheckCircle className={`w-6 h-6 ${orders.length > 0 ? 'text-green-600' : 'text-gray-400'}`} />
+                              <h4 className={`font-semibold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'}`}>رسوم حجز مزالة</h4>
+                            </div>
+                            <div className="space-y-1">
+                              <p className={`text-2xl font-bold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'}`}>{orders.length}</p>
+                              <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'}`}>
+                                {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
+                              </p>
+                              {sortedOrders.length > 0 && sortedOrders[0].hold_fee_created_at && (
+                                <p className="text-sm text-green-600">
+                                  آخر إزالة: {new Date(sortedOrders[0].hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 
@@ -2474,6 +2615,97 @@ const Summary: React.FC = () => {
                       </div>
                     </div>
                   ) : null
+                })()}
+              </div>
+            </div>
+
+            {/* 🚨 Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
+            <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
+              <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
+                <div
+                  className={`bg-red-100 rounded-xl flex items-center justify-center ${
+                    isCourier ? "w-8 h-8" : "w-10 h-10"
+                  }`}
+                >
+                  <AlertCircle className={`text-red-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                </div>
+                <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
+                  {isCourier ? "رسوم الحجز (جميع الأيام)" : "🚨 رسوم الحجز (جميع الأيام)"}
+                </h2>
+              </div>
+              <div className={`grid ${isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 sm:grid-cols-2 gap-4"}`}>
+                {/* Active Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
+                {(() => {
+                  const orders = allHoldFeesOrders.filter((o) => {
+                    return o.hold_fee && Number(o.hold_fee) > 0 && o.assigned_courier_id === currentCourier.courierId
+                  })
+                  const amount = orders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0)
+                  return (
+                    <div
+                      className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group ${
+                        isCourier ? "p-3" : "p-4"
+                      }`}
+                      onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز النشطة (جميع الأيام)") : undefined}
+                    >
+                      <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
+                        <AlertCircle className={`${orders.length > 0 ? 'text-red-600' : 'text-gray-400'} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                        <h4 className={`font-semibold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'} ${isCourier ? "text-xs" : "text-base"}`}>
+                          رسوم حجز نشطة
+                        </h4>
+                      </div>
+                      <div className="space-y-1">
+                        <p className={`font-bold ${orders.length > 0 ? 'text-red-900' : 'text-gray-500'} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                          {orders.length}
+                        </p>
+                        <p className={`font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
+                          {amount.toFixed(2)} ج.م
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })()}
+                
+                {/* Removed Hold Fees - ALWAYS VISIBLE with removal date - ALL DAYS */}
+                {(() => {
+                  const orders = allHoldFeesOrders.filter((o) => {
+                    return !o.hold_fee && o.hold_fee_created_at && o.hold_fee_created_by && o.assigned_courier_id === currentCourier.courierId
+                  })
+                  // Sort by removal date (most recent first)
+                  const sortedOrders = orders.sort((a, b) => 
+                    new Date(b.hold_fee_created_at!).getTime() - new Date(a.hold_fee_created_at!).getTime()
+                  )
+                  return (
+                    <div
+                      className={`${orders.length > 0 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group ${
+                        isCourier ? "p-3" : "p-4"
+                      }`}
+                      onClick={orders.length > 0 ? () => openOrders(orders, "رسوم الحجز المزالة (جميع الأيام)") : undefined}
+                    >
+                      <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
+                        <CheckCircle className={`${orders.length > 0 ? 'text-green-600' : 'text-gray-400'} ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                        <h4 className={`font-semibold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'} ${isCourier ? "text-xs" : "text-base"}`}>
+                          رسوم حجز مزالة
+                        </h4>
+                      </div>
+                      <div className="space-y-1">
+                        <p className={`font-bold ${orders.length > 0 ? 'text-green-900' : 'text-gray-500'} ${isCourier ? "text-lg" : "text-2xl"}`}>
+                          {orders.length}
+                        </p>
+                        <p className={`font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
+                          {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
+                        </p>
+                        {sortedOrders.length > 0 && sortedOrders[0].hold_fee_created_at && (
+                          <p className={`${orders.length > 0 ? 'text-green-600' : 'text-gray-400'} ${isCourier ? "text-xs" : "text-sm"}`}>
+                            آخر إزالة: {new Date(sortedOrders[0].hold_fee_created_at).toLocaleDateString('ar-EG', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit'
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
                 })()}
               </div>
             </div>
