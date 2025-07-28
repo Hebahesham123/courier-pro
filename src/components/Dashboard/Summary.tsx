@@ -626,15 +626,15 @@ const Summary: React.FC = () => {
         receivingPart.courierCollected +
         handToHand.courierCollected)
 
-    // Payment method breakdowns (for orders where courier actually collected money)
+    // Updated payment method breakdowns - include ALL orders with collected amounts based on payment method
     const getPaymentMethodMetrics = (filterFn: (order: Order) => boolean) => {
-      const orders = filteredOrders.filter((o) => filterFn(o) && shouldIncludeOrder(o))
+      const orders = filteredOrders.filter((o) => filterFn(o) && getTotalCourierAmount(o) > 0)
       const count = orders.length
       const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
       return { count, amount, orders }
     }
 
-    // Updated paymob orders calculation - only include delivered orders
+    // Updated paymob orders calculation - include all orders with paymob payment that have collected amounts
     const paymobOrders = getPaymentMethodMetrics((o) => {
       const displayMethod = getDisplayPaymentMethod(o)
       const normalizedDisplay = normalizePaymentMethod(displayMethod)
@@ -642,11 +642,9 @@ const Summary: React.FC = () => {
       const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
       // If it's valu, don't count as paymob
       if (isValu) return false
-      // Only include delivered orders for paymob
-      if (o.status !== "delivered") return false
-      // If it's paid and delivered, count as paymob
-      if (o.payment_status === "paid") return true
-      // Existing logic for delivered orders only
+      // If it's paid and has collected amount, count as paymob
+      if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) return true
+      // Check for paymob indicators (excluding visa_machine which is separate)
       return (
         (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
         (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
@@ -655,15 +653,44 @@ const Summary: React.FC = () => {
 
     const valuOrders = getPaymentMethodMetrics(
       (o) =>
-        (normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
-          (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)) &&
-        o.status === "delivered",
+        normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
+        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by)
     )
 
-    const visaMachineOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "visa_machine")
-    const instapayOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "instapay")
-    const walletOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "wallet")
-    const cashOnHandOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "on_hand")
+    const visaMachineOrders = getPaymentMethodMetrics((o) => 
+      o.payment_sub_type === "visa_machine" ||
+      (getDisplayPaymentMethod(o).toLowerCase() === "visa_machine") ||
+      (o.collected_by && o.collected_by.toLowerCase() === "visa_machine")
+    )
+    
+    const instapayOrders = getPaymentMethodMetrics((o) => 
+      o.payment_sub_type === "instapay" ||
+      (getDisplayPaymentMethod(o).toLowerCase() === "instapay") ||
+      (o.collected_by && o.collected_by.toLowerCase() === "instapay")
+    )
+    
+    const walletOrders = getPaymentMethodMetrics((o) => 
+      o.payment_sub_type === "wallet" ||
+      (getDisplayPaymentMethod(o).toLowerCase() === "wallet") ||
+      (o.collected_by && o.collected_by.toLowerCase() === "wallet")
+    )
+    
+    const cashOnHandOrders = getPaymentMethodMetrics((o) => {
+      // Check for cash indicators in any payment field
+      const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+      const originalMethod = (o.payment_method || "").toLowerCase()
+      
+      return (
+        o.payment_sub_type === "on_hand" ||
+        displayMethod === "on_hand" ||
+        displayMethod === "cash" ||
+        originalMethod === "cash" ||
+        (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
+        (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
+        normalizePaymentMethod(displayMethod) === "cash" ||
+        normalizePaymentMethod(originalMethod) === "cash"
+      )
+    })
 
     const totalCODOrders = {
       count: visaMachineOrders.count + instapayOrders.count + walletOrders.count + cashOnHandOrders.count,
@@ -1254,50 +1281,24 @@ const Summary: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Paymob - Updated logic to include prepaid delivered orders (not valu) */}
-                      {(() => {
-                        const orders = allOrders.filter((o) => {
-                          const displayMethod = getDisplayPaymentMethod(o)
-                          const normalizedDisplay = normalizePaymentMethod(displayMethod)
-                          const normalizedOriginal = normalizePaymentMethod(o.payment_method)
-                          const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
-                          // If it's valu, don't count as paymob
-                          if (isValu) return false
-                          // Only include delivered orders for paymob
-                          if (o.status !== "delivered") return false
-                          // If it's paid and delivered, count as paymob
-                          if (o.payment_status === "paid") return true
-                          // Existing logic for delivered orders only
-                          return (
-                            (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
-                            (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
-                          )
-                        })
-                        const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
-                        return orders.length > 0 ? (
-                          <div
-                            className={`bg-blue-50 border-2 border-blue-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
-                              isCourier ? "p-3" : "p-4"
-                            }`}
-                            onClick={() => openOrders(orders, "طلبات paymob")}
-                          >
-                            <div className={`flex items-center gap-3 ${isCourier ? "mb-2" : "mb-3"}`}>
-                              <CreditCard className={`text-blue-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
-                              <h4 className={`font-semibold text-blue-900 ${isCourier ? "text-xs" : "text-base"}`}>
-                                Paymob
-                              </h4>
-                            </div>
-                            <div className="space-y-1">
-                              <p className={`font-bold text-blue-900 ${isCourier ? "text-lg" : "text-2xl"}`}>
-                                {orders.length}
-                              </p>
-                              <p className={`font-semibold text-blue-700 ${isCourier ? "text-sm" : "text-lg"}`}>
-                                {amount.toFixed(0)} ج.م
-                              </p>
-                            </div>
+                      {/* Paymob - Updated logic to include all paymob orders with collected amounts */}
+                      {metrics.paymobOrders.count > 0 && (
+                        <div
+                          className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
+                          onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob")}
+                        >
+                          <div className="flex items-center gap-3 mb-3">
+                            <CreditCard className="w-6 h-6 text-blue-600" />
+                            <h4 className="font-semibold text-blue-900">Paymob</h4>
                           </div>
-                        ) : null
-                      })()}
+                          <div className="space-y-1">
+                            <p className="text-2xl font-bold text-blue-900">{metrics.paymobOrders.count}</p>
+                            <p className="text-lg font-semibold text-blue-700">
+                              {metrics.paymobOrders.amount.toFixed(2)} ج.م
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1516,9 +1517,9 @@ const Summary: React.FC = () => {
                                                 -{holdFee.toFixed(2)} {translate("EGP")}
                                               </span>
                                               <button
-  onClick={() =>
-    handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
-  }
+                                                onClick={() =>
+                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+                                                }
                                                 className="text-blue-600 hover:text-blue-800 p-1"
                                                 disabled={holdFeeLoading}
                                               >
@@ -2232,12 +2233,19 @@ const Summary: React.FC = () => {
               >
                 {/* Visa Machine */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      o.payment_sub_type === "visa_machine" &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const orders = allOrders.filter((o) => {
+                    // Check for visa machine indicators in any payment field
+                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                    const originalMethod = (o.payment_method || "").toLowerCase()
+                    
+                    return (
+                      o.payment_sub_type === "visa_machine" ||
+                      displayMethod === "visa_machine" ||
+                      originalMethod === "visa_machine" ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "visa_machine")
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
@@ -2266,12 +2274,19 @@ const Summary: React.FC = () => {
 
                 {/* Instapay */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      o.payment_sub_type === "instapay" &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const orders = allOrders.filter((o) => {
+                    // Check for instapay indicators in any payment field
+                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                    const originalMethod = (o.payment_method || "").toLowerCase()
+                    
+                    return (
+                      o.payment_sub_type === "instapay" ||
+                      displayMethod === "instapay" ||
+                      originalMethod === "instapay" ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "instapay")
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
@@ -2300,12 +2315,19 @@ const Summary: React.FC = () => {
 
                 {/* Wallet */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      o.payment_sub_type === "wallet" &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const orders = allOrders.filter((o) => {
+                    // Check for wallet indicators in any payment field
+                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                    const originalMethod = (o.payment_method || "").toLowerCase()
+                    
+                    return (
+                      o.payment_sub_type === "wallet" ||
+                      displayMethod === "wallet" ||
+                      originalMethod === "wallet" ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "wallet")
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
@@ -2334,12 +2356,23 @@ const Summary: React.FC = () => {
 
                 {/* Cash on Hand */}
                 {(() => {
-                  const orders = allOrders.filter(
-                    (o) =>
-                      o.payment_sub_type === "on_hand" &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const orders = allOrders.filter((o) => {
+                    // Check for cash indicators in any payment field
+                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                    const originalMethod = (o.payment_method || "").toLowerCase()
+                    
+                    return (
+                      o.payment_sub_type === "on_hand" ||
+                      displayMethod === "on_hand" ||
+                      displayMethod === "cash" ||
+                      originalMethod === "cash" ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
+                      normalizePaymentMethod(displayMethod) === "cash" ||
+                      normalizePaymentMethod(originalMethod) === "cash"
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
+                  })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
                     <div
@@ -2369,12 +2402,28 @@ const Summary: React.FC = () => {
                 {/* Total COD - Hidden for mobile */}
                 {!isCourier &&
                   (() => {
-                    const orders = allOrders.filter(
-                      (o) =>
-                        ["on_hand", "instapay", "wallet", "visa_machine"].includes(o.payment_sub_type || "") &&
-                        shouldIncludeOrder(o) &&
-                        o.assigned_courier_id === currentCourier.courierId,
-                    )
+                    const orders = allOrders.filter((o) => {
+                      const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                      const originalMethod = (o.payment_method || "").toLowerCase()
+                      
+                      return (
+                        (o.payment_sub_type === "on_hand" ||
+                        o.payment_sub_type === "instapay" ||
+                        o.payment_sub_type === "wallet" ||
+                        o.payment_sub_type === "visa_machine" ||
+                        displayMethod === "on_hand" ||
+                        displayMethod === "cash" ||
+                        displayMethod === "instapay" ||
+                        displayMethod === "wallet" ||
+                        displayMethod === "visa_machine" ||
+                        originalMethod === "cash" ||
+                        (o.collected_by && ["cash", "on_hand", "instapay", "wallet", "visa_machine"].includes(o.collected_by.toLowerCase())) ||
+                        normalizePaymentMethod(displayMethod) === "cash" ||
+                        normalizePaymentMethod(originalMethod) === "cash") &&
+                        getTotalCourierAmount(o) > 0 &&
+                        o.assigned_courier_id === currentCourier.courierId
+                      )
+                    })
                     const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                     return orders.length > 0 ? (
                       <div
@@ -2403,7 +2452,7 @@ const Summary: React.FC = () => {
                     const normalizedOriginal = normalizePaymentMethod(o.payment_method)
                     return (
                       (normalizedDisplay === "valu" || (normalizedOriginal === "valu" && !o.collected_by)) &&
-                      shouldIncludeOrder(o) &&
+                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
                     )
                   })
@@ -2433,7 +2482,7 @@ const Summary: React.FC = () => {
                   ) : null
                 })()}
 
-                {/* Paymob - Updated logic to include only delivered orders (not valu) */}
+                {/* Paymob - Updated logic to include all paymob orders with collected amounts */}
                 {(() => {
                   const orders = allOrders.filter((o) => {
                     const displayMethod = getDisplayPaymentMethod(o)
@@ -2442,15 +2491,14 @@ const Summary: React.FC = () => {
                     const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
                     // If it's valu, don't count as paymob
                     if (isValu) return false
-                    // Only include delivered orders for paymob
-                    if (o.status !== "delivered") return false
-                    // If it's paid and delivered, count as paymob
-                    if (o.payment_status === "paid") return true
-                    // Existing logic for delivered orders only
+                    // If it's paid and has collected amount, count as paymob
+                    if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) return true
+                    // Check for paymob indicators (excluding visa_machine which is separate)
                     return (
                       (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
                       (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
-                    )
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return orders.length > 0 ? (
@@ -2496,12 +2544,23 @@ const Summary: React.FC = () => {
                 className={`bg-green-50 border-2 border-green-200 rounded-xl text-center ${isCourier ? "p-6" : "p-8"}`}
               >
                 {(() => {
-                  const cashOnHandOrders = allOrders.filter(
-                    (o) =>
-                      o.payment_sub_type === "on_hand" &&
-                      shouldIncludeOrder(o) &&
-                      o.assigned_courier_id === currentCourier.courierId,
-                  )
+                  const cashOnHandOrders = allOrders.filter((o) => {
+                    // Check for cash indicators in any payment field
+                    const displayMethod = getDisplayPaymentMethod(o).toLowerCase()
+                    const originalMethod = (o.payment_method || "").toLowerCase()
+                    
+                    return (
+                      o.payment_sub_type === "on_hand" ||
+                      displayMethod === "on_hand" ||
+                      displayMethod === "cash" ||
+                      originalMethod === "cash" ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "cash") ||
+                      (o.collected_by && o.collected_by.toLowerCase() === "on_hand") ||
+                      normalizePaymentMethod(displayMethod) === "cash" ||
+                      normalizePaymentMethod(originalMethod) === "cash"
+                    ) && getTotalCourierAmount(o) > 0 &&
+                      o.assigned_courier_id === currentCourier.courierId
+                  })
                   const totalHandToAccounting = cashOnHandOrders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
                   return (
                     <>
@@ -2708,10 +2767,10 @@ const Summary: React.FC = () => {
                                               <span className="font-semibold text-orange-600">
                                                 -{holdFee.toFixed(2)} {translate("EGP")}
                                               </span>
-                                             <button
-  onClick={() =>
-    handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
-  }                                                
+                                              <button
+                                                onClick={() =>
+                                                  handleEditHoldFee(order.id, holdFee, order.hold_fee_comment ?? '')
+                                                }
                                                 className="text-blue-600 hover:text-blue-800 p-1"
                                                 disabled={holdFeeLoading}
                                               >
