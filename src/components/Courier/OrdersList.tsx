@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import {
@@ -384,12 +383,6 @@ const OrdersList: React.FC = () => {
     })
   }
 
-  // Helper function to truncate address
-  const truncateAddress = (address: string, maxLength = 15) => {
-    if (address.length <= maxLength) return address
-    return address.substring(0, maxLength) + "..."
-  }
-
   // Navigation functions
   const goToPreviousDay = () => {
     const currentDate = new Date(selectedDate)
@@ -547,6 +540,7 @@ const OrdersList: React.FC = () => {
             const canvas = document.createElement("canvas")
             const MAX_WIDTH = 720
             const MAX_HEIGHT = 540
+
             let width = img.width
             let height = img.height
 
@@ -564,11 +558,13 @@ const OrdersList: React.FC = () => {
 
             canvas.width = width
             canvas.height = height
+
             const ctx = canvas.getContext("2d")
             if (!ctx) {
               reject(new Error("Failed to get canvas context"))
               return
             }
+
             ctx.drawImage(img, 0, 0, width, height)
 
             canvas.toBlob(
@@ -602,8 +598,8 @@ const OrdersList: React.FC = () => {
         method: "POST",
         body: formData,
       })
-      const data = await res.json()
 
+      const data = await res.json()
       if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
 
       const { error } = await supabase.from("order_proofs").insert({
@@ -662,8 +658,8 @@ const OrdersList: React.FC = () => {
 
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
-    setSaving(true)
 
+    setSaving(true)
     try {
       const method = normalizeMethod(selectedOrder.payment_method)
       const isOrderOriginallyPaidOnline = isOrderPaid(selectedOrder)
@@ -808,6 +804,7 @@ const OrdersList: React.FC = () => {
       ) {
         return paymentSubTypesForCourier[order.payment_sub_type]
       }
+
       // If collected_by is set but no sub-type (e.g., for online payments or non-courier collection)
       if (order.collected_by === "valu") return `${allCollectionMethods.valu} (مدفوع)`
       if (order.collected_by === "paymob") return `${allCollectionMethods.paymob} (مدفوع)`
@@ -816,6 +813,7 @@ const OrdersList: React.FC = () => {
       if (order.collected_by === "vodafone_cash") return `${allCollectionMethods.vodafone_cash} (مدفوع)`
       if (order.collected_by === "orange_cash") return `${allCollectionMethods.orange_cash} (مدفوع)`
       if (order.collected_by === "we_pay") return `${allCollectionMethods.we_pay} (مدفوع)`
+
       return allCollectionMethods[order.collected_by]
     }
 
@@ -880,6 +878,7 @@ const OrdersList: React.FC = () => {
           >
             <ChevronUp className="w-5 h-5" />
           </button>
+
           {/* Scroll to Top Button */}
           <button
             onClick={scrollToTop}
@@ -893,6 +892,7 @@ const OrdersList: React.FC = () => {
           >
             <ChevronUp className="w-4 h-4" />
           </button>
+
           {/* Scroll to Bottom Button */}
           <button
             onClick={scrollToBottom}
@@ -906,6 +906,7 @@ const OrdersList: React.FC = () => {
           >
             <ChevronDown className="w-4 h-4" />
           </button>
+
           {/* Scroll Down Button */}
           <button
             onClick={scrollDown}
@@ -943,6 +944,7 @@ const OrdersList: React.FC = () => {
                 <ChevronRight className="w-3 h-3" />
                 <span className="hidden sm:inline">السابق</span>
               </button>
+
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg border border-blue-200 text-xs">
                   <Calendar className="w-3 h-3" />
@@ -956,6 +958,7 @@ const OrdersList: React.FC = () => {
                   title="اختر تاريخ"
                 />
               </div>
+
               <button
                 onClick={goToNextDay}
                 className="flex items-center gap-1 px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs transition-colors"
@@ -1031,8 +1034,8 @@ const OrdersList: React.FC = () => {
             </div>
           </div>
         ) : (
-          // Orders Grid - Improved mobile responsiveness
-          <div className="grid gap-1.5 grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10">
+          // Orders Grid - Updated for mobile-friendly 2 columns
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
             {orders.map((order) => {
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
@@ -1045,7 +1048,7 @@ const OrdersList: React.FC = () => {
               return (
                 <div
                   key={order.id}
-                  className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-all border overflow-hidden ${
+                  className={`relative bg-white rounded-xl shadow-sm hover:shadow-lg transition-all border overflow-hidden ${
                     isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
                   }`}
                 >
@@ -1092,7 +1095,7 @@ const OrdersList: React.FC = () => {
                       {/* Completion Badge */}
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
                         <div
-                          className="bg-red-600 text-white px-2 py-1 rounded-lg font-bold text-xs shadow-lg transform rotate-12"
+                          className="bg-red-600 text-white px-3 py-1.5 rounded-lg font-bold text-sm shadow-lg transform rotate-12"
                           style={{ textShadow: "1px 1px 2px rgba(0,0,0,0.5)" }}
                         >
                           مكتمل ✓
@@ -1103,19 +1106,19 @@ const OrdersList: React.FC = () => {
 
                   {/* Card Header */}
                   <div
-                    className={`px-1.5 py-1 border-b ${
+                    className={`px-3 py-2 border-b ${
                       isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-xs font-bold text-gray-900 truncate">#{order.order_id}</h3>
-                        <p className="text-xs text-gray-600 mt-0.5">{formatTime(order.created_at)}</p>
+                        <h3 className="text-sm font-bold text-gray-900 truncate">#{order.order_id}</h3>
+                        <p className="text-xs text-gray-600 mt-1">{formatTime(order.created_at)}</p>
                       </div>
-                      <div className="flex flex-col gap-0.5 ml-1">
+                      <div className="flex flex-col gap-1 ml-2">
                         {/* Payment Status Indicator */}
                         <div
-                          className={`flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium ${
+                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                             isPaid
                               ? "bg-green-50 text-green-700 border border-green-200"
                               : "bg-yellow-50 text-yellow-700 border border-yellow-200"
@@ -1123,28 +1126,28 @@ const OrdersList: React.FC = () => {
                         >
                           {isPaid ? (
                             <>
-                              <CheckCircle className="w-2 h-2" />
-                              <span className="text-xs">مدفوع</span>
+                              <CheckCircle className="w-3 h-3" />
+                              <span>مدفوع</span>
                             </>
                           ) : (
                             <>
-                              <DollarSign className="w-2 h-2" />
-                              <span className="text-xs">غير مدفوع</span>
+                              <DollarSign className="w-3 h-3" />
+                              <span>غير مدفوع</span>
                             </>
                           )}
                         </div>
                         {/* Status Badge */}
                         <div
-                          className={`flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${statusInfo.bgColor} ${statusInfo.color}`}
                         >
-                          <StatusIcon className="w-2 h-2" />
-                          <span className="text-xs">{statusInfo.label}</span>
+                          <StatusIcon className="w-3 h-3" />
+                          <span>{statusInfo.label}</span>
                         </div>
                         {/* Edited Badge */}
                         {isEditedOrder && (
-                          <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
-                            <Check className="w-2 h-2" />
-                            <span className="text-xs">تم التعديل</span>
+                          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
+                            <Check className="w-3 h-3" />
+                            <span>تم التعديل</span>
                           </div>
                         )}
                       </div>
@@ -1152,33 +1155,33 @@ const OrdersList: React.FC = () => {
                   </div>
 
                   {/* Card Content */}
-                  <div className="p-1.5 space-y-1.5">
+                  <div className="p-3 space-y-3">
                     {/* Customer Name */}
                     <div className="text-center">
-                      <p className="text-xs font-bold text-gray-900 truncate" title={order.customer_name}>
+                      <p className="text-sm font-bold text-gray-900 truncate" title={order.customer_name}>
                         {order.customer_name}
                       </p>
                     </div>
 
-                    {/* Address */}
+                    {/* Address - Full display without truncation */}
                     <div
-                      className={`flex items-start gap-1 border rounded-lg p-1 ${
+                      className={`flex items-start gap-2 border rounded-lg p-2 ${
                         isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
                       }`}
                     >
-                      <MapPin className="w-2.5 h-2.5 text-gray-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-gray-700 leading-relaxed" title={order.address}>
-                        {truncateAddress(order.address, 15)}
+                      <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-gray-700 leading-relaxed break-words" title={order.address}>
+                        {order.address}
                       </p>
                     </div>
 
                     {/* Amount */}
                     <div
-                      className={`border rounded-lg p-1 text-center ${
+                      className={`border rounded-lg p-2 text-center ${
                         isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
                       }`}
                     >
-                      <p className={`text-xs font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
+                      <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
                         {totalAmount.toFixed(0)}
                       </p>
                       <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>ج.م</p>
@@ -1187,23 +1190,23 @@ const OrdersList: React.FC = () => {
                     {/* Phone Button */}
                     <button
                       onClick={() => handlePhoneClick(order.mobile_number)}
-                      className={`w-full border py-1 px-1.5 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 ${
+                      className={`w-full border py-2 px-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 ${
                         isEditedOrder
                           ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
                           : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                       }`}
                     >
-                      <Phone className="w-2.5 h-2.5" />
-                      <span className="font-mono text-xs truncate">{order.mobile_number}</span>
+                      <Phone className="w-4 h-4" />
+                      <span className="font-mono text-sm truncate">{order.mobile_number}</span>
                     </button>
 
                     {/* Payment Method Display */}
                     <div
-                      className={`border rounded-lg p-1 text-center text-xs ${
+                      className={`border rounded-lg p-2 text-center text-sm ${
                         isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
                       }`}
                     >
-                      <p className={`font-medium truncate text-xs ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
+                      <p className={`font-medium truncate ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
                         {getDisplayPaymentMethod(order)}
                       </p>
                     </div>
@@ -1211,17 +1214,19 @@ const OrdersList: React.FC = () => {
                     {/* Notes Display */}
                     {order.notes && (
                       <div
-                        className={`border rounded-lg p-1 text-xs ${
+                        className={`border rounded-lg p-2 text-sm ${
                           isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
                         }`}
                       >
-                        <div className="flex items-start gap-1">
-                          <FileText className="w-2.5 h-2.5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex items-start gap-2">
+                          <FileText className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                           <p
-                            className={`text-xs leading-relaxed ${isEditedOrder ? "text-red-700" : "text-yellow-700"}`}
+                            className={`text-sm leading-relaxed break-words ${
+                              isEditedOrder ? "text-red-700" : "text-yellow-700"
+                            }`}
                             title={order.notes}
                           >
-                            {order.notes.length > 20 ? order.notes.substring(0, 20) + "..." : order.notes}
+                            {order.notes}
                           </p>
                         </div>
                       </div>
@@ -1231,17 +1236,17 @@ const OrdersList: React.FC = () => {
                     {canEditOrder(order) ? (
                       <button
                         onClick={() => openModal(order)}
-                        className={`w-full font-medium py-1 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 text-xs ${
+                        className={`w-full font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm ${
                           isEditedOrder
                             ? "bg-red-600 hover:bg-red-700 text-white"
                             : "bg-blue-600 hover:bg-blue-700 text-white"
                         }`}
                       >
-                        <Edit className="w-2.5 h-2.5" />
-                        <span className="text-xs">تحديث</span>
+                        <Edit className="w-4 h-4" />
+                        <span>تحديث</span>
                       </button>
                     ) : (
-                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-1 px-1.5 rounded-lg text-center text-xs">
+                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-2 px-3 rounded-lg text-center text-sm">
                         مكتمل
                       </div>
                     )}
@@ -1440,7 +1445,6 @@ const OrdersList: React.FC = () => {
                         const isOrderUnpaid = !isOrderPaid(selectedOrder)
                         const currentFee = Number.parseFloat(updateData.delivery_fee) || 0
                         const currentPartial = Number.parseFloat(updateData.partial_paid_amount) || 0
-
                         const isReturnStatus = updateData.status === "return"
                         const isReceivingPartWithNoFees =
                           updateData.status === "receiving_part" && currentFee === 0 && currentPartial === 0
