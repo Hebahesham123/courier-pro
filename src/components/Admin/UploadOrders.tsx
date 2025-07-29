@@ -172,7 +172,6 @@ const UploadOrders: React.FC = () => {
   const parseOrders = (jsonData: any[]): OrderData[] => {
     return jsonData.map((row: any) => {
       const paymentInfo = normalizePayment(row["Payment Method"] || "")
-
       return {
         order_id: String(row["Name"] || ""),
         customer_name: String(row["Shipping Name"] || row["Billing Name"] || "Unknown"),
@@ -213,14 +212,17 @@ const UploadOrders: React.FC = () => {
     setMessage(null)
     setValidationErrors([])
     setUploadProgress(0)
+
     try {
       setMessage({ type: "info", text: translate("processing") })
       const data = await selectedFile.arrayBuffer()
       const workbook = XLSX.read(data)
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
       const orders = parseOrders(jsonData)
       const errors = validateOrders(orders)
+
       setValidationErrors(errors)
       setPreview(orders.slice(0, 5))
       setMessage(null)
@@ -232,19 +234,23 @@ const UploadOrders: React.FC = () => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
+
     processFile(selectedFile)
   }
 
   const handleUpload = async () => {
     if (!file) return
+
     setLoading(true)
     setMessage(null)
     setUploadProgress(0)
+
     try {
       const data = await file.arrayBuffer()
       const workbook = XLSX.read(data)
       const worksheet = workbook.Sheets[workbook.SheetNames[0]]
       const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
       const orders = parseOrders(jsonData)
 
       // Simulate progress
@@ -254,6 +260,7 @@ const UploadOrders: React.FC = () => {
       }
 
       const { error } = await supabase.from("orders").insert(orders)
+
       if (error) throw error
 
       setMessage({ type: "success", text: translate("successfullyUploaded", orders.length) })
@@ -613,6 +620,12 @@ const UploadOrders: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
+                        {translate("address")}
+                      </div>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
                         {translate("billingCity")}
                       </div>
                     </th>
@@ -647,6 +660,9 @@ const UploadOrders: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-900">{order.mobile_number}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap max-w-xs">
+                        <span className="text-sm text-gray-900 truncate block">{order.address}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-900">{order.billing_city}</span>

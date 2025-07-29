@@ -244,6 +244,7 @@ const OrdersManagement: React.FC = () => {
   const fetchCouriers = async () => {
     try {
       const { data: allUsers, error } = await supabase.from("users").select("id, name, email, role")
+
       if (error) throw error
 
       const courierUsers = allUsers?.filter((user) => user.role?.toLowerCase() === "courier") || []
@@ -264,9 +265,7 @@ const OrdersManagement: React.FC = () => {
       paymob: "bg-green-100 text-green-800 border-green-200",
       fawry: "bg-green-100 text-green-800 border-green-200",
     }
-
     const displayMethod = method === "paid" ? "Paid Online" : method
-
     return (
       <span
         className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[method as keyof typeof colors] || colors.paid}`}
@@ -448,6 +447,7 @@ const OrdersManagement: React.FC = () => {
         }
 
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+
         if (error) throw error
       }
 
@@ -493,6 +493,7 @@ const OrdersManagement: React.FC = () => {
         }
 
         const { error } = await supabase.from("orders").update(updateData).eq("id", order.id)
+
         if (error) throw error
       }
 
@@ -607,7 +608,7 @@ const OrdersManagement: React.FC = () => {
   }
 
   const applyTextFilters = () => {
-    setFilters(prev => ({
+    setFilters((prev) => ({
       ...prev,
       mobile: textFilters.mobile,
       payment: textFilters.payment,
@@ -645,9 +646,7 @@ const OrdersManagement: React.FC = () => {
       pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
       cod: "bg-orange-100 text-orange-800 border-orange-200",
     }
-
     const displayStatus = status === "cod" ? "عند التسليم" : status === "paid" ? "مدفوع" : "معلق"
-
     return (
       <span
         className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[status as keyof typeof colors] || colors.pending}`}
@@ -762,6 +761,32 @@ const OrdersManagement: React.FC = () => {
               </div>
             )}
 
+            {/* Address */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">العنوان</label>
+              {isEditing ? (
+                <div className="flex items-center gap-2">
+                  <textarea
+                    value={edited.address ?? order.address}
+                    onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    rows={2}
+                  />
+                  <button
+                    onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm text-gray-900 break-words">{order.address}</span>
+                </div>
+              )}
+            </div>
+
             {/* Notes */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">الملاحظات</label>
@@ -785,32 +810,6 @@ const OrdersManagement: React.FC = () => {
                 <div className="flex items-start gap-2">
                   <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                   <span className="text-sm text-gray-900 break-words">{order.notes || "لا توجد ملاحظات"}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Address */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">العنوان</label>
-              {isEditing ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={edited.address ?? order.address}
-                    onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
-                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-gray-900 break-words">{order.address}</span>
                 </div>
               )}
             </div>
@@ -1124,6 +1123,7 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1138,6 +1138,7 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1152,6 +1153,7 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1166,6 +1168,7 @@ const OrdersManagement: React.FC = () => {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1288,7 +1291,7 @@ const OrdersManagement: React.FC = () => {
                     value={textFilters.mobile}
                     onChange={(e) => setTextFilters((prev) => ({ ...prev, mobile: e.target.value }))}
                     className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      textFilters.mobile !== filters.mobile ? 'border-orange-300 bg-orange-50' : 'border-gray-300'
+                      textFilters.mobile !== filters.mobile ? "border-orange-300 bg-orange-50" : "border-gray-300"
                     }`}
                   />
                 </div>
@@ -1305,7 +1308,7 @@ const OrdersManagement: React.FC = () => {
                     value={textFilters.orderId}
                     onChange={(e) => setTextFilters((prev) => ({ ...prev, orderId: e.target.value }))}
                     className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      textFilters.orderId !== filters.orderId ? 'border-orange-300 bg-orange-50' : 'border-gray-300'
+                      textFilters.orderId !== filters.orderId ? "border-orange-300 bg-orange-50" : "border-gray-300"
                     }`}
                   />
                 </div>
@@ -1458,6 +1461,9 @@ const OrdersManagement: React.FC = () => {
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[80px]">
                       وقت الطلب
                     </th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[300px]">
+                      العنوان
+                    </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[250px]">
                       الملاحظات
                     </th>
@@ -1492,6 +1498,7 @@ const OrdersManagement: React.FC = () => {
                     const edited = orderEdits[order.id] || {}
                     const isEditing = editingOrder === order.id
                     const assigned = isOrderAssigned(order)
+
                     return (
                       <tr
                         key={order.id}
@@ -1564,6 +1571,30 @@ const OrdersManagement: React.FC = () => {
                               {order.created_at ? formatOrderTime(order.created_at) : "-"}
                             </span>
                           </div>
+                        </td>
+                        <td className="px-6 py-4 max-w-xs">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <textarea
+                                value={edited.address ?? order.address}
+                                onChange={(e) => handleEditChange(order.id, "address", e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                rows={2}
+                              />
+                              <button
+                                onClick={() => openExpandedEdit(order.id, "address", edited.address ?? order.address)}
+                                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                                title="توسيع محرر العنوان"
+                              >
+                                <Maximize2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-2">
+                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                              <span className="text-sm text-gray-900 break-words">{order.address}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 max-w-xs">
                           {isEditing ? (
