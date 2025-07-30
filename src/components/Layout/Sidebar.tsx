@@ -95,13 +95,19 @@ const Sidebar: React.FC = () => {
       description: "إدارة المندوبين",
     },
     {
+      path: "/admin/couriers-sheet",
+      icon: FileText,
+      label: t("couriersSheet") || "جداول المندوبين",
+      color: "text-indigo-400",
+      description: "عرض جداول الطلبات لكل مندوب",
+    },
+    {
       path: "/admin/reports",
       icon: FileText,
       label: t("reports") || "التقارير",
       color: "text-pink-400",
       description: "تقارير الأداء والإحصائيات",
     },
-    
   ]
 
   const courierMenuItems: MenuItem[] = [
@@ -119,7 +125,13 @@ const Sidebar: React.FC = () => {
       color: "text-green-400",
       description: "طلبات التوصيل المخصصة لي",
     },
-   
+    {
+      path: "/courier/yoursheet",
+      icon: FileText,
+      label: t("ورقة الطلبات") || "ورقة الطلبات",
+      color: "text-purple-400",
+      description: "جدول الطلبات الخاص بي",
+    },
   ]
 
   const menuItems = user?.role === "admin" ? adminMenuItems : courierMenuItems
@@ -242,15 +254,7 @@ const Sidebar: React.FC = () => {
             <div className="flex items-center">
               <div className="relative">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
-                  {user?.avatar ? (
-                    <img
-                      src={user.avatar || "/placeholder.svg"}
-                      alt={user.name}
-                      className="w-full h-full rounded-xl object-cover"
-                    />
-                  ) : (
-                    getUserInitials(user?.name)
-                  )}
+                  {getUserInitials(user?.name)}
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800"></div>
               </div>
@@ -319,7 +323,7 @@ const Sidebar: React.FC = () => {
                   )}
 
                   {/* Notification Badge for specific items */}
-                  {item.path === "/admin" && notifications > 0 && !isCollapsed && (
+                  {item.path === "/admin" && !!notifications && notifications > 0 && !isCollapsed && (
                     <div className="flex items-center gap-1">
                       <Bell className="w-4 h-4 text-yellow-400" />
                       <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 font-bold">

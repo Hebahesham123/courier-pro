@@ -42,6 +42,7 @@ interface OrderProof {
 }
 
 interface Order {
+  payment_breakdown(payment_breakdown: any): unknown
   id: string
   order_id: string
   customer_name: string
@@ -114,12 +115,25 @@ const collectionMethodsForCourier: Record<string, string> = {
   courier: "المندوب",
 }
 
-// Modified payment sub-types for courier's choice in modal
-const paymentSubTypesForCourier: Record<string, string> = {
-  on_hand: "نقداً",
-  instapay: "إنستاباي",
-  wallet: "المحفظة",
-  visa_machine: "ماكينة فيزا",
+// Payment method options for breakdown
+const paymentMethodOptions: { value: string; label: string }[] = [
+  { value: "cash", label: "نقداً" },
+  { value: "instapay", label: "إنستاباي" },
+  { value: "wallet", label: "المحفظة" },
+  { value: "visa_machine", label: "ماكينة فيزا" },
+  { value: "paymob", label: "باي موب" },
+  { value: "valu", label: "فاليو" },
+  { value: "fawry", label: "فوري" },
+  { value: "vodafone_cash", label: "فودافون كاش" },
+  { value: "orange_cash", label: "أورانج كاش" },
+  { value: "we_pay", label: "وي باي" },
+  { value: "other", label: "أخرى" },
+]
+
+// Payment breakdown entry type
+type PaymentBreakdownEntry = {
+  method: string
+  amount: number
 }
 
 // Full collection methods for display purposes
@@ -139,6 +153,11 @@ const CLOUDINARY_CLOUD_NAME = "dclsvvfu2"
 const CLOUDINARY_UPLOAD_PRESET = "hebaaa"
 
 const OrdersList: React.FC = () => {
+  // State for payment breakdown in modal
+  const [paymentBreakdown, setPaymentBreakdown] = useState<PaymentBreakdownEntry[]>([])
+  // For new entry
+  const [newPaymentMethod, setNewPaymentMethod] = useState("")
+  const [newPaymentAmount, setNewPaymentAmount] = useState("")
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
@@ -521,6 +540,10 @@ const OrdersList: React.FC = () => {
       collected_by: initialCollectedBy,
       payment_sub_type: initialPaymentSubType,
     })
+    // Load payment_breakdown if exists, else empty
+    setPaymentBreakdown(Array.isArray(order.payment_breakdown) ? order.payment_breakdown : [])
+    setNewPaymentMethod("")
+    setNewPaymentAmount("")
     setModalOpen(true)
   }
 
@@ -757,6 +780,9 @@ const OrdersList: React.FC = () => {
         updatePayload.payment_sub_type = null
       }
 
+      // Add payment_breakdown to updatePayload
+      updatePayload.payment_breakdown = paymentBreakdown
+
       const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
 
       if (error) {
@@ -796,14 +822,8 @@ const OrdersList: React.FC = () => {
     const method = normalizeMethod(order.payment_method)
 
     // If collected_by and payment_sub_type are set, prioritize them for display
+
     if (order.collected_by && allCollectionMethods[order.collected_by]) {
-      if (
-        order.collected_by === "courier" &&
-        order.payment_sub_type &&
-        paymentSubTypesForCourier[order.payment_sub_type]
-      ) {
-        return paymentSubTypesForCourier[order.payment_sub_type]
-      }
 
       // If collected_by is set but no sub-type (e.g., for online payments or non-courier collection)
       if (order.collected_by === "valu") return `${allCollectionMethods.valu} (مدفوع)`
@@ -1592,11 +1612,6 @@ const OrdersList: React.FC = () => {
                                   }
                                 >
                                   <option value="">اختر طريقة الدفع</option>
-                                  {Object.entries(paymentSubTypesForCourier).map(([key, label]) => (
-                                    <option key={key} value={key}>
-                                      {label}
-                                    </option>
-                                  ))}
                                 </select>
                               </div>
                             )}

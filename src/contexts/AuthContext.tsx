@@ -208,7 +208,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           setTimeout(() => fetchUserProfileWithRetry(session.user), 300)
         } else {
-          setUser(null)
+          // Only log out if user is not a courier
+          setUser((prev) => {
+            if (prev?.role === "courier") {
+              // Don't auto-logout courier
+              return prev
+            }
+            return null
+          })
           setLoading(false)
         }
       } catch (err) {
@@ -229,7 +236,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) {
         setTimeout(() => fetchUserProfileWithRetry(session.user), 300)
       } else {
-        setUser(null)
+        setUser((prev) => {
+          if (prev?.role === "courier") {
+            // Don't auto-logout courier
+            return prev
+          }
+          return null
+        })
         setLoading(false)
       }
     })

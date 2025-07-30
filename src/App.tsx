@@ -12,8 +12,10 @@ import Summary from "./components/Dashboard/Summary"
 import UploadOrders from "./components/Admin/UploadOrders"
 import OrdersManagement from "./components/Admin/OrdersManagement"
 import OrdersList from "./components/Courier/OrdersList"
+import CourierYourSheet from "./components/Courier/YourSheet"
 import CouriersManagement from "./components/Admin/CouriersManagement"
 import Reports from "./components/Admin/reports"
+import AdminCouriersSheet from "./components/Admin/AdminCouriersSheet"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -109,6 +111,16 @@ const AppRoutes: React.FC = () => {
             }
           />
           <Route
+            path="/admin/couriers-sheet"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <AdminCouriersSheet />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/reports"
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
@@ -134,6 +146,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["courier"]}>
                 <AppLayout>
                   <OrdersList />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courier/yoursheet"
+            element={
+              <ProtectedRoute allowedRoles={["courier"]}>
+                <AppLayout>
+                  <CourierYourSheet />
                 </AppLayout>
               </ProtectedRoute>
             }
