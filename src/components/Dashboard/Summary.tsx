@@ -66,6 +66,9 @@ interface Order {
   admin_delivery_fee?: number | null
   extra_fee?: number | null
   payment_status?: string
+  onther_payments?: string | { method: string; amount: string }[]
+  // Allow extra properties for temporary fields (like _onther_amount)
+  [key: string]: any
 }
 
 interface CourierSummary {
@@ -78,12 +81,14 @@ interface DateRange {
   endDate: string
 }
 
-// Updated normalize function to exclude visa_machine from paymob
-const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa_machine" | "other" => {
+// Updated normalize function to handle all sub-methods for onther payments
+const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa_machine" | "instapay" | "wallet" | "on_hand" | "other" => {
   const m = method.toLowerCase().trim()
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
-  if (m === "visa_machine") return "visa_machine" // Keep visa_machine separate
-  // All card payments (visa, mastercard, etc.) should be categorized as paymob
+  if (m === "visa_machine") return "visa_machine"
+  if (m === "instapay") return "instapay"
+  if (m === "wallet") return "wallet"
+  if (m === "on_hand" || m === "on hand") return "on_hand"
   if (
     m === "paymob" ||
     m.includes("visa") ||
@@ -94,19 +99,56 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
   )
     return "paymob"
   if (m === "cash") return "cash"
+  // Debug: log any sub-methods that are grouped as 'other'
+  if (m && m !== "other") {
+    if (typeof window !== 'undefined' && window.console) {
+      window.console.warn("[normalizePaymentMethod] Unrecognized payment method, grouped as 'other':", method)
+    }
+  }
   return "other"
 }
 
-// Helper function to get the display payment method
-const getDisplayPaymentMethod = (order: Order): string => {
-  // Priority: payment_sub_type > collected_by > original payment_method
-  if (order.payment_sub_type) {
-    return order.payment_sub_type
+// Helper function to get the display payment method (with translation)
+const getDisplayPaymentMethod = (order: Order, t?: (key: string) => string): string => {
+  // For split payment sub-row (from modal), use the payment_sub_type directly (already normalized)
+  if (order._onther_amount !== undefined && order.payment_sub_type) {
+    const label = t ? t(order.payment_sub_type) : order.payment_sub_type
+    if (label === order.payment_sub_type) {
+      // Not translated, log for debug
+      if (typeof window !== 'undefined' && window.console) {
+        window.console.warn('[getDisplayPaymentMethod] No translation for payment_sub_type:', order.payment_sub_type)
+      }
+    }
+    return label
+  }
+  // For other cases, use normalized payment method
+  if (order.payment_sub_type && order.payment_sub_type !== 'onther') {
+    const normalized = normalizePaymentMethod(order.payment_sub_type)
+    const label = t ? t(normalized) : normalized
+    if (label === normalized) {
+      if (typeof window !== 'undefined' && window.console) {
+        window.console.warn('[getDisplayPaymentMethod] No translation for normalized payment_sub_type:', normalized)
+      }
+    }
+    return label
   }
   if (order.collected_by) {
-    return order.collected_by
+    const label = t ? t(order.collected_by) : order.collected_by
+    if (label === order.collected_by) {
+      if (typeof window !== 'undefined' && window.console) {
+        window.console.warn('[getDisplayPaymentMethod] No translation for collected_by:', order.collected_by)
+      }
+    }
+    return label
   }
-  return order.payment_method || ""
+  const normalized = normalizePaymentMethod(order.payment_method || "")
+  const label = t ? t(normalized) : normalized
+  if (label === normalized) {
+    if (typeof window !== 'undefined' && window.console) {
+      window.console.warn('[getDisplayPaymentMethod] No translation for payment_method:', normalized)
+    }
+  }
+  return label
 }
 
 const Summary: React.FC = () => {
@@ -546,6 +588,8 @@ const Summary: React.FC = () => {
   }
 
   // Helper function to get total amount courier handled (order + delivery fee)
+  // If payment_sub_type is 'onther', this function is not used for payment breakdowns, only for totals.
+  // For payment breakdowns, use getOntherSubPaymentAmount.
   const getTotalCourierAmount = (order: Order): number => {
     let orderAmount = 0
     const deliveryAmount = Number(order.delivery_fee || 0)
@@ -554,6 +598,18 @@ const Summary: React.FC = () => {
       orderAmount = 0
     } else if (order.status === "return") {
       orderAmount = 0
+    } else if (order.payment_sub_type === "onther" && order.onther_payments) {
+      // Sum all onther_payments amounts for total only
+      try {
+        const arr = typeof order.onther_payments === 'string' ? JSON.parse(order.onther_payments) : order.onther_payments
+        if (Array.isArray(arr)) {
+          orderAmount = arr.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0)
+        } else {
+          orderAmount = 0
+        }
+      } catch {
+        orderAmount = 0
+      }
     } else {
       orderAmount = getCourierOrderAmount(order)
     }
@@ -564,6 +620,19 @@ const Summary: React.FC = () => {
     const extraFee = Number(order.extra_fee || 0)
 
     return orderAmount + deliveryAmount - holdFee - adminFee - extraFee
+  }
+
+  // Helper to get the amount for a specific sub-payment method in onther_payments
+  const getOntherSubPaymentAmount = (order: Order, methodKey: string): number => {
+    if (order.payment_sub_type === 'onther' && order.onther_payments) {
+      try {
+        const arr = typeof order.onther_payments === 'string' ? JSON.parse(order.onther_payments) : order.onther_payments
+        if (Array.isArray(arr)) {
+          return arr.filter(item => item.method === methodKey).reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0)
+        }
+      } catch {}
+    }
+    return 0
   }
 
   // Helper function to check if order should be included in calculations
@@ -583,9 +652,33 @@ const Summary: React.FC = () => {
     )
   }
 
-  const openOrders = (orders: Order[], title: string) => {
+  // Enhanced: Only show the relevant sub-payment and amount for each payment method in the modal
+  const openOrders = (orders: Order[], title: string, methodKey?: string) => {
+    // If methodKey is provided, filter and map orders to only include the relevant sub-payment
+    let displayOrders = orders
+    if (methodKey) {
+      displayOrders = orders.map((order) => {
+        if (order.payment_sub_type === 'onther' && order.onther_payments) {
+          let arr: { method: string; amount: string }[] = []
+          try {
+            arr = typeof order.onther_payments === 'string' ? JSON.parse(order.onther_payments) : order.onther_payments
+          } catch { arr = [] }
+          // Find the sub-payment for this methodKey
+          const sub = arr.find(item => normalizePaymentMethod(item.method) === methodKey)
+          if (sub) {
+            return { ...order, _onther_amount: parseFloat(sub.amount) || 0, payment_sub_type: methodKey }
+          }
+        }
+        return order
+      }).filter(order => {
+        // Only include if it's a relevant sub-payment or a normal order for this method
+        if (order.payment_sub_type === 'onther' && order._onther_amount && order.payment_sub_type === methodKey) return true
+        if (order.payment_sub_type !== 'onther') return true
+        return false
+      })
+    }
     setModalTitle(title)
-    setSelectedOrders(orders)
+    setSelectedOrders(displayOrders)
   }
 
   const handleCourierSelect = (courier: CourierSummary) => {
@@ -691,64 +784,58 @@ const Summary: React.FC = () => {
         receivingPart.courierCollected +
         handToHand.courierCollected)
 
-    // Updated payment method breakdowns - include ALL orders with collected amounts based on payment method
-    const getPaymentMethodMetrics = (filterFn: (order: Order) => boolean) => {
-      const orders = filteredOrders.filter((o) => filterFn(o) && getTotalCourierAmount(o) > 0)
-      const count = orders.length
-      const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
-      return { count, amount, orders }
+    // Improved: Flatten all orders so each sub-payment in onther_payments is treated as a separate entry for summary
+    const flattenOrdersForPaymentSummary = (orders: Order[]) => {
+      const result: { order: Order; method: string; amount: number }[] = []
+      for (const o of orders) {
+        if (o.payment_sub_type === 'onther' && o.onther_payments) {
+          let arr: { method: string; amount: string }[] = []
+          try {
+            arr = typeof o.onther_payments === 'string' ? JSON.parse(o.onther_payments) : o.onther_payments
+          } catch { arr = [] }
+          if (Array.isArray(arr)) {
+            for (const item of arr) {
+              const normalizedSubMethod = normalizePaymentMethod(item.method)
+              const amt = parseFloat(item.amount) || 0
+              if (amt > 0) {
+                // Each sub-payment is a separate entry, with _onther_amount for modal display
+                result.push({ order: { ...o, payment_sub_type: normalizedSubMethod, _onther_amount: amt }, method: normalizedSubMethod, amount: amt })
+              }
+            }
+          }
+        } else {
+          // Use normalized payment method for non-onther orders
+          const normalized = normalizePaymentMethod(o.payment_sub_type || o.payment_method)
+          const amt = getTotalCourierAmount(o)
+          if (amt > 0) {
+            result.push({ order: o, method: normalized, amount: amt })
+          }
+        }
+      }
+      return result
+    }
+
+    // Use the flattened list for all payment method breakdowns
+    const paymentSummaryList = flattenOrdersForPaymentSummary(filteredOrders)
+
+    const getPaymentMethodMetrics = (methodKey: string) => {
+      const filtered = paymentSummaryList.filter(item => item.method === methodKey)
+      return {
+        count: filtered.length,
+        amount: filtered.reduce((sum, item) => sum + item.amount, 0),
+        orders: filtered.map(item => item.order),
+      }
     }
 
     // Updated paymob orders calculation - include all orders with paymob payment that have collected amounts
-    const paymobOrders = getPaymentMethodMetrics((o) => {
-      const displayMethod = getDisplayPaymentMethod(o)
-      const normalizedDisplay = normalizePaymentMethod(displayMethod)
-      const normalizedOriginal = normalizePaymentMethod(o.payment_method)
-      const isValu = normalizedDisplay === "valu" || normalizedOriginal === "valu"
-      // If it's valu, don't count as paymob
-      if (isValu) return false
-      // If it's paid and has collected amount, count as paymob
-      if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) return true
-      // Check for paymob indicators (excluding visa_machine which is separate)
-      return (
-        (normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
-        (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)
-      )
-    })
 
-    const valuOrders = getPaymentMethodMetrics(
-      (o) =>
-        normalizePaymentMethod(getDisplayPaymentMethod(o)) === "valu" ||
-        (normalizePaymentMethod(o.payment_method) === "valu" && !o.collected_by),
-    )
-
-    // Strict filtering for specific payment sub-types
-    const visaMachineOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "visa_machine")
-    const instapayOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "instapay")
-    const walletOrders = getPaymentMethodMetrics((o) => o.payment_sub_type === "wallet")
-
-    // Refined cashOnHandOrders logic
-    const cashOnHandOrders = getPaymentMethodMetrics((o) => {
-  const displayMethod = getDisplayPaymentMethod(o)?.toLowerCase() || ""
-  const originalMethod = (o.payment_method || "").toLowerCase()
-
-  // Explicitly check for 'on_hand' sub-type
-  if (o.payment_sub_type === "on_hand") return true
-
-  // Check for general cash indicators
-  const isGeneralCash =
-    displayMethod === "cash" ||
-    originalMethod === "cash" ||
-    o.collected_by?.toLowerCase() === "cash" ||
-    o.collected_by?.toLowerCase() === "on_hand"
-
-  const isSpecificElectronicCashLike =
-    o.payment_sub_type === "instapay" ||
-    o.payment_sub_type === "wallet" ||
-    o.payment_sub_type === "visa_machine"
-
-  return !!(isGeneralCash && !isSpecificElectronicCashLike)
-})
+    // Now, get metrics for each payment method using the new flat list
+    const visaMachineOrders = getPaymentMethodMetrics('visa_machine')
+    const instapayOrders = getPaymentMethodMetrics('instapay')
+    const walletOrders = getPaymentMethodMetrics('wallet')
+    const cashOnHandOrders = getPaymentMethodMetrics('cash')
+    const paymobOrders = getPaymentMethodMetrics('paymob')
+    const valuOrders = getPaymentMethodMetrics('valu')
 
     const totalCODOrders = {
       count: visaMachineOrders.count + instapayOrders.count + walletOrders.count + cashOnHandOrders.count,
@@ -1220,7 +1307,7 @@ const Summary: React.FC = () => {
                       {metrics.visaMachineOrders.count > 0 && (
                         <div
                           className="bg-slate-50 border-2 border-slate-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا")}
+                          onClick={() => openOrders(metrics.visaMachineOrders.orders, "طلبات ماكينة فيزا", 'visa_machine')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Monitor className="w-6 h-6 text-slate-600" />
@@ -1238,7 +1325,7 @@ const Summary: React.FC = () => {
                       {metrics.instapayOrders.count > 0 && (
                         <div
                           className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي")}
+                          onClick={() => openOrders(metrics.instapayOrders.orders, "طلبات إنستاباي", 'instapay')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Smartphone className="w-6 h-6 text-cyan-600" />
@@ -1256,7 +1343,7 @@ const Summary: React.FC = () => {
                       {metrics.walletOrders.count > 0 && (
                         <div
                           className="bg-teal-50 border-2 border-teal-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة")}
+                          onClick={() => openOrders(metrics.walletOrders.orders, "طلبات المحفظة", 'wallet')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Wallet className="w-6 h-6 text-teal-600" />
@@ -1274,7 +1361,7 @@ const Summary: React.FC = () => {
                       {metrics.cashOnHandOrders.count > 0 && (
                         <div
                           className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً")}
+                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'cash')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Banknote className="w-6 h-6 text-emerald-600" />
@@ -1313,7 +1400,7 @@ const Summary: React.FC = () => {
                       {metrics.valuOrders.count > 0 && (
                         <div
                           className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو")}
+                          onClick={() => openOrders(metrics.valuOrders.orders, "طلبات فاليو", 'valu')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Wallet className="w-6 h-6 text-indigo-600" />
@@ -1331,7 +1418,7 @@ const Summary: React.FC = () => {
                       {metrics.paymobOrders.count > 0 && (
                         <div
                           className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob")}
+                          onClick={() => openOrders(metrics.paymobOrders.orders, "طلبات paymob", 'paymob')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <CreditCard className="w-6 h-6 text-blue-600" />
@@ -1520,13 +1607,14 @@ const Summary: React.FC = () => {
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
                   {selectedOrders.map((order) => {
-                    const courierOrderAmount = getCourierOrderAmount(order)
+                    // Show the correct split payment amount if present (_onther_amount), otherwise fallback
+                    const courierOrderAmount = typeof order._onther_amount === 'number' ? order._onther_amount : getCourierOrderAmount(order)
                     const deliveryFee = Number(order.delivery_fee || 0)
-                    const totalCourierAmount = getTotalCourierAmount(order)
+                    const totalCourierAmount = typeof order._onther_amount === 'number' ? order._onther_amount : getTotalCourierAmount(order)
                     const displayPaymentMethod = getDisplayPaymentMethod(order)
                     const holdFee = Number(order.hold_fee || 0)
                     return (
-                      <div key={order.id} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                      <div key={order.id + (order._onther_amount ? `_${order._onther_amount}` : '')} className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           {/* Order Information */}
                           <div className="space-y-4">
@@ -1717,14 +1805,13 @@ const Summary: React.FC = () => {
 
                             {/* Payment Information */}
                             <div className="space-y-2">
-                              {order.payment_sub_type && (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-gray-600">{translate("paymentSubTypeLabel")}:</span>
-                                  <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                    {translate(order.payment_sub_type)}
-                                  </span>
-                                </div>
-                              )}
+                              {/* Show correct payment method for split payments and normal orders */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">{translate("paymentSubTypeLabel")}:</span>
+                                <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                  {getDisplayPaymentMethod(order, translate)}
+                                </span>
+                              </div>
                               {order.collected_by && !order.payment_sub_type && (
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm text-gray-600">{translate("collectedBy")}:</span>
@@ -2804,14 +2891,23 @@ const Summary: React.FC = () => {
               <div className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}>
                 <div className={`space-y-${isCourier ? "3" : "4"}`}>
                   {selectedOrders.map((order) => {
-                    const courierOrderAmount = getCourierOrderAmount(order)
-                    const deliveryFee = Number(order.delivery_fee || 0)
-                    const totalCourierAmount = getTotalCourierAmount(order)
-                    const displayPaymentMethod = getDisplayPaymentMethod(order)
-                    const holdFee = Number(order.hold_fee || 0)
+                    // For split payments, show the correct payment method for this sub-payment
+                    const isSplit = typeof order._onther_amount === 'number' && order.payment_sub_type;
+                    const courierOrderAmount = isSplit ? order._onther_amount : getCourierOrderAmount(order);
+                    const deliveryFee = Number(order.delivery_fee || 0);
+                    const totalCourierAmount = isSplit ? order._onther_amount : getTotalCourierAmount(order);
+                    // If _onther_amount is present, use payment_sub_type as the method, else use displayPaymentMethod
+                    const paymentMethodLabel = isSplit
+                      ? translate(normalizePaymentMethod(order.payment_sub_type ?? ""))
+                      : translate(getDisplayPaymentMethod(order));
+                    const holdFee = Number(order.hold_fee || 0);
+                    // Unique key for split payments: id + method + amount
+                    const rowKey = isSplit
+                      ? `${order.id}_${order.payment_sub_type}_${order._onther_amount}`
+                      : order.id;
                     return (
                       <div
-                        key={order.id}
+                        key={rowKey}
                         className={`bg-gray-50 border border-gray-200 rounded-xl ${isCourier ? "p-4" : "p-6"}`}
                       >
                         <div className={`grid ${isCourier ? "grid-cols-1 gap-4" : "grid-cols-1 lg:grid-cols-2 gap-6"}`}>
@@ -3041,42 +3137,21 @@ const Summary: React.FC = () => {
 
                             {/* Payment Information */}
                             <div className={`space-y-${isCourier ? "1" : "2"}`}>
-                              {order.payment_sub_type && (
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "الدفع:" : translate("paymentSubTypeLabel") + ":"}
+                              <div className="flex items-center gap-2">
+                                <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                  {isCourier ? "الدفع:" : translate("paymentMethod") + ":"}
+                                </span>
+                                <span
+                                  className={`px-2 py-1 rounded font-medium bg-purple-100 text-purple-800 ${isCourier ? "text-xs" : "text-xs"}`}
+                                >
+                                  {paymentMethodLabel}
+                                </span>
+                                {isSplit && (
+                                  <span className={`ml-2 px-2 py-1 rounded font-medium bg-gray-100 text-gray-800 ${isCourier ? "text-xs" : "text-xs"}`}>
+                                    {courierOrderAmount} {translate('EGP')}
                                   </span>
-                                  <span
-                                    className={`px-2 py-1 rounded font-medium bg-purple-100 text-purple-800 ${isCourier ? "text-xs" : "text-xs"}`}
-                                  >
-                                    {translate(order.payment_sub_type)}
-                                  </span>
-                                </div>
-                              )}
-                              {order.collected_by && !order.payment_sub_type && (
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "محصل:" : translate("collectedBy") + ":"}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-1 rounded font-medium bg-green-100 text-green-800 ${isCourier ? "text-xs" : "text-xs"}`}
-                                  >
-                                    {translate(order.collected_by)}
-                                  </span>
-                                </div>
-                              )}
-                              {!order.payment_sub_type && !order.collected_by && (
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
-                                    {isCourier ? "الطريقة:" : translate("paymentMethod") + ":"}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-1 rounded font-medium bg-blue-100 text-blue-800 ${isCourier ? "text-xs" : "text-xs"}`}
-                                  >
-                                    {translate(normalizePaymentMethod(order.payment_method))}
-                                  </span>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>

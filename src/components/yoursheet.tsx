@@ -30,6 +30,10 @@ const YourSheet: React.FC = () => {
   const [manualSort, setManualSort] = useState(false);
   // Map of orderId to sort number
   const [sortNumbers, setSortNumbers] = useState<{ [id: string]: number }>({});
+  // Map of orderId to note
+  const [notes, setNotes] = useState<{ [id: string]: string }>({});
+  // Track which note is expanded (orderId)
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
 
   // Load orders for selected date and courier
   useEffect(() => {
@@ -60,10 +64,28 @@ const YourSheet: React.FC = () => {
       } else {
         setSortNumbers({});
       }
+      // Load notes from localStorage
+      const savedNotes = localStorage.getItem(`${LOCAL_STORAGE_KEY}-notes-${date}`);
+      if (savedNotes) {
+        setNotes(JSON.parse(savedNotes));
+      } else {
+        setNotes({});
+      }
       setOrders(filtered);
     };
     fetchOrders();
   }, [date, user]);
+  // Save notes to localStorage
+  const saveNotes = (notesObj: { [id: string]: string }) => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY}-notes-${date}`, JSON.stringify(notesObj));
+  };
+
+  // Handle note change
+  const handleNoteChange = (id: string, value: string) => {
+    const newNotes = { ...notes, [id]: value };
+    setNotes(newNotes);
+    saveNotes(newNotes);
+  };
 
   // Save custom order to localStorage
   const saveSortNumbers = (nums: { [id: string]: number }) => {
@@ -122,6 +144,7 @@ const YourSheet: React.FC = () => {
               <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">اسم العميل</th>
               <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">العنوان</th>
               <th className="px-2 py-2 border-b-4 border-blue-400 font-bold">رقم الجوال</th>
+              <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">ملاحظات</th>
               {manualSort && <th className="px-2 py-2 border-b-4 border-blue-400 font-bold text-center">ترتيب</th>}
             </tr>
           </thead>
@@ -144,6 +167,43 @@ const YourSheet: React.FC = () => {
                       <td className="px-2 py-2 border-l-2 border-blue-200">{order.name}</td>
                       <td className="px-2 py-2 border-l-2 border-blue-200">{order.address}</td>
                       <td className="px-2 py-2 border-l-2 border-blue-200">{order.phone}</td>
+                      <td className="px-2 py-2 border-l-2 border-blue-200">
+                        <input
+                          type="text"
+                          className="w-full border-2 border-blue-400 rounded-lg px-2 py-1 text-sm cursor-pointer"
+                          value={notes[order.id] ?? ""}
+                          readOnly
+                          onClick={() => setExpandedNoteId(order.id)}
+                          placeholder="اكتب ملاحظة..."
+                          aria-label="ملاحظة"
+                        />
+                      </td>
+      {/* Note Modal */}
+      {expandedNoteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-lg p-4 w-80 max-w-full relative">
+            <h3 className="text-lg font-bold mb-2 text-blue-700 text-center">ملاحظة الطلب</h3>
+            <textarea
+              className="w-full border-2 border-blue-400 rounded-lg px-2 py-1 text-sm resize-none mb-2"
+              value={notes[expandedNoteId] ?? ""}
+              onChange={e => handleNoteChange(expandedNoteId, e.target.value)}
+              rows={5}
+              placeholder="اكتب ملاحظتك هنا..."
+              aria-label="ملاحظة"
+              autoFocus
+            />
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-blue-700 text-xl font-bold"
+              onClick={() => setExpandedNoteId(null)}
+              aria-label="إغلاق"
+            >×</button>
+            <button
+              className="w-full mt-2 px-4 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700"
+              onClick={() => setExpandedNoteId(null)}
+            >حفظ وإغلاق</button>
+          </div>
+        </div>
+      )}
                       {manualSort && (
                         <td className="px-2 py-2 flex gap-1 justify-center items-center border-l-2 border-blue-200">
                           <input
@@ -160,7 +220,7 @@ const YourSheet: React.FC = () => {
                     </tr>
                     {idx < arr.length - 1 && (
                       <tr>
-                        <td colSpan={manualSort ? 5 : 4}>
+                        <td colSpan={manualSort ? 6 : 5}>
                           <hr className="border-t-2 border-blue-300 my-0" />
                         </td>
                       </tr>
