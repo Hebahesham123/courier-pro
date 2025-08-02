@@ -120,7 +120,6 @@ const paymentSubTypesForCourier: Record<string, string> = {
   instapay: "إنستاباي",
   wallet: "المحفظة",
   visa_machine: "ماكينة فيزا",
-  onther: "أخرى (متعدد)",
 }
 
 // Full collection methods for display purposes
@@ -168,7 +167,6 @@ const OrdersList: React.FC = () => {
     internal_comment: "",
     payment_sub_type: "",
     collected_by: "",
-    onther_payments: [] as { method: string; amount: string }[],
   })
   const [imageUploading, setImageUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -495,16 +493,6 @@ const OrdersList: React.FC = () => {
     let initialPartialPaidAmount = order.partial_paid_amount?.toString() || ""
     let initialCollectedBy = order.collected_by || ""
     let initialPaymentSubType = order.payment_sub_type || ""
-    let initialOntherPayments: { method: string; amount: string }[] = []
-
-    // If payment_sub_type is 'onther' and order has a JSON field for onther_payments, parse it
-    if (order.payment_sub_type === "onther" && (order as any).onther_payments) {
-      try {
-        initialOntherPayments = JSON.parse((order as any).onther_payments)
-      } catch {
-        initialOntherPayments = []
-      }
-    }
 
     if (
       order.status === "return" ||
@@ -514,11 +502,9 @@ const OrdersList: React.FC = () => {
       initialPartialPaidAmount = "0"
       initialCollectedBy = ""
       initialPaymentSubType = ""
-      initialOntherPayments = []
     } else if (isOrderOriginallyPaidOnline && !order.delivery_fee && !order.partial_paid_amount) {
       initialCollectedBy = method
       initialPaymentSubType = ""
-      initialOntherPayments = []
     } else if (!isOrderOriginallyPaidOnline && !isOrderPaid(order) && order.status !== "canceled") {
       initialCollectedBy = "courier"
     } else if (order.status === "canceled" && (order.delivery_fee || order.partial_paid_amount)) {
@@ -526,7 +512,6 @@ const OrdersList: React.FC = () => {
     } else if (order.status === "canceled" && !order.delivery_fee && !order.partial_paid_amount) {
       initialCollectedBy = ""
       initialPaymentSubType = ""
-      initialOntherPayments = []
     }
 
     setSelectedOrder(order)
@@ -537,10 +522,142 @@ const OrdersList: React.FC = () => {
       internal_comment: order.internal_comment || "",
       collected_by: initialCollectedBy,
       payment_sub_type: initialPaymentSubType,
-      onther_payments: initialOntherPayments,
     })
     setModalOpen(true)
   }
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !selectedOrder || !user) return
+
+    const originalFile = e.target.files[0]
+    setImageUploading(true)
+
+    try {
+      const compressedFile = await new Promise<File>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const img = new Image()
+          img.crossOrigin = "anonymous"
+          img.onload = () => {
+            const canvas = document.createElement("canvas")
+            const MAX_WIDTH = 720
+            const MAX_HEIGHT = 540
+
+            let width = img.width
+            let height = img.height
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width
+                width = MAX_WIDTH
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height
+                height = MAX_HEIGHT
+              }
+            }
+
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext("2d")
+            if (!ctx) {
+              reject(new Error("Failed to get canvas context"))
+              return
+            }
+
+            ctx.drawImage(img, 0, 0, width, height)
+
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(new File([blob], originalFile.name, { type: "image/jpeg", lastModified: Date.now() }))
+                } else {
+                  resolve(originalFile)
+                }
+              },
+              "image/jpeg",
+              0.5,
+            )
+          }
+          img.onerror = (err) => {
+            reject(new Error("Failed to load image for compression"))
+          }
+          img.src = event.target?.result as string
+        }
+        reader.onerror = (err) => {
+          reject(new Error("Failed to read file"))
+        }
+        reader.readAsDataURL(originalFile)
+      })
+
+      const formData = new FormData()
+      formData.append("file", compressedFile)
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET)
+
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!data.secure_url) throw new Error("فشل رفع الصورة على كلاودينارى")
+
+      const { error } = await supabase.from("order_proofs").insert({
+        order_id: selectedOrder.id,
+        courier_id: user.id,
+        image_data: data.secure_url,
+      })
+
+      if (error) throw error
+
+      alert("تم رفع الصورة بنجاح!")
+
+      setSelectedOrder((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          order_proofs: [...(prev.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
+        }
+      })
+
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id
+            ? {
+                ...o,
+                order_proofs: [...(o.order_proofs || []), { id: crypto.randomUUID(), image_data: data.secure_url }],
+              }
+            : o,
+        ),
+      )
+    } catch (error: any) {
+      alert("فشل الرفع: " + error.message)
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
+  const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
+    if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
+      return 0
+    }
+
+    if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
+      if (deliveryFee === 0 && partialAmount === 0) {
+        return 0
+      }
+      return deliveryFee + partialAmount
+    }
+
+    if (currentStatus === "partial") {
+      return partialAmount > 0 ? partialAmount : 0
+    }
+
+    return order.total_order_fees
+  }
+
   const handleSaveUpdate = async () => {
     if (!selectedOrder) return
 
@@ -568,7 +685,6 @@ const OrdersList: React.FC = () => {
         partial = 0
         updatePayload.collected_by = null
         updatePayload.payment_sub_type = null
-        updatePayload.onther_payments = null
       }
 
       updatePayload.delivery_fee = fee
@@ -586,32 +702,21 @@ const OrdersList: React.FC = () => {
         } else if (isHandToHandWithNoFees) {
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
-          updatePayload.onther_payments = null
         } else if (isOrderOriginallyPaidOnline) {
           if (fee > 0 || partial > 0) {
             if (!updateData.collected_by) {
-              alert("يرجى اختيار طريقة تحصيل.")
+              alert("يرجى اختيار طريقة تحصيل للرسوم الإضافية.")
               return
             }
             if (updateData.collected_by === "courier" && !updateData.payment_sub_type) {
-              alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+              alert("يرجى اختيار نوع الدفع الفرعي للمندوب للرسوم الإضافية.")
               return
             }
             updatePayload.collected_by = updateData.collected_by
             updatePayload.payment_sub_type = updateData.payment_sub_type
-            if (updateData.payment_sub_type === "onther") {
-              if (!updateData.onther_payments || updateData.onther_payments.length === 0) {
-                alert("يرجى إضافة تفاصيل طرق الدفع المتعددة.")
-                return
-              }
-              updatePayload.onther_payments = JSON.stringify(updateData.onther_payments)
-            } else {
-              updatePayload.onther_payments = null
-            }
           } else {
             updatePayload.collected_by = method
             updatePayload.payment_sub_type = null
-            updatePayload.onther_payments = null
           }
         } else if (updateData.status === "canceled" && fee > 0) {
           if (!updateData.payment_sub_type) {
@@ -620,32 +725,13 @@ const OrdersList: React.FC = () => {
           }
           updatePayload.collected_by = "courier"
           updatePayload.payment_sub_type = updateData.payment_sub_type
-          if (updateData.payment_sub_type === "onther") {
-            if (!updateData.onther_payments || updateData.onther_payments.length === 0) {
-              alert("يرجى إضافة تفاصيل طرق الدفع المتعددة.")
-              return
-            }
-            updatePayload.onther_payments = JSON.stringify(updateData.onther_payments)
-          } else {
-            updatePayload.onther_payments = null
-          }
         } else if (isOrderUnpaid) {
           if (updateData.payment_sub_type) {
             updatePayload.collected_by = "courier"
             updatePayload.payment_sub_type = updateData.payment_sub_type
-            if (updateData.payment_sub_type === "onther") {
-              if (!updateData.onther_payments || updateData.onther_payments.length === 0) {
-                alert("يرجى إضافة تفاصيل طرق الدفع المتعددة.")
-                return
-              }
-              updatePayload.onther_payments = JSON.stringify(updateData.onther_payments)
-            } else {
-              updatePayload.onther_payments = null
-            }
           } else {
             updatePayload.collected_by = null
             updatePayload.payment_sub_type = null
-            updatePayload.onther_payments = null
           }
         } else if (fee > 0 || partial > 0) {
           const collected = updateData.collected_by
@@ -660,29 +746,17 @@ const OrdersList: React.FC = () => {
             }
             updatePayload.collected_by = collected
             updatePayload.payment_sub_type = updateData.payment_sub_type
-            if (updateData.payment_sub_type === "onther") {
-              if (!updateData.onther_payments || updateData.onther_payments.length === 0) {
-                alert("يرجى إضافة تفاصيل طرق الدفع المتعددة.")
-                return
-              }
-              updatePayload.onther_payments = JSON.stringify(updateData.onther_payments)
-            } else {
-              updatePayload.onther_payments = null
-            }
           } else {
             updatePayload.collected_by = collected
             updatePayload.payment_sub_type = null
-            updatePayload.onther_payments = null
           }
         } else {
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
-          updatePayload.onther_payments = null
         }
       } else {
         updatePayload.collected_by = null
         updatePayload.payment_sub_type = null
-        updatePayload.onther_payments = null
       }
 
       const { error } = await supabase.from("orders").update(updatePayload).eq("id", selectedOrder.id)
@@ -704,80 +778,6 @@ const OrdersList: React.FC = () => {
     }
   }
 
-  const calculateTotalAmount = (order: Order, deliveryFee: number, partialAmount: number, currentStatus: string) => {
-    // Only use onther_payments sum for the order being edited in the modal
-    if (selectedOrder && order.id === selectedOrder.id && updateData && updateData.payment_sub_type === 'onther' && Array.isArray(updateData.onther_payments) && updateData.onther_payments.length > 0) {
-      const total = updateData.onther_payments.reduce((sum, item) => {
-        const amt = parseFloat(item.amount)
-        return sum + (isNaN(amt) ? 0 : amt)
-      }, 0)
-      return total
-    }
-
-    if (currentStatus === "hand_to_hand" && deliveryFee === 0 && partialAmount === 0) {
-      return 0
-    }
-
-    if (["canceled", "return", "hand_to_hand", "receiving_part"].includes(currentStatus)) {
-      if (deliveryFee === 0 && partialAmount === 0) {
-        return 0
-      }
-      return deliveryFee + partialAmount
-    }
-
-    if (currentStatus === "partial") {
-      return partialAmount > 0 ? partialAmount : 0
-    }
-
-    return order.total_order_fees
-  }
-
-// ...existing code...
-
-// Patch: Extend Order type to include onther_payments for type safety
-type Order = {
-  id: string;
-  order_id: string;
-  customer_name: string;
-  address: string;
-  mobile_number: string;
-  total_order_fees: number | string;
-  delivery_fee: number | string | null;
-  payment_method: string;
-  payment_sub_type: string | null;
-  status: string;
-  partial_paid_amount: number | string | null;
-  internal_comment: string | null;
-  collected_by: string | null;
-  assigned_courier_id: string | null;
-  updated_at: string;
-  notes?: string | null;
-  payment_status?: string;
-  onther_payments?: string | { method: string; amount: string }[];
-  [key: string]: any;
-};
-
-  // Fix: Ensure handleImageChange is defined before usage
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !selectedOrder || !user) return
-
-    const originalFile = e.target.files[0]
-    setImageUploading(true)
-
-    try {
-      // You may want to add your image upload logic here
-      // For now, just simulate a successful upload
-      setTimeout(() => {
-        setImageUploading(false)
-        alert("تم رفع الصورة بنجاح!")
-      }, 1000)
-    } catch (error: any) {
-      alert("فشل الرفع: " + error.message)
-    } finally {
-      setImageUploading(false)
-    }
-  }
-
   const getStatusInfo = (status: string) => {
     return (
       statusLabels[status] || {
@@ -793,32 +793,8 @@ type Order = {
     return order.assigned_courier_id === user?.id || order.status === "assigned"
   }
 
-  // Helper function to get display payment method (with breakdown for 'onther')
+  // Helper function to get display payment method
   const getDisplayPaymentMethod = (order: Order) => {
-    // If 'onther' payment, show breakdown
-    if (order.payment_sub_type === 'onther' && order.onther_payments) {
-      let ontherArr = []
-      try {
-        ontherArr = Array.isArray(order.onther_payments)
-          ? order.onther_payments
-          : JSON.parse(order.onther_payments)
-      } catch {
-        ontherArr = []
-      }
-      if (ontherArr.length > 0) {
-        return (
-          <div className="flex flex-wrap gap-1">
-            {ontherArr.map((item: any, idx: number) => (
-              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-semibold mr-1">
-                {paymentSubTypesForCourier[item.method] || item.method}: {parseFloat(item.amount).toLocaleString()} ج.م
-              </span>
-            ))}
-          </div>
-        )
-      }
-      return <span className="inline-flex px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-semibold">onther</span>
-    }
-
     const method = normalizeMethod(order.payment_method)
 
     // If collected_by and payment_sub_type are set, prioritize them for display
@@ -886,9 +862,39 @@ type Order = {
     )
   }
 
-  function handleRemoveImage(id: string, image_data: string): void {
-    throw new Error("Function not implemented.")
+const handleRemoveImage = async (id: string, image_data: string) => {
+  if (!selectedOrder) return;
+  if (!window.confirm("هل أنت متأكد من حذف هذه الصورة؟")) return;
+  try {
+    // Remove from Supabase
+    const { error } = await supabase
+      .from("order_proofs")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+    // Remove from UI
+    setSelectedOrder(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        order_proofs: (prev.order_proofs || []).filter(proof => proof.id !== id)
+      };
+    });
+    setOrders(prev =>
+      prev.map(o =>
+        o.id === selectedOrder.id
+          ? {
+              ...o,
+              order_proofs: (o.order_proofs || []).filter(proof => proof.id !== id)
+            }
+          : o
+      )
+    );
+    alert("تم حذف الصورة بنجاح!");
+  } catch (error: any) {
+    alert("فشل حذف الصورة: " + error.message);
   }
+};
 
   return (
     <div className="min-h-screen bg-gray-50 relative" dir="rtl" ref={scrollContainerRef}>
@@ -1069,9 +1075,8 @@ type Order = {
             {orders.map((order) => {
               const statusInfo = getStatusInfo(order.status)
               const StatusIcon = statusInfo.icon
-              // Ensure deliveryFee and partialAmount are numbers
-              const deliveryFee = typeof order.delivery_fee === 'string' ? parseFloat(order.delivery_fee) || 0 : order.delivery_fee || 0
-              const partialAmount = typeof order.partial_paid_amount === 'string' ? parseFloat(order.partial_paid_amount) || 0 : order.partial_paid_amount || 0
+              const deliveryFee = order.delivery_fee || 0
+              const partialAmount = order.partial_paid_amount || 0
               const totalAmount = calculateTotalAmount(order, deliveryFee, partialAmount, order.status)
               const isPaid = isOrderPaid(order)
               const isEditedOrder = wasOrderEditedByCourier(order)
@@ -1213,7 +1218,7 @@ type Order = {
                       }`}
                     >
                       <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
-                        {Number(totalAmount).toFixed(0)}
+                        {totalAmount.toFixed(0)}
                       </p>
                       <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>ج.م</p>
                     </div>
@@ -1381,7 +1386,7 @@ type Order = {
                       <div className="flex justify-between">
                         <span className="text-gray-600">قيمة الطلب الأساسية:</span>
                         <span className="font-medium text-gray-900">
-                          {Number(selectedOrder.total_order_fees).toFixed(2)} ج.م
+                          {selectedOrder.total_order_fees.toFixed(2)} ج.م
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -1403,13 +1408,11 @@ type Order = {
                               : "إجمالي الطلب:"}
                         </span>
                         <span className="text-green-600">
-                          {Number(
-                            calculateTotalAmount(
-                              selectedOrder,
-                              Number.parseFloat(updateData.delivery_fee) || 0,
-                              Number.parseFloat(updateData.partial_paid_amount) || 0,
-                              updateData.status,
-                            )
+                          {calculateTotalAmount(
+                            selectedOrder,
+                            Number.parseFloat(updateData.delivery_fee) || 0,
+                            Number.parseFloat(updateData.partial_paid_amount) || 0,
+                            updateData.status,
                           ).toFixed(2)}{" "}
                           ج.م
                         </span>
@@ -1613,7 +1616,7 @@ type Order = {
                                 </label>
                                 <select
                                   value={updateData.payment_sub_type}
-                                  onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value, onther_payments: e.target.value === 'onther' ? (updateData.onther_payments.length ? updateData.onther_payments : [{ method: '', amount: '' }]) : [] })}
+                                  onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
                                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   required={
                                     showPaymentSubTypeDropdown &&
@@ -1631,67 +1634,6 @@ type Order = {
                                     </option>
                                   ))}
                                 </select>
-                                {/* If 'onther' is selected, show dynamic fields */}
-                                {updateData.payment_sub_type === 'onther' && (
-                                  <div className="space-y-2 mt-2">
-                                    <label className="block text-xs font-medium text-gray-600">طرق دفع متعددة</label>
-                                    {updateData.onther_payments.map((item, idx) => (
-                                      <div key={idx} className="flex gap-2 items-center mb-2">
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs"
-                                          placeholder="المبلغ"
-                                          value={item.amount}
-                                          onChange={e => {
-                                            const val = e.target.value
-                                            setUpdateData(prev => ({
-                                              ...prev,
-                                              onther_payments: prev.onther_payments.map((p, i) => i === idx ? { ...p, amount: val } : p)
-                                            }))
-                                          }}
-                                        />
-                                        <select
-                                          className="rounded-lg border border-gray-300 px-2 py-1 text-xs"
-                                          value={item.method}
-                                          onChange={e => {
-                                            const val = e.target.value
-                                            setUpdateData(prev => ({
-                                              ...prev,
-                                              onther_payments: prev.onther_payments.map((p, i) => i === idx ? { ...p, method: val } : p)
-                                            }))
-                                          }}
-                                        >
-                                          <option value="">اختر الطريقة</option>
-                                          {Object.entries(paymentSubTypesForCourier).filter(([k]) => k !== 'onther').map(([k, v]) => (
-                                            <option key={k} value={k}>{v}</option>
-                                          ))}
-                                        </select>
-                                        <button
-                                          type="button"
-                                          className="text-red-600 hover:text-red-800 text-xs px-2"
-                                          onClick={() => setUpdateData(prev => ({
-                                            ...prev,
-                                            onther_payments: prev.onther_payments.filter((_, i) => i !== idx)
-                                          }))}
-                                          disabled={updateData.onther_payments.length === 1}
-                                        >
-                                          حذف
-                                        </button>
-                                      </div>
-                                    ))}
-                                    <button
-                                      type="button"
-                                      className="bg-blue-100 hover:bg-blue-200 text-blue-700 rounded px-2 py-1 text-xs"
-                                      onClick={() => setUpdateData(prev => ({
-                                        ...prev,
-                                        onther_payments: [...prev.onther_payments, { method: '', amount: '' }]
-                                      }))}
-                                    >
-                                      إضافة طريقة دفع أخرى
-                                    </button>
-                                  </div>
-                                )}
                               </div>
                             )}
 
@@ -1816,7 +1758,7 @@ type Order = {
                         صور الإثبات الحالية ({selectedOrder.order_proofs.length})
                       </label>
                       <div className="grid grid-cols-4 gap-3">
-                        {selectedOrder.order_proofs.map((proof: OrderProof) => (
+                        {selectedOrder.order_proofs.map((proof) => (
                           <div key={proof.id} className="relative group">
                             <img
                               src={proof.image_data || "/placeholder.svg"}
