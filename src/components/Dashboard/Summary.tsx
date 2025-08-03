@@ -63,6 +63,8 @@ interface Order {
   hold_fee_comment?: string | null
   hold_fee_created_by?: string | null
   hold_fee_created_at?: string | null
+  hold_fee_added_at?: string | null
+  hold_fee_removed_at?: string | null
   admin_delivery_fee?: number | null
   extra_fee?: number | null
   payment_status?: string
@@ -301,10 +303,60 @@ const Summary: React.FC = () => {
   const [selectedCourier, setSelectedCourier] = useState<CourierSummary | null>(null)
   const [showAnalytics, setShowAnalytics] = useState(true)
   const [activeFilter, setActiveFilter] = useState<string>("today")
+  
+  // Hold section date filter state
+  const [holdDateFilter, setHoldDateFilter] = useState<string>("all")
+  const [customHoldDate, setCustomHoldDate] = useState<string>("")
 
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
+
+  // Function to filter hold fees by date
+  const getFilteredHoldFees = useCallback((orders: Order[], filterType: string) => {
+    if (filterType === "all") return orders
+    
+    const today = new Date()
+    const todayString = today.toISOString().split('T')[0]
+    
+    switch (filterType) {
+      case "today":
+        return orders.filter(order => {
+          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
+          return holdDate && holdDate.startsWith(todayString)
+        })
+      case "yesterday":
+        const yesterday = new Date(today)
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayString = yesterday.toISOString().split('T')[0]
+        return orders.filter(order => {
+          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
+          return holdDate && holdDate.startsWith(yesterdayString)
+        })
+      case "last7days":
+        const sevenDaysAgo = new Date(today)
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        return orders.filter(order => {
+          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
+          return holdDate && new Date(holdDate) >= sevenDaysAgo
+        })
+      case "last30days":
+        const thirtyDaysAgo = new Date(today)
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        return orders.filter(order => {
+          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
+          return holdDate && new Date(holdDate) >= thirtyDaysAgo
+        })
+      case "custom":
+        if (!customHoldDate) return orders
+        return orders.filter(order => {
+          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
+          return holdDate && holdDate.startsWith(customHoldDate)
+        })
+      default:
+        return orders
+    }
+  }, [customHoldDate])
 
   // Function to fetch all hold fees data regardless of date range
   const fetchAllHoldFeesData = useCallback(async () => {
@@ -448,6 +500,8 @@ const Summary: React.FC = () => {
           hold_fee_comment: amount > 0 ? holdFeeComment : null,
           hold_fee_created_by: amount > 0 ? user?.id : null,
           hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+          hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
+          hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
         })
         .eq("id", orderId)
 
@@ -463,6 +517,8 @@ const Summary: React.FC = () => {
                 hold_fee_comment: amount > 0 ? holdFeeComment : null,
                 hold_fee_created_by: amount > 0 ? user?.id : null,
                 hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
               }
             : order,
         ),
@@ -476,6 +532,8 @@ const Summary: React.FC = () => {
                 hold_fee_comment: amount > 0 ? holdFeeComment : null,
                 hold_fee_created_by: amount > 0 ? user?.id : null,
                 hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
               }
             : order,
         ),
@@ -489,6 +547,8 @@ const Summary: React.FC = () => {
                 hold_fee_comment: amount > 0 ? holdFeeComment : null,
                 hold_fee_created_by: amount > 0 ? user?.id : null,
                 hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
+                hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
               }
             : order,
         ),
@@ -514,6 +574,7 @@ const Summary: React.FC = () => {
           hold_fee_comment: null,
           hold_fee_created_by: user?.id,
           hold_fee_created_at: new Date().toISOString(),
+          hold_fee_removed_at: new Date().toISOString(),
         })
         .eq("id", orderId)
 
@@ -529,6 +590,7 @@ const Summary: React.FC = () => {
                 hold_fee_comment: null,
                 hold_fee_created_by: user?.id,
                 hold_fee_created_at: new Date().toISOString(),
+                hold_fee_removed_at: new Date().toISOString(),
               }
             : order,
         ),
@@ -542,6 +604,7 @@ const Summary: React.FC = () => {
                 hold_fee_comment: null,
                 hold_fee_created_by: user?.id,
                 hold_fee_created_at: new Date().toISOString(),
+                hold_fee_removed_at: new Date().toISOString(),
               }
             : order,
         ),
@@ -555,6 +618,7 @@ const Summary: React.FC = () => {
                 hold_fee_comment: null,
                 hold_fee_created_by: user?.id,
                 hold_fee_created_at: new Date().toISOString(),
+                hold_fee_removed_at: new Date().toISOString(),
               }
             : order,
         ),
@@ -807,7 +871,8 @@ const Summary: React.FC = () => {
           // Use normalized payment method for non-onther orders
           const normalized = normalizePaymentMethod(o.payment_sub_type || o.payment_method)
           const amt = getTotalCourierAmount(o)
-          if (amt > 0) {
+          // Include cash on hand orders even if amount is 0 or negative (they represent collected cash)
+          if (amt > 0 || normalized === 'on_hand') {
             result.push({ order: o, method: normalized, amount: amt })
           }
         }
@@ -833,7 +898,7 @@ const Summary: React.FC = () => {
     const visaMachineOrders = getPaymentMethodMetrics('visa_machine')
     const instapayOrders = getPaymentMethodMetrics('instapay')
     const walletOrders = getPaymentMethodMetrics('wallet')
-    const cashOnHandOrders = getPaymentMethodMetrics('cash')
+    const cashOnHandOrders = getPaymentMethodMetrics('on_hand')
     const paymobOrders = getPaymentMethodMetrics('paymob')
     const valuOrders = getPaymentMethodMetrics('valu')
 
@@ -1358,10 +1423,10 @@ const Summary: React.FC = () => {
                         </div>
                       )}
                       {/* Cash on Hand */}
-                      {metrics.cashOnHandOrders.count > 0 && (
+                      {metrics.cashOnHandOrders.count >= 0 && (
                         <div
                           className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
-                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'cash')}
+                          onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <Banknote className="w-6 h-6 text-emerald-600" />
@@ -1437,19 +1502,57 @@ const Summary: React.FC = () => {
 
                   {/* 🚨 Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                        <AlertCircle className="w-6 h-6 text-red-600" />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                          <AlertCircle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-900">🚨 رسوم الحجز</h2>
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900">🚨 رسوم الحجز (جميع الأيام)</h2>
+                      
+                      {/* Hold Date Filter */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-600">فلتر التاريخ:</span>
+                        <select
+                          value={holdDateFilter}
+                          onChange={(e) => {
+                            setHoldDateFilter(e.target.value)
+                            if (e.target.value !== "custom") {
+                              setCustomHoldDate("")
+                            }
+                          }}
+                          className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        >
+                          <option value="all">جميع الأيام</option>
+                          <option value="today">اليوم</option>
+                          <option value="yesterday">أمس</option>
+                          <option value="last7days">آخر 7 أيام</option>
+                          <option value="last30days">آخر 30 يوم</option>
+                          <option value="custom">تاريخ مخصص</option>
+                        </select>
+                        {holdDateFilter === "custom" && (
+                          <input
+                            type="date"
+                            value={customHoldDate}
+                            onChange={(e) => setCustomHoldDate(e.target.value)}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* Active Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
                       {(() => {
-                        const orders = allHoldFeesOrders.filter((o) => {
+                        const filteredOrders = getFilteredHoldFees(allHoldFeesOrders, holdDateFilter)
+                        const orders = filteredOrders.filter((o) => {
                           return o.hold_fee && Number(o.hold_fee) > 0
                         })
                         const amount = orders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0)
+                        // Sort by addition date (most recent first)
+                        const sortedOrders = orders.sort((a, b) => 
+                          new Date(b.hold_fee_added_at || b.hold_fee_created_at || '').getTime() - 
+                          new Date(a.hold_fee_added_at || a.hold_fee_created_at || '').getTime()
+                        )
                         return (
                           <div
                             className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group`}
@@ -1464,6 +1567,15 @@ const Summary: React.FC = () => {
                               <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'}`}>
                                 {amount.toFixed(2)} ج.م
                               </p>
+                              {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at) && (
+                                <p className="text-sm text-red-600">
+                                  آخر إضافة: {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit'
+                                  })}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )
@@ -1471,12 +1583,14 @@ const Summary: React.FC = () => {
                       
                       {/* Removed Hold Fees - ALWAYS VISIBLE with removal date - ALL DAYS */}
                       {(() => {
-                        const orders = allHoldFeesOrders.filter((o) => {
+                        const filteredOrders = getFilteredHoldFees(allHoldFeesOrders, holdDateFilter)
+                        const orders = filteredOrders.filter((o) => {
                           return !o.hold_fee && o.hold_fee_created_at && o.hold_fee_created_by
                         })
                         // Sort by removal date (most recent first)
                         const sortedOrders = orders.sort((a, b) => 
-                          new Date(b.hold_fee_created_at!).getTime() - new Date(a.hold_fee_created_at!).getTime()
+                          new Date(b.hold_fee_removed_at || b.hold_fee_created_at || '').getTime() - 
+                          new Date(a.hold_fee_removed_at || a.hold_fee_created_at || '').getTime()
                         )
                         return (
                           <div
@@ -1492,9 +1606,9 @@ const Summary: React.FC = () => {
                               <p className={`text-lg font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'}`}>
                                 {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
                               </p>
-                              {sortedOrders.length > 0 && sortedOrders[0].hold_fee_created_at && (
+                              {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at) && (
                                 <p className="text-sm text-green-600">
-                                  آخر إزالة: {new Date(sortedOrders[0].hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                  آخر إزالة: {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit'
@@ -1622,9 +1736,79 @@ const Summary: React.FC = () => {
                               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                                 <Package className="w-4 h-4 text-blue-600" />
                               </div>
-                              <div>
-                                <h4 className="font-semibold text-gray-900">طلب #{order.order_id}</h4>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-semibold text-gray-900">طلب #{order.order_id}</h4>
+                                  {order.hold_fee && order.hold_fee > 0 && (
+                                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-medium">
+                                      رسوم حجز
+                                    </span>
+                                  )}
+                                  {(!order.hold_fee || order.hold_fee === 0) && order.hold_fee_removed_at && (
+                                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
+                                      تم الإزالة
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-sm text-gray-600">{order.customer_name}</p>
+                                
+                                {/* Hold Fee Date Information - Enhanced */}
+                                {(order.hold_fee && order.hold_fee > 0) && (
+                                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="w-4 h-4 text-blue-600" />
+                                      <span className="text-sm font-medium text-blue-800">تاريخ إضافة رسوم الحجز:</span>
+                                    </div>
+                                    <p className="text-sm text-blue-700 mt-1">
+                                      {order.hold_fee_added_at ? 
+                                        new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        }) : 
+                                        order.hold_fee_created_at ? 
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          }) : 
+                                          'تاريخ غير محدد'
+                                      }
+                                    </p>
+                                  </div>
+                                )}
+                                {(!order.hold_fee || order.hold_fee === 0) && (order.hold_fee_removed_at || order.hold_fee_created_at) && (
+                                  <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="w-4 h-4 text-green-600" />
+                                      <span className="text-sm font-medium text-green-800">تاريخ إزالة رسوم الحجز:</span>
+                                    </div>
+                                    <p className="text-sm text-green-700 mt-1">
+                                      {order.hold_fee_removed_at ? 
+                                        new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        }) : 
+                                        order.hold_fee_created_at ? 
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          }) : 
+                                          'تاريخ غير محدد'
+                                      }
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="space-y-3">
@@ -1787,6 +1971,28 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee > 0 && order.hold_fee_comment && (
                                       <p className="text-xs text-gray-600 mt-1 italic">"{order.hold_fee_comment}"</p>
+                                    )}
+                                    {holdFee > 0 && order.hold_fee_added_at && (
+                                      <p className="text-xs text-blue-600 mt-1">
+                                        تم الإضافة: {new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
+                                    )}
+                                    {holdFee === 0 && order.hold_fee_removed_at && (
+                                      <p className="text-xs text-green-600 mt-1">
+                                        تم الإزالة: {new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
                                     )}
                                   </div>
                                 )}
@@ -2708,25 +2914,67 @@ const Summary: React.FC = () => {
 
             {/* 🚨 Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
             <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
-              <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
-                <div
-                  className={`bg-red-100 rounded-xl flex items-center justify-center ${
-                    isCourier ? "w-8 h-8" : "w-10 h-10"
-                  }`}
-                >
-                  <AlertCircle className={`text-red-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+              <div className={`flex items-center justify-between ${isCourier ? "mb-4" : "mb-6"}`}>
+                <div className={`flex items-center gap-3`}>
+                  <div
+                    className={`bg-red-100 rounded-xl flex items-center justify-center ${
+                      isCourier ? "w-8 h-8" : "w-10 h-10"
+                    }`}
+                  >
+                    <AlertCircle className={`text-red-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                  </div>
+                  <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
+                    {isCourier ? "رسوم الحجز" : "🚨 رسوم الحجز"}
+                  </h2>
                 </div>
-                <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                  {isCourier ? "رسوم الحجز (جميع الأيام)" : "🚨 رسوم الحجز (جميع الأيام)"}
-                </h2>
+                
+                {/* Hold Date Filter */}
+                <div className="flex items-center gap-2">
+                  <span className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>فلتر التاريخ:</span>
+                  <select
+                    value={holdDateFilter}
+                    onChange={(e) => {
+                      setHoldDateFilter(e.target.value)
+                      if (e.target.value !== "custom") {
+                        setCustomHoldDate("")
+                      }
+                    }}
+                    className={`px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+                      isCourier ? "text-xs" : "text-sm"
+                    }`}
+                  >
+                    <option value="all">جميع الأيام</option>
+                    <option value="today">اليوم</option>
+                    <option value="yesterday">أمس</option>
+                    <option value="last7days">آخر 7 أيام</option>
+                    <option value="last30days">آخر 30 يوم</option>
+                    <option value="custom">تاريخ مخصص</option>
+                  </select>
+                  {holdDateFilter === "custom" && (
+                    <input
+                      type="date"
+                      value={customHoldDate}
+                      onChange={(e) => setCustomHoldDate(e.target.value)}
+                      className={`px-2 py-1 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
+                        isCourier ? "text-xs" : "text-sm"
+                      }`}
+                    />
+                  )}
+                </div>
               </div>
               <div className={`grid ${isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 sm:grid-cols-2 gap-4"}`}>
                 {/* Active Hold Fees - ALWAYS VISIBLE - ALL DAYS */}
                 {(() => {
-                  const orders = allHoldFeesOrders.filter((o) => {
+                  const filteredOrders = getFilteredHoldFees(allHoldFeesOrders, holdDateFilter)
+                  const orders = filteredOrders.filter((o) => {
                     return o.hold_fee && Number(o.hold_fee) > 0 && o.assigned_courier_id === currentCourier.courierId
                   })
                   const amount = orders.reduce((acc, o) => acc + Number(o.hold_fee || 0), 0)
+                  // Sort by addition date (most recent first)
+                  const sortedOrders = orders.sort((a, b) => 
+                    new Date(b.hold_fee_added_at || b.hold_fee_created_at || '').getTime() - 
+                    new Date(a.hold_fee_added_at || a.hold_fee_created_at || '').getTime()
+                  )
                   return (
                     <div
                       className={`${orders.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl ${orders.length > 0 ? 'cursor-pointer hover:shadow-lg' : ''} transition-all group ${
@@ -2747,6 +2995,15 @@ const Summary: React.FC = () => {
                         <p className={`font-semibold ${orders.length > 0 ? 'text-red-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
                           {amount.toFixed(2)} ج.م
                         </p>
+                        {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at) && (
+                          <p className={`${orders.length > 0 ? 'text-red-600' : 'text-gray-400'} ${isCourier ? "text-xs" : "text-sm"}`}>
+                            آخر إضافة: {new Date(sortedOrders[0].hold_fee_added_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit'
+                            })}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )
@@ -2754,12 +3011,14 @@ const Summary: React.FC = () => {
                 
                 {/* Removed Hold Fees - ALWAYS VISIBLE with removal date - ALL DAYS */}
                 {(() => {
-                  const orders = allHoldFeesOrders.filter((o) => {
+                  const filteredOrders = getFilteredHoldFees(allHoldFeesOrders, holdDateFilter)
+                  const orders = filteredOrders.filter((o) => {
                     return !o.hold_fee && o.hold_fee_created_at && o.hold_fee_created_by && o.assigned_courier_id === currentCourier.courierId
                   })
                   // Sort by removal date (most recent first)
                   const sortedOrders = orders.sort((a, b) => 
-                    new Date(b.hold_fee_created_at!).getTime() - new Date(a.hold_fee_created_at!).getTime()
+                    new Date(b.hold_fee_removed_at || b.hold_fee_created_at || '').getTime() - 
+                    new Date(a.hold_fee_removed_at || a.hold_fee_created_at || '').getTime()
                   )
                   return (
                     <div
@@ -2781,9 +3040,9 @@ const Summary: React.FC = () => {
                         <p className={`font-semibold ${orders.length > 0 ? 'text-green-700' : 'text-gray-400'} ${isCourier ? "text-sm" : "text-lg"}`}>
                           {orders.length > 0 ? 'تم الإزالة' : 'لا توجد'}
                         </p>
-                        {sortedOrders.length > 0 && sortedOrders[0].hold_fee_created_at && (
+                        {sortedOrders.length > 0 && (sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at) && (
                           <p className={`${orders.length > 0 ? 'text-green-600' : 'text-gray-400'} ${isCourier ? "text-xs" : "text-sm"}`}>
-                            آخر إزالة: {new Date(sortedOrders[0].hold_fee_created_at).toLocaleDateString('ar-EG', {
+                            آخر إزالة: {new Date(sortedOrders[0].hold_fee_removed_at || sortedOrders[0].hold_fee_created_at || '').toLocaleDateString('ar-EG', {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit'
@@ -2832,7 +3091,6 @@ const Summary: React.FC = () => {
 
                     return (
                       (o.payment_sub_type === "on_hand" || (isGeneralCash && !isSpecificElectronicCashLike)) &&
-                      getTotalCourierAmount(o) > 0 &&
                       o.assigned_courier_id === currentCourier.courierId
                     )
                   })
@@ -2919,13 +3177,83 @@ const Summary: React.FC = () => {
                               >
                                 <Package className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
                               </div>
-                              <div>
-                                <h4 className={`font-semibold text-gray-900 ${isCourier ? "text-sm" : "text-base"}`}>
-                                  طلب #{order.order_id}
-                                </h4>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className={`font-semibold text-gray-900 ${isCourier ? "text-sm" : "text-base"}`}>
+                                    طلب #{order.order_id}
+                                  </h4>
+                                  {order.hold_fee && order.hold_fee > 0 && (
+                                    <span className={`px-2 py-1 bg-orange-100 text-orange-800 rounded-full font-medium ${isCourier ? "text-xs" : "text-xs"}`}>
+                                      رسوم حجز
+                                    </span>
+                                  )}
+                                  {(!order.hold_fee || order.hold_fee === 0) && order.hold_fee_removed_at && (
+                                    <span className={`px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium ${isCourier ? "text-xs" : "text-xs"}`}>
+                                      تم الإزالة
+                                    </span>
+                                  )}
+                                </div>
                                 <p className={`text-gray-600 ${isCourier ? "text-xs" : "text-sm"}`}>
                                   {order.customer_name}
                                 </p>
+                                
+                                {/* Hold Fee Date Information - Enhanced */}
+                                {(order.hold_fee && order.hold_fee > 0) && (
+                                  <div className={`mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg ${isCourier ? "text-xs" : "text-sm"}`}>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className={`text-blue-600 ${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
+                                      <span className={`font-medium text-blue-800 ${isCourier ? "text-xs" : "text-sm"}`}>تاريخ إضافة رسوم الحجز:</span>
+                                    </div>
+                                    <p className={`text-blue-700 mt-1 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      {order.hold_fee_added_at ? 
+                                        new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        }) : 
+                                        order.hold_fee_created_at ? 
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          }) : 
+                                          'تاريخ غير محدد'
+                                      }
+                                    </p>
+                                  </div>
+                                )}
+                                {(!order.hold_fee || order.hold_fee === 0) && (order.hold_fee_removed_at || order.hold_fee_created_at) && (
+                                  <div className={`mt-2 p-2 bg-green-50 border border-green-200 rounded-lg ${isCourier ? "text-xs" : "text-sm"}`}>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className={`text-green-600 ${isCourier ? "w-3 h-3" : "w-4 h-4"}`} />
+                                      <span className={`font-medium text-green-800 ${isCourier ? "text-xs" : "text-sm"}`}>تاريخ إزالة رسوم الحجز:</span>
+                                    </div>
+                                    <p className={`text-green-700 mt-1 ${isCourier ? "text-xs" : "text-sm"}`}>
+                                      {order.hold_fee_removed_at ? 
+                                        new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        }) : 
+                                        order.hold_fee_created_at ? 
+                                          new Date(order.hold_fee_created_at).toLocaleDateString('ar-EG', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          }) : 
+                                          'تاريخ غير محدد'
+                                      }
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className={`space-y-${isCourier ? "2" : "3"}`}>
@@ -3115,6 +3443,28 @@ const Summary: React.FC = () => {
                                     )}
                                     {holdFee > 0 && order.hold_fee_comment && (
                                       <p className="text-xs text-gray-600 mt-1 italic">"{order.hold_fee_comment}"</p>
+                                    )}
+                                    {holdFee > 0 && order.hold_fee_added_at && (
+                                      <p className="text-xs text-blue-600 mt-1">
+                                        تم الإضافة: {new Date(order.hold_fee_added_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
+                                    )}
+                                    {holdFee === 0 && order.hold_fee_removed_at && (
+                                      <p className="text-xs text-green-600 mt-1">
+                                        تم الإزالة: {new Date(order.hold_fee_removed_at).toLocaleDateString('ar-EG', {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
                                     )}
                                   </div>
                                 )}
