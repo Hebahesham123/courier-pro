@@ -307,12 +307,13 @@ const Summary: React.FC = () => {
   // Hold section date filter state
   const [holdDateFilter, setHoldDateFilter] = useState<string>("all")
   const [customHoldDate, setCustomHoldDate] = useState<string>("")
+  const [includeHoldFeesInPayment, setIncludeHoldFeesInPayment] = useState<boolean>(false)
 
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
 
-  // Function to filter hold fees by date
+  // Function to filter hold fees by date - prioritize removal date over addition date
   const getFilteredHoldFees = useCallback((orders: Order[], filterType: string) => {
     if (filterType === "all") return orders
     
@@ -322,41 +323,79 @@ const Summary: React.FC = () => {
     switch (filterType) {
       case "today":
         return orders.filter(order => {
-          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
-          return holdDate && holdDate.startsWith(todayString)
+          // Prioritize removal date over addition date
+          const holdDate = order.hold_fee_removed_at || order.hold_fee_added_at || order.hold_fee_created_at
+          if (!holdDate) return false
+          const holdDateString = new Date(holdDate).toISOString().split('T')[0]
+          return holdDateString === todayString
         })
       case "yesterday":
         const yesterday = new Date(today)
         yesterday.setDate(yesterday.getDate() - 1)
         const yesterdayString = yesterday.toISOString().split('T')[0]
         return orders.filter(order => {
-          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
-          return holdDate && holdDate.startsWith(yesterdayString)
+          // Prioritize removal date over addition date
+          const holdDate = order.hold_fee_removed_at || order.hold_fee_added_at || order.hold_fee_created_at
+          if (!holdDate) return false
+          const holdDateString = new Date(holdDate).toISOString().split('T')[0]
+          return holdDateString === yesterdayString
         })
       case "last7days":
         const sevenDaysAgo = new Date(today)
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
         return orders.filter(order => {
-          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
-          return holdDate && new Date(holdDate) >= sevenDaysAgo
+          // Prioritize removal date over addition date
+          const holdDate = order.hold_fee_removed_at || order.hold_fee_added_at || order.hold_fee_created_at
+          if (!holdDate) return false
+          const holdDateString = new Date(holdDate).toISOString().split('T')[0]
+          const sevenDaysAgoString = sevenDaysAgo.toISOString().split('T')[0]
+          return holdDateString >= sevenDaysAgoString && holdDateString <= todayString
         })
       case "last30days":
         const thirtyDaysAgo = new Date(today)
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
         return orders.filter(order => {
-          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
-          return holdDate && new Date(holdDate) >= thirtyDaysAgo
+          // Prioritize removal date over addition date
+          const holdDate = order.hold_fee_removed_at || order.hold_fee_added_at || order.hold_fee_created_at
+          if (!holdDate) return false
+          const holdDateString = new Date(holdDate).toISOString().split('T')[0]
+          const thirtyDaysAgoString = thirtyDaysAgo.toISOString().split('T')[0]
+          return holdDateString >= thirtyDaysAgoString && holdDateString <= todayString
         })
       case "custom":
         if (!customHoldDate) return orders
         return orders.filter(order => {
-          const holdDate = order.hold_fee_added_at || order.hold_fee_created_at || order.hold_fee_removed_at
-          return holdDate && holdDate.startsWith(customHoldDate)
+          // Prioritize removal date over addition date
+          const holdDate = order.hold_fee_removed_at || order.hold_fee_added_at || order.hold_fee_created_at
+          if (!holdDate) return false
+          const holdDateString = new Date(holdDate).toISOString().split('T')[0]
+          return holdDateString === customHoldDate
         })
       default:
         return orders
     }
   }, [customHoldDate])
+
+  // Function to validate date filtering logic
+  const validateDateFiltering = useCallback((orders: Order[], startDate: string, endDate: string) => {
+    console.log(`=== VALIDATING DATE FILTERING ===`)
+    console.log(`Date range: ${startDate} to ${endDate}`)
+    
+    const ordersWithHoldFees = orders.filter(order => order.hold_fee_removed_at || order.hold_fee_added_at)
+    console.log(`Total orders with hold fees: ${ordersWithHoldFees.length}`)
+    
+    ordersWithHoldFees.forEach(order => {
+      const removalDate = order.hold_fee_removed_at ? new Date(order.hold_fee_removed_at).toISOString().split('T')[0] : null
+      const additionDate = order.hold_fee_added_at ? new Date(order.hold_fee_added_at).toISOString().split('T')[0] : null
+      
+      console.log(`Order ${order.order_id}:`)
+      console.log(`  - Hold fee removed: ${removalDate}`)
+      console.log(`  - Hold fee added: ${additionDate}`)
+      console.log(`  - Should appear: ${removalDate ? (removalDate >= startDate && removalDate <= endDate) : (additionDate ? (additionDate >= startDate && additionDate <= endDate) : false)}`)
+    })
+    
+    console.log(`=== END VALIDATION ===`)
+  }, [])
 
   // Function to fetch all hold fees data regardless of date range
   const fetchAllHoldFeesData = useCallback(async () => {
@@ -397,13 +436,158 @@ const Summary: React.FC = () => {
     }
   }, [user, selectedCourier, showAnalytics])
 
+  // Helper function to get consistent date string format
+  const getDateString = useCallback((dateValue: string | null | undefined): string | null => {
+    if (!dateValue) return null
+    try {
+      const date = new Date(dateValue)
+      if (isNaN(date.getTime())) return null
+      return date.toISOString().split('T')[0]
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Function to filter orders based on hold fee removal date or creation date
+  // Priority: hold_fee_removed_at > hold_fee_added_at > created_at
+  // This ensures orders appear on the day the hold fee was removed, not when it was added
+  const filterOrdersByHoldFeeDate = useCallback((orders: Order[], startDate: string, endDate: string) => {
+    console.log(`=== STARTING STRICT DATE FILTERING ===`)
+    console.log(`Filtering for date range: ${startDate} to ${endDate}`)
+    
+    const filteredOrders = orders.filter(order => {
+      // If order has a hold fee that was removed, use the removal date
+      if (order.hold_fee_removed_at) {
+        const removalDateString = getDateString(order.hold_fee_removed_at)
+        
+        if (!removalDateString) {
+          console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid hold fee removal date: ${order.hold_fee_removed_at}`)
+          return false
+        }
+        
+        // STRICT: Only include if the removal date exactly matches the date range
+        const isInRange = removalDateString >= startDate && removalDateString <= endDate
+        
+        console.log(`Order ${order.order_id}:`)
+        console.log(`  - Hold fee removed: ${order.hold_fee_removed_at}`)
+        console.log(`  - Removal date string: ${removalDateString}`)
+        console.log(`  - Date range: ${startDate} to ${endDate}`)
+        console.log(`  - Is in range: ${isInRange}`)
+        
+        if (isInRange) {
+          console.log(`  ✅ INCLUDED - hold fee removed on ${removalDateString}`)
+        } else {
+          console.log(`  ❌ EXCLUDED - hold fee removed on ${removalDateString} but filtering for ${startDate} to ${endDate}`)
+        }
+        return isInRange
+      }
+      
+      // If order has a hold fee that was added but not removed, use the addition date
+      if (order.hold_fee_added_at && !order.hold_fee_removed_at) {
+        const additionDateString = getDateString(order.hold_fee_added_at)
+        
+        if (!additionDateString) {
+          console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid hold fee addition date: ${order.hold_fee_added_at}`)
+          return false
+        }
+        
+        // STRICT: Only include if the addition date exactly matches the date range
+        const isInRange = additionDateString >= startDate && additionDateString <= endDate
+        
+        console.log(`Order ${order.order_id}:`)
+        console.log(`  - Hold fee added: ${order.hold_fee_added_at}`)
+        console.log(`  - Addition date string: ${additionDateString}`)
+        console.log(`  - Date range: ${startDate} to ${endDate}`)
+        console.log(`  - Is in range: ${isInRange}`)
+        
+        if (isInRange) {
+          console.log(`  ✅ INCLUDED - hold fee added on ${additionDateString}`)
+        } else {
+          console.log(`  ❌ EXCLUDED - hold fee added on ${additionDateString} but filtering for ${startDate} to ${endDate}`)
+        }
+        return isInRange
+      }
+      
+      // For orders without hold fees, use the original created_at date
+      const createdDateString = getDateString(order.created_at)
+      
+      if (!createdDateString) {
+        console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid creation date: ${order.created_at}`)
+        return false
+      }
+      
+      // STRICT: Only include if the creation date exactly matches the date range
+      const isInRange = createdDateString >= startDate && createdDateString <= endDate
+      
+      console.log(`Order ${order.order_id}:`)
+      console.log(`  - Created: ${order.created_at}`)
+      console.log(`  - Created date string: ${createdDateString}`)
+      console.log(`  - Date range: ${startDate} to ${endDate}`)
+      console.log(`  - Is in range: ${isInRange}`)
+      
+      if (isInRange) {
+        console.log(`  ✅ INCLUDED - created on ${createdDateString}`)
+      } else {
+        console.log(`  ❌ EXCLUDED - created on ${createdDateString} but filtering for ${startDate} to ${endDate}`)
+      }
+      return isInRange
+    })
+
+    console.log(`=== FINAL SUMMARY ===`)
+    console.log(`Total orders processed: ${orders.length}`)
+    console.log(`Orders included in date range ${startDate} to ${endDate}: ${filteredOrders.length}`)
+    console.log(`Orders excluded: ${orders.length - filteredOrders.length}`)
+    
+    // Log summary of orders with hold fees
+    const ordersWithHoldFees = filteredOrders.filter(order => order.hold_fee_removed_at || order.hold_fee_added_at)
+    if (ordersWithHoldFees.length > 0) {
+      console.log('✅ INCLUDED orders with hold fees in date range:', ordersWithHoldFees.map(order => ({
+        order_id: order.order_id,
+        hold_fee_removed_at: order.hold_fee_removed_at,
+        hold_fee_added_at: order.hold_fee_added_at,
+        removal_date_string: order.hold_fee_removed_at ? new Date(order.hold_fee_removed_at).toISOString().split('T')[0] : null,
+        addition_date_string: order.hold_fee_added_at ? new Date(order.hold_fee_added_at).toISOString().split('T')[0] : null,
+        payment_method: order.payment_method,
+        status: order.status
+      })))
+    }
+    
+    // Debug: Log all orders with hold fees that were excluded
+    const allOrdersWithHoldFees = orders.filter(order => order.hold_fee_removed_at || order.hold_fee_added_at)
+    const excludedHoldFeeOrders = allOrdersWithHoldFees.filter(order => {
+      if (order.hold_fee_removed_at) {
+        const removalDateString = getDateString(order.hold_fee_removed_at)
+        return !removalDateString || removalDateString < startDate || removalDateString > endDate
+      }
+      if (order.hold_fee_added_at && !order.hold_fee_removed_at) {
+        const additionDateString = getDateString(order.hold_fee_added_at)
+        return !additionDateString || additionDateString < startDate || additionDateString > endDate
+      }
+      return false
+    })
+    
+    if (excludedHoldFeeOrders.length > 0) {
+      console.log('❌ EXCLUDED orders with hold fees (outside date range):', excludedHoldFeeOrders.map(order => ({
+        order_id: order.order_id,
+        hold_fee_removed_at: order.hold_fee_removed_at,
+        hold_fee_added_at: order.hold_fee_added_at,
+        removal_date_string: getDateString(order.hold_fee_removed_at),
+        addition_date_string: getDateString(order.hold_fee_added_at),
+        date_range: `${startDate} to ${endDate}`
+      })))
+    }
+    
+    console.log(`=== END STRICT DATE FILTERING ===`)
+    return filteredOrders
+  }, [getDateString])
+
   const fetchSummary = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
     try {
       let orders: Order[] = []
       if (user.role === "courier") {
-        // For courier users, show their own data
+        // For courier users, fetch all their orders and then filter by hold fee date
         const { data } = await supabase
           .from("orders")
           .select(
@@ -413,9 +597,13 @@ const Summary: React.FC = () => {
         `,
           )
           .eq("assigned_courier_id", user.id)
-          .gte("created_at", `${dateRange.startDate}T00:00:00`)
-          .lte("created_at", `${dateRange.endDate}T23:59:59`)
         orders = (data ?? []) as Order[]
+        // Filter orders based on hold fee removal date
+        orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+        
+        // Validate the filtering logic
+        validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
+        
         const courierName = user.name ?? translate("courier")
         setSummaryList([{ courierId: user.id, courierName: courierName }])
         setAllOrders(orders)
@@ -425,7 +613,7 @@ const Summary: React.FC = () => {
         setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name ?? "مندوب" })))
 
         if (selectedCourier) {
-          // If a courier is selected, fetch only their orders
+          // If a courier is selected, fetch all their orders and filter by hold fee date
           const { data } = await supabase
             .from("orders")
             .select(
@@ -435,11 +623,14 @@ const Summary: React.FC = () => {
           `,
             )
             .eq("assigned_courier_id", selectedCourier.courierId)
-            .gte("created_at", `${dateRange.startDate}T00:00:00`)
-            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           orders = (data ?? []) as Order[]
+          // Filter orders based on hold fee removal date
+          orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+          
+          // Validate the filtering logic
+          validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
         } else if (showAnalytics) {
-          // If showing analytics, fetch ALL orders from ALL couriers
+          // If showing analytics, fetch ALL orders from ALL couriers and filter by hold fee date
           const { data } = await supabase
             .from("orders")
             .select(
@@ -448,9 +639,12 @@ const Summary: React.FC = () => {
             order_proofs (id, image_data)
           `,
             )
-            .gte("created_at", `${dateRange.startDate}T00:00:00`)
-            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           orders = (data ?? []) as Order[]
+          // Filter orders based on hold fee removal date
+          orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+          
+          // Validate the filtering logic
+          validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
         } else {
           orders = []
         }
@@ -463,7 +657,7 @@ const Summary: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [user, dateRange, selectedCourier, showAnalytics, getTodayDateString])
+  }, [user, dateRange, selectedCourier, showAnalytics, getTodayDateString, filterOrdersByHoldFeeDate, validateDateFiltering, getDateString])
 
   useEffect(() => {
     fetchSummary()
@@ -805,7 +999,7 @@ const Summary: React.FC = () => {
       ? allOrders.filter((o) => o.assigned_courier_id === selectedCourier.courierId)
       : allOrders
 
-    // Overall Totals
+    // Overall Totals - Calculate as sum of all status counts to ensure accuracy
     const totalOrdersCount = filteredOrders.length
     const totalOrdersOriginalValue = filteredOrders.reduce((acc, o) => acc + Number(o.total_order_fees || 0), 0)
 
@@ -825,6 +1019,19 @@ const Summary: React.FC = () => {
       return { count, originalValue, courierCollected, orders }
     }
 
+    // Check for orders with null/undefined status
+    const ordersWithNullStatus = filteredOrders.filter((o) => !o.status || o.status === null || o.status === undefined)
+    if (ordersWithNullStatus.length > 0) {
+      console.warn(`Found ${ordersWithNullStatus.length} orders with null/undefined status:`, ordersWithNullStatus.map(o => ({ id: o.id, order_id: o.order_id, status: o.status })))
+    }
+
+    // Check for orders with unexpected status values
+    const expectedStatuses = ["assigned", "delivered", "canceled", "partial", "return", "receiving_part", "hand_to_hand"]
+    const ordersWithUnexpectedStatus = filteredOrders.filter((o) => o.status && !expectedStatuses.includes(o.status))
+    if (ordersWithUnexpectedStatus.length > 0) {
+      console.warn(`Found ${ordersWithUnexpectedStatus.length} orders with unexpected status:`, ordersWithUnexpectedStatus.map(o => ({ id: o.id, order_id: o.order_id, status: o.status })))
+    }
+
     const assigned = getStatusMetrics("assigned")
     const delivered = getStatusMetrics("delivered")
     const canceled = getStatusMetrics("canceled")
@@ -832,6 +1039,35 @@ const Summary: React.FC = () => {
     const returned = getStatusMetrics("return")
     const receivingPart = getStatusMetrics("receiving_part")
     const handToHand = getStatusMetrics("hand_to_hand")
+
+    // Recalculate total orders count as sum of all status counts to ensure accuracy
+    const calculatedTotalOrdersCount = assigned.count + delivered.count + canceled.count + partial.count + returned.count + receivingPart.count + handToHand.count
+    const calculatedTotalOrdersOriginalValue = assigned.originalValue + delivered.originalValue + canceled.originalValue + partial.originalValue + returned.originalValue + receivingPart.originalValue + handToHand.originalValue
+
+    // Validate that calculated totals match original totals
+    if (calculatedTotalOrdersCount !== totalOrdersCount) {
+      console.warn(`Total orders count mismatch: Original=${totalOrdersCount}, Calculated=${calculatedTotalOrdersCount}`)
+      console.log('Status breakdown:', {
+        assigned: assigned.count,
+        delivered: delivered.count,
+        canceled: canceled.count,
+        partial: partial.count,
+        returned: returned.count,
+        receivingPart: receivingPart.count,
+        handToHand: handToHand.count
+      })
+    }
+    if (Math.abs(calculatedTotalOrdersOriginalValue - totalOrdersOriginalValue) > 0.01) {
+      console.warn(`Total orders value mismatch: Original=${totalOrdersOriginalValue}, Calculated=${calculatedTotalOrdersOriginalValue}`)
+    }
+
+    // Log final totals for debugging
+    console.log('Final calculated totals:', {
+      totalOrdersCount: calculatedTotalOrdersCount,
+      totalOrdersOriginalValue: calculatedTotalOrdersOriginalValue,
+      deliveredCount: delivered.count,
+      deliveredOriginalValue: delivered.originalValue
+    })
 
     // Delivery Fees and Partial Amounts
     const totalDeliveryFeesFromAllOrders = filteredOrders.reduce((acc, o) => acc + Number(o.delivery_fee || 0), 0)
@@ -850,8 +1086,15 @@ const Summary: React.FC = () => {
 
     // Improved: Flatten all orders so each sub-payment in onther_payments is treated as a separate entry for summary
     const flattenOrdersForPaymentSummary = (orders: Order[]) => {
+      console.log('flattenOrdersForPaymentSummary called with includeHoldFeesInPayment:', includeHoldFeesInPayment)
       const result: { order: Order; method: string; amount: number }[] = []
       for (const o of orders) {
+        // Skip orders that have hold fees (either added or removed) unless includeHoldFeesInPayment is true
+        if (!includeHoldFeesInPayment && (o.hold_fee_added_at || o.hold_fee_removed_at)) {
+          console.log('Skipping order with hold fee:', o.order_id, 'hold_fee_added_at:', o.hold_fee_added_at, 'hold_fee_removed_at:', o.hold_fee_removed_at)
+          continue
+        }
+        
         if (o.payment_sub_type === 'onther' && o.onther_payments) {
           let arr: { method: string; amount: string }[] = []
           try {
@@ -877,10 +1120,12 @@ const Summary: React.FC = () => {
           }
         }
       }
+      console.log('flattenOrdersForPaymentSummary result:', result.length, 'orders')
       return result
     }
 
     // Use the flattened list for all payment method breakdowns
+    // Note: filteredOrders should already be date-filtered from fetchSummary
     const paymentSummaryList = flattenOrdersForPaymentSummary(filteredOrders)
 
     const getPaymentMethodMetrics = (methodKey: string) => {
@@ -917,8 +1162,8 @@ const Summary: React.FC = () => {
     const totalHandToAccounting = cashOnHandOrders.amount
 
     return {
-      totalOrdersCount,
-      totalOrdersOriginalValue,
+      totalOrdersCount: calculatedTotalOrdersCount,
+      totalOrdersOriginalValue: calculatedTotalOrdersOriginalValue,
       totalHoldFees,
       totalExtraFees,
       totalAdminDeliveryFees,
@@ -1361,11 +1606,28 @@ const Summary: React.FC = () => {
 
                   {/* 💳 Payment Breakdown */}
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-                        <CreditCard className="w-6 h-6 text-purple-600" />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                          <CreditCard className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-900">💳 تفصيل طرق الدفع</h2>
                       </div>
-                      <h2 className="text-xl font-bold text-gray-900">💳 تفصيل طرق الدفع</h2>
+                      {/* Hold Fee Filter Toggle */}
+                      <div className="flex items-center gap-3 bg-purple-50 px-3 py-2 rounded-lg border border-purple-200">
+                        <label className="flex items-center gap-3 cursor-pointer text-base">
+                          <input
+                            type="checkbox"
+                            checked={includeHoldFeesInPayment}
+                            onChange={(e) => {
+                              console.log('Toggle changed:', e.target.checked)
+                              setIncludeHoldFeesInPayment(e.target.checked)
+                            }}
+                            className="w-5 h-5 text-purple-600 bg-white border-purple-300 rounded focus:ring-purple-500 focus:ring-2"
+                          />
+                          <span className="text-purple-800 font-medium">تضمين رسوم الحجز</span>
+                        </label>
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
                       {/* Visa Machine */}
@@ -1423,7 +1685,7 @@ const Summary: React.FC = () => {
                         </div>
                       )}
                       {/* Cash on Hand */}
-                      {metrics.cashOnHandOrders.count >= 0 && (
+                      {metrics.cashOnHandOrders.count > 0 && (
                         <div
                           className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4 cursor-pointer hover:shadow-lg transition-all group"
                           onClick={() => openOrders(metrics.cashOnHandOrders.orders, "طلبات نقداً", 'on_hand')}
@@ -2613,17 +2875,34 @@ const Summary: React.FC = () => {
 
             {/* 💳 Payment Breakdown */}
             <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
-              <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
-                <div
-                  className={`bg-purple-100 rounded-xl flex items-center justify-center ${
-                    isCourier ? "w-8 h-8" : "w-10 h-10"
-                  }`}
-                >
-                  <CreditCard className={`text-purple-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+              <div className={`flex items-center justify-between ${isCourier ? "mb-4" : "mb-6"}`}>
+                <div className={`flex items-center gap-3`}>
+                  <div
+                    className={`bg-purple-100 rounded-xl flex items-center justify-center ${
+                      isCourier ? "w-8 h-8" : "w-10 h-10"
+                    }`}
+                  >
+                    <CreditCard className={`text-purple-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                  </div>
+                  <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
+                    {isCourier ? "💳 طرق الدفع" : "💳 تفصيل طرق الدفع"}
+                  </h2>
                 </div>
-                <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
-                  {isCourier ? "💳 طرق الدفع" : "💳 تفصيل طرق الدفع"}
-                </h2>
+                {/* Hold Fee Filter Toggle */}
+                <div className="flex items-center gap-3 bg-purple-50 px-3 py-2 rounded-lg border border-purple-200">
+                  <label className={`flex items-center gap-3 cursor-pointer ${isCourier ? "text-sm" : "text-base"}`}>
+                    <input
+                      type="checkbox"
+                      checked={includeHoldFeesInPayment}
+                      onChange={(e) => {
+                        console.log('Toggle changed:', e.target.checked)
+                        setIncludeHoldFeesInPayment(e.target.checked)
+                      }}
+                      className="w-5 h-5 text-purple-600 bg-white border-purple-300 rounded focus:ring-purple-500 focus:ring-2"
+                    />
+                    <span className="text-purple-800 font-medium">تضمين رسوم الحجز</span>
+                  </label>
+                </div>
               </div>
               <div
                 className={`grid ${
@@ -2638,7 +2917,8 @@ const Summary: React.FC = () => {
                     return (
                       o.payment_sub_type === "visa_machine" &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2672,7 +2952,8 @@ const Summary: React.FC = () => {
                     return (
                       o.payment_sub_type === "instapay" &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2706,7 +2987,8 @@ const Summary: React.FC = () => {
                     return (
                       o.payment_sub_type === "wallet" &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2754,7 +3036,8 @@ const Summary: React.FC = () => {
                     return (
                       (o.payment_sub_type === "on_hand" || (isGeneralCash && !isSpecificElectronicCashLike)) &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2807,7 +3090,8 @@ const Summary: React.FC = () => {
                           normalizePaymentMethod(displayMethod) === "cash" ||
                           normalizePaymentMethod(originalMethod) === "cash") &&
                         getTotalCourierAmount(o) > 0 &&
-                        o.assigned_courier_id === currentCourier.courierId
+                        o.assigned_courier_id === currentCourier.courierId &&
+                        (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                       )
                     })
                     const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2839,7 +3123,8 @@ const Summary: React.FC = () => {
                     return (
                       (normalizedDisplay === "valu" || (normalizedOriginal === "valu" && !o.collected_by)) &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -2877,13 +3162,16 @@ const Summary: React.FC = () => {
                     // If it's valu, don't count as paymob
                     if (isValu) return false
                     // If it's paid and has collected amount, count as paymob
-                    if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) return true
+                    if (o.payment_status === "paid" && getTotalCourierAmount(o) > 0) {
+                      return includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at)
+                    }
                     // Check for paymob indicators (excluding visa_machine which is separate)
                     return (
                       ((normalizedDisplay === "paymob" && o.payment_sub_type !== "visa_machine") ||
                         (normalizedOriginal === "paymob" && !o.collected_by && !o.payment_sub_type)) &&
                       getTotalCourierAmount(o) > 0 &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const amount = orders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
@@ -3091,7 +3379,8 @@ const Summary: React.FC = () => {
 
                     return (
                       (o.payment_sub_type === "on_hand" || (isGeneralCash && !isSpecificElectronicCashLike)) &&
-                      o.assigned_courier_id === currentCourier.courierId
+                      o.assigned_courier_id === currentCourier.courierId &&
+                      (includeHoldFeesInPayment || (!o.hold_fee_added_at && !o.hold_fee_removed_at))
                     )
                   })
                   const totalHandToAccounting = cashOnHandOrders.reduce((acc, o) => acc + getTotalCourierAmount(o), 0)
