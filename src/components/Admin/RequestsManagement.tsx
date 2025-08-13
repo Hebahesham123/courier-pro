@@ -25,6 +25,7 @@ import {
   Save,
   X,
   BarChart3,
+  Hash,
 } from 'lucide-react'
 
 interface Request {
@@ -33,6 +34,7 @@ interface Request {
   email: string
   phone: string
   comment: string
+  order_id?: string | null
   image_url?: string
   video_url?: string
   status: 'pending' | 'process' | 'approved' | 'cancelled'
@@ -75,6 +77,7 @@ const RequestsManagement: React.FC = () => {
     email: '',
     phone: '',
     comment: '',
+    order_id: '',
     image_url: '',
     video_url: '',
   })
@@ -234,7 +237,7 @@ const RequestsManagement: React.FC = () => {
       
       await fetchRequests()
       setShowCreateModal(false)
-      setFormData({ name: '', email: '', phone: '', comment: '', image_url: '', video_url: '' })
+      setFormData({ name: '', email: '', phone: '', comment: '', order_id: '', image_url: '', video_url: '' })
       setImageFile(null)
       setVideoFile(null)
     } catch (error) {
@@ -400,7 +403,8 @@ const RequestsManagement: React.FC = () => {
     const matchesSearch = 
       request.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       request.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.phone.includes(searchTerm)
+      request.phone.includes(searchTerm) ||
+      (request.order_id && request.order_id.toLowerCase().includes(searchTerm.toLowerCase()))
     
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter
     const matchesAssignee = assigneeFilter === 'all' || request.assignee === assigneeFilter
@@ -451,7 +455,7 @@ const RequestsManagement: React.FC = () => {
     
     // Create Excel-like data structure
     const headers = [
-      'ID', 'Name', 'Email', 'Phone', 'Status', 'Assignee', 
+      'ID', 'Name', 'Email', 'Phone', 'Order ID', 'Status', 'Assignee', 
       'Created Date', 'Updated Date', 'Comment', 'Image URL', 'Video URL'
     ]
     
@@ -462,6 +466,7 @@ const RequestsManagement: React.FC = () => {
         req.name,
         req.email,
         req.phone,
+        req.order_id || 'No Order ID',
         req.status,
         req.assignee || 'Unassigned',
         new Date(req.created_at).toLocaleDateString(),
@@ -713,6 +718,9 @@ const RequestsManagement: React.FC = () => {
                      Customer
                    </th>
                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Order ID
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Contact Info
                    </th>
                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -758,6 +766,18 @@ const RequestsManagement: React.FC = () => {
                              }
                            </div>
                          </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {request.order_id ? (
+                          <div className="flex items-center space-x-2">
+                            <Hash className="w-4 h-4 text-gray-400" />
+                            <span className="font-mono text-blue-600">{request.order_id}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic">No order ID</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -915,6 +935,17 @@ const RequestsManagement: React.FC = () => {
                            type="text"
                            value={selectedRequest.phone}
                            onChange={(e) => setSelectedRequest({...selectedRequest, phone: e.target.value})}
+                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         />
+                       </div>
+                       
+                       <div>
+                         <label className="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
+                         <input
+                           type="text"
+                           value={selectedRequest.order_id || ''}
+                           onChange={(e) => setSelectedRequest({...selectedRequest, order_id: e.target.value || null})}
+                           placeholder="Enter Shopify order ID"
                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                          />
                        </div>
@@ -1148,6 +1179,17 @@ const RequestsManagement: React.FC = () => {
                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                        required
+                     />
+                   </div>
+                   
+                   <div>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">Order ID (Optional)</label>
+                     <input
+                       type="text"
+                       value={formData.order_id}
+                       onChange={(e) => setFormData({...formData, order_id: e.target.value})}
+                       placeholder="Enter Shopify order ID"
+                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                      />
                    </div>
                    
