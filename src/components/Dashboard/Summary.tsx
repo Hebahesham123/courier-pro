@@ -41,6 +41,8 @@ interface OrderProof {
   image_data: string
 }
 
+
+
 interface Order {
   id: string
   order_id: string
@@ -59,6 +61,7 @@ interface Order {
   updated_at: string
   notes?: string | null
   order_proofs?: OrderProof[]
+
   hold_fee?: number | null
   hold_fee_comment?: string | null
   hold_fee_created_by?: string | null
@@ -112,17 +115,6 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
 
 // Helper function to get the display payment method (with translation)
 const getDisplayPaymentMethod = (order: Order, t?: (key: string) => string): string => {
-  // For split payment sub-row (from modal), use the payment_sub_type directly (already normalized)
-  if (order._onther_amount !== undefined && order.payment_sub_type) {
-    const label = t ? t(order.payment_sub_type) : order.payment_sub_type
-    if (label === order.payment_sub_type) {
-      // Not translated, log for debug
-      if (typeof window !== 'undefined' && window.console) {
-        window.console.warn('[getDisplayPaymentMethod] No translation for payment_sub_type:', order.payment_sub_type)
-      }
-    }
-    return label
-  }
   // For other cases, use normalized payment method
   if (order.payment_sub_type && order.payment_sub_type !== 'onther') {
     const normalized = normalizePaymentMethod(order.payment_sub_type)
@@ -406,9 +398,14 @@ const Summary: React.FC = () => {
         // For courier users, get all their orders with hold fees
         const { data } = await supabase
           .from("orders")
-          .select("*")
+          .select(`
+            *,
+            order_proofs (id, image_data)
+          `)
           .eq("assigned_courier_id", user.id)
-          .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+          .gte("created_at", `${dateRange.startDate}T00:00:00`)
+          .lte("created_at", `${dateRange.endDate}T23:59:59`)
+        
         holdFeesOrders = (data ?? []) as Order[]
       } else {
         // For admin users
@@ -416,7 +413,10 @@ const Summary: React.FC = () => {
           // If a courier is selected, fetch only their hold fees orders
           const { data } = await supabase
             .from("orders")
-            .select("*")
+            .select(`
+              *,
+              order_proofs (id, image_data)
+            `)
             .eq("assigned_courier_id", selectedCourier.courierId)
             .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
           holdFeesOrders = (data ?? []) as Order[]
@@ -424,8 +424,12 @@ const Summary: React.FC = () => {
           // If showing analytics, fetch ALL hold fees orders from ALL couriers
           const { data } = await supabase
             .from("orders")
-            .select("*")
-            .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+            .select(`
+              *,
+              order_proofs (id, image_data)
+            `)
+            .gte("created_at", `${dateRange.startDate}T00:00:00`)
+            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           holdFeesOrders = (data ?? []) as Order[]
         }
       }
@@ -448,208 +452,139 @@ const Summary: React.FC = () => {
     }
   }, [])
 
-  // Function to filter orders based on hold fee removal date or creation date
-  // Priority: hold_fee_removed_at > hold_fee_added_at > created_at
-  // This ensures orders appear on the day the hold fee was removed, not when it was added
-  const filterOrdersByHoldFeeDate = useCallback((orders: Order[], startDate: string, endDate: string) => {
-    console.log(`=== STARTING STRICT DATE FILTERING ===`)
-    console.log(`Filtering for date range: ${startDate} to ${endDate}`)
-    
-    const filteredOrders = orders.filter(order => {
-      // If order has a hold fee that was removed, use the removal date
-      if (order.hold_fee_removed_at) {
-        const removalDateString = getDateString(order.hold_fee_removed_at)
-        
-        if (!removalDateString) {
-          console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid hold fee removal date: ${order.hold_fee_removed_at}`)
-          return false
-        }
-        
-        // STRICT: Only include if the removal date exactly matches the date range
-        const isInRange = removalDateString >= startDate && removalDateString <= endDate
-        
-        console.log(`Order ${order.order_id}:`)
-        console.log(`  - Hold fee removed: ${order.hold_fee_removed_at}`)
-        console.log(`  - Removal date string: ${removalDateString}`)
-        console.log(`  - Date range: ${startDate} to ${endDate}`)
-        console.log(`  - Is in range: ${isInRange}`)
-        
-        if (isInRange) {
-          console.log(`  ✅ INCLUDED - hold fee removed on ${removalDateString}`)
-        } else {
-          console.log(`  ❌ EXCLUDED - hold fee removed on ${removalDateString} but filtering for ${startDate} to ${endDate}`)
-        }
-        return isInRange
-      }
-      
-      // If order has a hold fee that was added but not removed, use the addition date
-      if (order.hold_fee_added_at && !order.hold_fee_removed_at) {
-        const additionDateString = getDateString(order.hold_fee_added_at)
-        
-        if (!additionDateString) {
-          console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid hold fee addition date: ${order.hold_fee_added_at}`)
-          return false
-        }
-        
-        // STRICT: Only include if the addition date exactly matches the date range
-        const isInRange = additionDateString >= startDate && additionDateString <= endDate
-        
-        console.log(`Order ${order.order_id}:`)
-        console.log(`  - Hold fee added: ${order.hold_fee_added_at}`)
-        console.log(`  - Addition date string: ${additionDateString}`)
-        console.log(`  - Date range: ${startDate} to ${endDate}`)
-        console.log(`  - Is in range: ${isInRange}`)
-        
-        if (isInRange) {
-          console.log(`  ✅ INCLUDED - hold fee added on ${additionDateString}`)
-        } else {
-          console.log(`  ❌ EXCLUDED - hold fee added on ${additionDateString} but filtering for ${startDate} to ${endDate}`)
-        }
-        return isInRange
-      }
-      
-      // For orders without hold fees, use the original created_at date
-      const createdDateString = getDateString(order.created_at)
-      
-      if (!createdDateString) {
-        console.log(`Order ${order.order_id}: ❌ EXCLUDED - invalid creation date: ${order.created_at}`)
-        return false
-      }
-      
-      // STRICT: Only include if the creation date exactly matches the date range
-      const isInRange = createdDateString >= startDate && createdDateString <= endDate
-      
-      console.log(`Order ${order.order_id}:`)
-      console.log(`  - Created: ${order.created_at}`)
-      console.log(`  - Created date string: ${createdDateString}`)
-      console.log(`  - Date range: ${startDate} to ${endDate}`)
-      console.log(`  - Is in range: ${isInRange}`)
-      
-      if (isInRange) {
-        console.log(`  ✅ INCLUDED - created on ${createdDateString}`)
-      } else {
-        console.log(`  ❌ EXCLUDED - created on ${createdDateString} but filtering for ${startDate} to ${endDate}`)
-      }
-      return isInRange
-    })
-
-    console.log(`=== FINAL SUMMARY ===`)
-    console.log(`Total orders processed: ${orders.length}`)
-    console.log(`Orders included in date range ${startDate} to ${endDate}: ${filteredOrders.length}`)
-    console.log(`Orders excluded: ${orders.length - filteredOrders.length}`)
-    
-    // Log summary of orders with hold fees
-    const ordersWithHoldFees = filteredOrders.filter(order => order.hold_fee_removed_at || order.hold_fee_added_at)
-    if (ordersWithHoldFees.length > 0) {
-      console.log('✅ INCLUDED orders with hold fees in date range:', ordersWithHoldFees.map(order => ({
-        order_id: order.order_id,
-        hold_fee_removed_at: order.hold_fee_removed_at,
-        hold_fee_added_at: order.hold_fee_added_at,
-        removal_date_string: order.hold_fee_removed_at ? new Date(order.hold_fee_removed_at).toISOString().split('T')[0] : null,
-        addition_date_string: order.hold_fee_added_at ? new Date(order.hold_fee_added_at).toISOString().split('T')[0] : null,
-        payment_method: order.payment_method,
-        status: order.status
-      })))
-    }
-    
-    // Debug: Log all orders with hold fees that were excluded
-    const allOrdersWithHoldFees = orders.filter(order => order.hold_fee_removed_at || order.hold_fee_added_at)
-    const excludedHoldFeeOrders = allOrdersWithHoldFees.filter(order => {
-      if (order.hold_fee_removed_at) {
-        const removalDateString = getDateString(order.hold_fee_removed_at)
-        return !removalDateString || removalDateString < startDate || removalDateString > endDate
-      }
-      if (order.hold_fee_added_at && !order.hold_fee_removed_at) {
-        const additionDateString = getDateString(order.hold_fee_added_at)
-        return !additionDateString || additionDateString < startDate || additionDateString > endDate
-      }
-      return false
-    })
-    
-    if (excludedHoldFeeOrders.length > 0) {
-      console.log('❌ EXCLUDED orders with hold fees (outside date range):', excludedHoldFeeOrders.map(order => ({
-        order_id: order.order_id,
-        hold_fee_removed_at: order.hold_fee_removed_at,
-        hold_fee_added_at: order.hold_fee_added_at,
-        removal_date_string: getDateString(order.hold_fee_removed_at),
-        addition_date_string: getDateString(order.hold_fee_added_at),
-        date_range: `${startDate} to ${endDate}`
-      })))
-    }
-    
-    console.log(`=== END STRICT DATE FILTERING ===`)
-    return filteredOrders
-  }, [getDateString])
-
   const fetchSummary = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
     try {
+      console.log('=== FETCHING SUMMARY DATA ===')
+      console.log('User role:', user.role)
+      console.log('Selected courier:', selectedCourier)
+      console.log('Show analytics:', showAnalytics)
+      console.log('Date range:', dateRange)
+      
       let orders: Order[] = []
+      
       if (user.role === "courier") {
-        // For courier users, fetch all their orders and then filter by hold fee date
-        const { data } = await supabase
-          .from("orders")
-          .select(
-            `
-          *,
-          order_proofs (id, image_data)
-        `,
-          )
-          .eq("assigned_courier_id", user.id)
-        orders = (data ?? []) as Order[]
-        // Filter orders based on hold fee removal date
-        orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+        // For courier users, fetch all their orders for the date range
+        console.log('Fetching orders for courier user:', user.name)
         
-        // Validate the filtering logic
-        validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
+        const { data, error } = await supabase
+          .from("orders")
+          .select(`
+            *,
+            order_proofs (id, image_data)
+          `)
+          .eq("assigned_courier_id", user.id)
+          .gte("created_at", `${dateRange.startDate}T00:00:00`)
+          .lte("created_at", `${dateRange.endDate}T23:59:59`)
+        
+        if (error) {
+          console.error('Error fetching courier orders:', error)
+          orders = []
+        } else {
+          orders = (data ?? []) as Order[]
+        }
+        
+        console.log(`Found ${orders.length} orders for courier in date range`)
         
         const courierName = user.name ?? translate("courier")
         setSummaryList([{ courierId: user.id, courierName: courierName }])
         setAllOrders(orders)
+        
       } else {
         // For admin users
+        console.log('Fetching couriers list...')
         const { data: couriers } = await supabase.from("users").select("id, name").eq("role", "courier")
         setSummaryList((couriers ?? []).map((c) => ({ courierId: c.id, courierName: c.name ?? "مندوب" })))
 
         if (selectedCourier) {
-          // If a courier is selected, fetch all their orders and filter by hold fee date
-          const { data } = await supabase
+          // If a courier is selected, fetch all their orders for the date range
+          console.log('Fetching orders for selected courier:', selectedCourier.courierName)
+          
+          const { data, error } = await supabase
             .from("orders")
-            .select(
-              `
-            *,
-            order_proofs (id, image_data)
-          `,
-            )
+            .select(`
+              *,
+              order_proofs (id, image_data)
+            `)
             .eq("assigned_courier_id", selectedCourier.courierId)
-          orders = (data ?? []) as Order[]
-          // Filter orders based on hold fee removal date
-          orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+            .gte("created_at", `${dateRange.startDate}T00:00:00`)
+            .lte("created_at", `${dateRange.endDate}T23:59:59`)
           
-          // Validate the filtering logic
-          validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
+          if (error) {
+            console.error('Error fetching selected courier orders:', error)
+            orders = []
+          } else {
+            orders = (data ?? []) as Order[]
+          }
+          
+          console.log(`Found ${orders.length} orders for selected courier in date range`)
+          
         } else if (showAnalytics) {
-          // If showing analytics, fetch ALL orders from ALL couriers and filter by hold fee date
-          const { data } = await supabase
-            .from("orders")
-            .select(
-              `
-            *,
-            order_proofs (id, image_data)
-          `,
-            )
-          orders = (data ?? []) as Order[]
-          // Filter orders based on hold fee removal date
-          orders = filterOrdersByHoldFeeDate(orders, dateRange.startDate, dateRange.endDate)
+          // If showing analytics, fetch ALL orders from ALL couriers for the date range
+          console.log('Fetching ALL orders from ALL couriers for analytics')
           
-          // Validate the filtering logic
-          validateDateFiltering(orders, dateRange.startDate, dateRange.endDate)
+          const { data, error } = await supabase
+            .from("orders")
+            .select(`
+              *,
+              order_proofs (id, image_data)
+            `)
+            .gte("created_at", `${dateRange.startDate}T00:00:00`)
+            .lte("created_at", `${dateRange.endDate}T23:59:59`)
+          
+          if (error) {
+            console.error('Error fetching all orders:', error)
+            orders = []
+          } else {
+            orders = (data ?? []) as Order[]
+          }
+          
+          console.log(`Found ${orders.length} total orders from all couriers in date range`)
+          
         } else {
           orders = []
+          console.log('No courier selected and analytics disabled, showing empty list')
         }
+        
         setAllOrders(orders)
       }
+      
+      // Log summary of what we found
+      if (orders.length > 0) {
+        console.log('=== ORDERS SUMMARY ===')
+        console.log(`Total orders: ${orders.length}`)
+        
+
+        
+        // Group by status
+        const statusCounts = orders.reduce((acc, order) => {
+          acc[order.status] = (acc[order.status] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+        
+        console.log('Orders by status:', statusCounts)
+        
+        // Group by payment method
+        const paymentCounts = orders.reduce((acc, order) => {
+          acc[order.payment_method] = (acc[order.payment_method] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+        
+        console.log('Orders by payment method:', paymentCounts)
+        
+        // Sample orders
+        console.log('Sample orders:', orders.slice(0, 3).map(o => ({
+          order_id: o.order_id,
+          status: o.status,
+          payment_method: o.payment_method,
+          total_fees: o.total_order_fees,
+          courier: o.assigned_courier_id,
+          created_at: o.created_at,
+
+        })))
+      }
+      
     } catch (error) {
       console.error("Error fetching summary:", error)
       setSummaryList([])
@@ -657,7 +592,7 @@ const Summary: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [user, dateRange, selectedCourier, showAnalytics, getTodayDateString, filterOrdersByHoldFeeDate, validateDateFiltering, getDateString])
+  }, [user, dateRange, selectedCourier, showAnalytics])
 
   useEffect(() => {
     fetchSummary()
@@ -687,19 +622,31 @@ const Summary: React.FC = () => {
     setHoldFeeLoading(true)
     try {
       const amount = Number.parseFloat(holdFeeAmount) || 0
-      const { error } = await supabase
+      console.log('Saving hold fee:', { orderId, amount, comment: holdFeeComment, userId: user?.id })
+      
+      const updateData = {
+        hold_fee: amount > 0 ? amount : null,
+        hold_fee_comment: amount > 0 ? holdFeeComment : null,
+        hold_fee_created_by: amount > 0 ? user?.id : null,
+        hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
+        hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
+        hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
+      }
+      
+      console.log('Update data:', updateData)
+      
+      const { data, error } = await supabase
         .from("orders")
-        .update({
-          hold_fee: amount > 0 ? amount : null,
-          hold_fee_comment: amount > 0 ? holdFeeComment : null,
-          hold_fee_created_by: amount > 0 ? user?.id : null,
-          hold_fee_created_at: amount > 0 ? new Date().toISOString() : null,
-          hold_fee_added_at: amount > 0 ? new Date().toISOString() : null,
-          hold_fee_removed_at: amount > 0 ? null : new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", orderId)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
+      
+      console.log('Update successful:', data)
 
       // Update local state
       setAllOrders((prev) =>
@@ -752,6 +699,8 @@ const Summary: React.FC = () => {
       setHoldFeeComment("")
     } catch (error) {
       console.error("Error saving hold fee:", error)
+      // Show error to user
+      alert(`Failed to save hold fee: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setHoldFeeLoading(false)
     }
@@ -986,11 +935,16 @@ const Summary: React.FC = () => {
         break
     }
 
+    const startDateString = `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, "0")}-${startDate.getDate().toString().padStart(2, "0")}`
+    const endDateString = `${endDate.getFullYear()}-${(endDate.getMonth() + 1).toString().padStart(2, "0")}-${endDate.getDate().toString().padStart(2, "0")}`
+
     setActiveFilter(filterType)
     setDateRange({
-      startDate: `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, "0")}-${startDate.getDate().toString().padStart(2, "0")}`,
-      endDate: `${endDate.getFullYear()}-${(endDate.getMonth() + 1).toString().padStart(2, "0")}-${endDate.getDate().toString().padStart(2, "0")}`,
+      startDate: startDateString,
+      endDate: endDateString,
     })
+
+    // The fetchSummary will be called automatically by useEffect when dateRange changes
   }
 
   // Calculate comprehensive accounting metrics
@@ -1009,6 +963,47 @@ const Summary: React.FC = () => {
     const totalAdminDeliveryFees = filteredOrders.reduce((acc, o) => acc + Number(o.admin_delivery_fee || 0), 0)
     const totalAllFees = totalHoldFees + totalExtraFees + totalAdminDeliveryFees
     const adjustedTotal = totalOrdersOriginalValue - totalAllFees
+
+    // Function to calculate payment method totals
+    const calculatePaymentMethodTotal = (method: string) => {
+      let total = 0
+      let regularOrdersCount = 0
+      
+      // Map Arabic payment method names to English equivalents
+      const methodMapping: Record<string, string[]> = {
+        'cash': ['cash', 'نقداً', 'on_hand'],
+        'card': ['card', 'visa_machine', 'ماكينة فيزا'],
+        'valu': ['valu', 'فاليو'],
+        'paymob': ['paymob', 'باي موب'],
+        'instapay': ['instapay', 'إنستاباي'],
+        'wallet': ['wallet', 'المحفظة'],
+        'visa_machine': ['visa_machine', 'ماكينة فيزا', 'card'],
+        'on_hand': ['on_hand', 'نقداً', 'cash']
+      }
+      
+      const methodVariants = methodMapping[method] || [method]
+      
+      filteredOrders.forEach(order => {
+        // Check regular payment method
+        if (methodVariants.includes(order.payment_method)) {
+          total += Number(order.total_order_fees || 0)
+          regularOrdersCount++
+        }
+      })
+      
+      return total
+    }
+
+    // Calculate totals for each payment method
+    const cashTotal = calculatePaymentMethodTotal('cash')
+    const cardTotal = calculatePaymentMethodTotal('card')
+    const valuTotal = calculatePaymentMethodTotal('valu')
+    const paymobTotal = calculatePaymentMethodTotal('paymob')
+    const instapayTotal = calculatePaymentMethodTotal('instapay')
+    const walletTotal = calculatePaymentMethodTotal('wallet')
+    const visaMachineTotal = calculatePaymentMethodTotal('visa_machine')
+    const onHandTotal = calculatePaymentMethodTotal('on_hand')
+
 
     // Status-based Metrics
     const getStatusMetrics = (status: string) => {
@@ -1108,6 +1103,7 @@ const Summary: React.FC = () => {
                 // Each sub-payment is a separate entry, with _onther_amount for modal display
                 result.push({ order: { ...o, payment_sub_type: normalizedSubMethod, _onther_amount: amt }, method: normalizedSubMethod, amount: amt })
               }
+
             }
           }
         } else {
@@ -1187,6 +1183,16 @@ const Summary: React.FC = () => {
       totalCODOrders,
       totalHandToAccounting,
       allOrders: filteredOrders, // Added allOrders to the returned metrics
+  
+      cashTotal,
+      cardTotal,
+      valuTotal,
+      paymobTotal,
+      instapayTotal,
+      walletTotal,
+      visaMachineTotal,
+      onHandTotal,
+
     }
   }
 
@@ -1242,6 +1248,31 @@ const Summary: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-4">
+                {/* Refresh Button */}
+                <button
+                  onClick={() => {
+                    console.log('Manual refresh triggered')
+                    console.log('Current state:', { 
+                      showAnalytics, 
+                      selectedCourier, 
+                      dateRange, 
+                      allOrdersLength: allOrders.length 
+                    })
+                    fetchSummary()
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  تحديث
+                </button>
+                
+                {/* Debug Info */}
+                <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  Orders: {allOrders.length} | 
+                  Analytics: {showAnalytics ? 'ON' : 'OFF'} | 
+                  Courier: {selectedCourier ? selectedCourier.courierName : 'None'}
+                </div>
+                
                 {/* Quick Date Filters */}
                 <div className="flex items-center gap-2">
                   <button
@@ -1286,6 +1317,7 @@ const Summary: React.FC = () => {
                     onChange={(e) => {
                       setActiveFilter("custom")
                       setDateRange((prev) => ({ ...prev, startDate: e.target.value }))
+                      // fetchSummary will be called automatically by useEffect when dateRange changes
                     }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     dir="ltr"
@@ -1297,6 +1329,7 @@ const Summary: React.FC = () => {
                     onChange={(e) => {
                       setActiveFilter("custom")
                       setDateRange((prev) => ({ ...prev, endDate: e.target.value }))
+                      // fetchSummary will be called automatically by useEffect when dateRange changes
                     }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     dir="ltr"
@@ -1983,7 +2016,7 @@ const Summary: React.FC = () => {
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
                   {selectedOrders.map((order) => {
-                    // Show the correct split payment amount if present (_onther_amount), otherwise fallback
+            
                     const courierOrderAmount = typeof order._onther_amount === 'number' ? order._onther_amount : getCourierOrderAmount(order)
                     const deliveryFee = Number(order.delivery_fee || 0)
                     const totalCourierAmount = typeof order._onther_amount === 'number' ? order._onther_amount : getTotalCourierAmount(order)
@@ -2273,7 +2306,7 @@ const Summary: React.FC = () => {
 
                             {/* Payment Information */}
                             <div className="space-y-2">
-                              {/* Show correct payment method for split payments and normal orders */}
+                      
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-600">{translate("paymentSubTypeLabel")}:</span>
                                 <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-800">
@@ -2462,6 +2495,7 @@ const Summary: React.FC = () => {
                   onChange={(e) => {
                     setActiveFilter("custom")
                     setDateRange((prev) => ({ ...prev, startDate: e.target.value }))
+                    // fetchSummary will be called automatically by useEffect when dateRange changes
                   }}
                   className={`border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     isCourier ? "px-2 py-1 text-xs" : "px-4 py-2"
@@ -2478,6 +2512,7 @@ const Summary: React.FC = () => {
                       onChange={(e) => {
                         setActiveFilter("custom")
                         setDateRange((prev) => ({ ...prev, endDate: e.target.value }))
+                        // fetchSummary will be called automatically by useEffect when dateRange changes
                       }}
                       className="border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       dir="ltr"
@@ -3438,20 +3473,13 @@ const Summary: React.FC = () => {
               <div className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}>
                 <div className={`space-y-${isCourier ? "3" : "4"}`}>
                   {selectedOrders.map((order) => {
-                    // For split payments, show the correct payment method for this sub-payment
-                    const isSplit = typeof order._onther_amount === 'number' && order.payment_sub_type;
-                    const courierOrderAmount = isSplit ? order._onther_amount : getCourierOrderAmount(order);
+                    
+                                          const courierOrderAmount = getCourierOrderAmount(order);
                     const deliveryFee = Number(order.delivery_fee || 0);
-                    const totalCourierAmount = isSplit ? order._onther_amount : getTotalCourierAmount(order);
-                    // If _onther_amount is present, use payment_sub_type as the method, else use displayPaymentMethod
-                    const paymentMethodLabel = isSplit
-                      ? translate(normalizePaymentMethod(order.payment_sub_type ?? ""))
-                      : translate(getDisplayPaymentMethod(order));
+                                          const totalCourierAmount = getTotalCourierAmount(order);
+                    const paymentMethodLabel = translate(getDisplayPaymentMethod(order));
                     const holdFee = Number(order.hold_fee || 0);
-                    // Unique key for split payments: id + method + amount
-                    const rowKey = isSplit
-                      ? `${order.id}_${order.payment_sub_type}_${order._onther_amount}`
-                      : order.id;
+                    const rowKey = order.id;
                     return (
                       <div
                         key={rowKey}
@@ -3785,11 +3813,7 @@ const Summary: React.FC = () => {
                                 >
                                   {paymentMethodLabel}
                                 </span>
-                                {isSplit && (
-                                  <span className={`ml-2 px-2 py-1 rounded font-medium bg-gray-100 text-gray-800 ${isCourier ? "text-xs" : "text-xs"}`}>
-                                    {courierOrderAmount} {translate('EGP')}
-                                  </span>
-                                )}
+
                               </div>
                             </div>
                           </div>

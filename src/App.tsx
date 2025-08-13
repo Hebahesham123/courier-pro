@@ -16,6 +16,7 @@ import CourierYourSheet from "./components/Courier/YourSheet"
 import CouriersManagement from "./components/Admin/CouriersManagement"
 import Reports from "./components/Admin/reports"
 import AdminCouriersSheet from "./components/Admin/AdminCouriersSheet"
+import RequestsManagement from "./components/Admin/RequestsManagement"
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
   children,
@@ -86,6 +87,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <OrdersManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/requests"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <RequestsManagement />
                 </AppLayout>
               </ProtectedRoute>
             }

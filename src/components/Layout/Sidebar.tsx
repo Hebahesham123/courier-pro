@@ -16,7 +16,7 @@ import {
   Menu,
   BarChart3,
   Settings,
-  
+  MessageSquare,
   Bell,
   Shield,
 } from "lucide-react"
@@ -107,6 +107,13 @@ const Sidebar: React.FC = () => {
       label: t("reports") || "التقارير",
       color: "text-pink-400",
       description: "تقارير الأداء والإحصائيات",
+    },
+    {
+      path: "/admin/requests",
+      icon: MessageSquare,
+      label: "Customer Requests",
+      color: "text-yellow-400",
+      description: "Manage customer general requests",
     },
   ]
 

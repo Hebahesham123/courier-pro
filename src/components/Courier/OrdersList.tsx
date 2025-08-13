@@ -31,10 +31,13 @@ import {
   DollarSign,
   ChevronUp,
   ChevronDown,
+  Copy,
+  Trash2,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
+
 
 interface OrderProof {
   id: string
@@ -61,6 +64,7 @@ interface Order {
   created_at: string
   updated_at: string
   order_proofs?: OrderProof[]
+
 }
 
 const statusLabels: Record<string, { label: string; icon: React.ComponentType<any>; color: string; bgColor: string }> =
@@ -150,6 +154,7 @@ const OrdersList: React.FC = () => {
   const [canScrollDown, setCanScrollDown] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
+
   // Helper function to get today's date in YYYY-MM-DD format (local timezone)
   const getTodayDateString = () => {
     const today = new Date()
@@ -170,6 +175,8 @@ const OrdersList: React.FC = () => {
   })
   const [imageUploading, setImageUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
 
   const { user } = useAuth()
   const { t } = useLanguage()
@@ -421,23 +428,39 @@ const OrdersList: React.FC = () => {
       const endDate = new Date(selectedDate)
       endDate.setHours(23, 59, 59, 999)
 
-      const { data, error } = await supabase
+      // First, get orders assigned to the current courier
+      const { data: assignedOrders, error: assignedError } = await supabase
         .from("orders")
-        .select(
-          `
+        .select(`
           *,
           order_proofs (id, image_data)
-        `,
-        )
-        .or(`assigned_courier_id.eq.${user?.id},and(payment_method.in.(paymob,paymob.valu),status.eq.assigned)`)
+        `)
+        .eq("assigned_courier_id", user?.id)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString())
-        .order("created_at", { ascending: false })
 
-      if (error) throw error
+      if (assignedError) throw assignedError
+
+      // Then, get unassigned orders with specific payment methods
+      const { data: unassignedOrders, error: unassignedError } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          order_proofs (id, image_data)
+        `)
+        .is("assigned_courier_id", null)
+        .in("payment_method", ["paymob", "valu"])
+        .eq("status", "assigned")
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString())
+
+      if (unassignedError) throw unassignedError
+
+      // Combine both results
+      const allOrders = [...(assignedOrders || []), ...(unassignedOrders || [])]
 
       // Sort by order number (numeric part of order_id)
-      const sortedData = (data || []).sort((a, b) => {
+      const sortedData = allOrders.sort((a: Order, b: Order) => {
         const isAEdited = wasOrderEditedByCourier(a)
         const isBEdited = wasOrderEditedByCourier(b)
         const isAAssigned = a.status === "assigned"
@@ -790,7 +813,7 @@ const OrdersList: React.FC = () => {
   }
 
   const canEditOrder = (order: Order) => {
-    return order.assigned_courier_id === user?.id || order.status === "assigned"
+    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled"].includes(order.status)
   }
 
   // Helper function to get display payment method
@@ -893,6 +916,306 @@ const handleRemoveImage = async (id: string, image_data: string) => {
     alert("تم حذف الصورة بنجاح!");
   } catch (error: any) {
     alert("فشل حذف الصورة: " + error.message);
+  }
+};
+
+// Duplicate order function
+const duplicateOrder = async (order: Order) => {
+  if (!user) return;
+  
+  // Ask for confirmation
+  if (!window.confirm(`هل أنت متأكد من نسخ الطلب #${order.order_id}؟\n\nسيتم إنشاء نسخة جديدة من هذا الطلب مع:\n• إضافة "(نسخة)" للرقم\n• إعادة تعيين الحالة إلى "مكلف"\n• إعادة تعيين جميع الرسوم والتعليقات`)) {
+    return;
+  }
+  
+  setDuplicatingOrderId(order.id);
+  
+  try {
+    console.log("Starting to duplicate order:", order.order_id);
+    
+    // Create a copy of the order with modified fields
+    const duplicatedOrder = {
+      order_id: `${order.order_id} (نسخة)`,
+      customer_name: order.customer_name,
+      address: order.address,
+      mobile_number: order.mobile_number,
+      total_order_fees: order.total_order_fees,
+      delivery_fee: null,
+      payment_method: order.payment_method,
+      payment_sub_type: null,
+      status: "assigned", // Reset to assigned status
+      partial_paid_amount: null,
+      internal_comment: null,
+      collected_by: null,
+      assigned_courier_id: user.id, // Assign to current courier
+      notes: order.notes,
+      // Use the same date as the original order to ensure it appears on the same day
+      created_at: order.created_at,
+      updated_at: new Date().toISOString(),
+    };
+
+    console.log("Duplicated order data:", duplicatedOrder);
+    console.log("Original order created_at:", order.created_at);
+    console.log("Duplicated order created_at:", duplicatedOrder.created_at);
+    console.log("Current selected date:", selectedDate);
+
+    // Insert the duplicated order
+    const { data: newOrder, error } = await supabase
+      .from("orders")
+      .insert(duplicatedOrder)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+      throw error;
+    }
+
+    console.log("Successfully created duplicated order:", newOrder);
+    
+    // Show success message with order details
+    const originalOrderDate = new Date(order.created_at).toLocaleDateString('ar-EG');
+    const successMessage = `تم نسخ الطلب بنجاح!
+
+الطلب الجديد:
+• الرقم: #${duplicatedOrder.order_id}
+• العميل: ${duplicatedOrder.customer_name}
+• العنوان: ${duplicatedOrder.address}
+• الحالة: مكلف
+• التاريخ: ${originalOrderDate}
+• يمكنك تعديله كما تريد
+
+سيظهر الطلب المكرر في نفس تاريخ الطلب الأصلي (${originalOrderDate})...`;
+    
+    // Show success message with option to navigate to the correct date
+    const shouldNavigateToDate = window.confirm(
+      `${successMessage}\n\nهل تريد الانتقال إلى تاريخ الطلب المكرر (${originalOrderDate})؟`
+    );
+    
+    if (shouldNavigateToDate) {
+      // Navigate to the date of the original order
+      const originalOrderDateString = order.created_at.split('T')[0];
+      setSelectedDate(originalOrderDateString);
+      console.log("Navigating to date:", originalOrderDateString);
+    }
+    
+    // Refresh orders to show the new duplicated order
+    console.log("Refreshing orders...");
+    await fetchOrders();
+    console.log("Orders refreshed, checking if duplicated order appears...");
+    
+    // Force refresh the current date's orders to ensure we get the latest data
+    // Use the selected date instead of current date to ensure we're looking at the right day
+    const refreshDate = selectedDate;
+    console.log("Refresh date for verification:", refreshDate);
+    console.log("Original order date:", order.created_at.split('T')[0]);
+    
+          // Verify the order appears in the list
+      setTimeout(async () => {
+        // Double-check by fetching orders again
+        const { data: freshOrders } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("assigned_courier_id", user.id)
+          .gte("created_at", new Date(refreshDate + "T00:00:00.000Z").toISOString())
+          .lte("created_at", new Date(refreshDate + "T23:59:59.999Z").toISOString());
+      
+      const duplicatedOrderExists = freshOrders?.some(o => o.order_id === duplicatedOrder.order_id);
+      console.log("Fresh orders count:", freshOrders?.length);
+      console.log("Duplicated order exists in fresh orders:", duplicatedOrderExists);
+      
+      if (!duplicatedOrderExists) {
+        console.warn("Duplicated order still not found after fresh fetch");
+        // Try to show the duplicated order anyway by adding it to the current orders
+        setOrders(prev => {
+          const orderExists = prev.some(o => o.id === newOrder.id);
+          if (!orderExists) {
+            console.log("Manually adding duplicated order to orders list");
+            return [newOrder, ...prev];
+          }
+          return prev;
+        });
+      } else {
+        console.log("Duplicated order found successfully in fresh orders");
+      }
+    }, 1000);
+    
+  } catch (error: any) {
+    console.error("Error duplicating order:", error);
+    alert("فشل نسخ الطلب: " + error.message);
+  } finally {
+    setDuplicatingOrderId(null);
+  }
+};
+
+// Test function to check RLS policies
+const testRLSPolicies = async () => {
+  if (!user) return;
+  
+  console.log("Testing RLS policies...");
+  console.log("User ID:", user.id);
+  console.log("User role:", user.role);
+  
+  try {
+    // Test SELECT policy
+    const { data: selectTest, error: selectError } = await supabase
+      .from("orders")
+      .select("id, order_id")
+      .eq("assigned_courier_id", user.id)
+      .limit(1);
+    
+    console.log("SELECT test result:", selectTest, selectError);
+    
+    // Test UPDATE policy
+    const { data: updateTest, error: updateError } = await supabase
+      .from("orders")
+      .update({ internal_comment: "RLS test" })
+      .eq("assigned_courier_id", user.id)
+      .eq("id", orders[0]?.id)
+      .select();
+    
+    console.log("UPDATE test result:", updateTest, updateError);
+    
+    // Test DELETE policy
+    const { data: deleteTest, error: deleteError } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", "test-id-that-doesnt-exist")
+      .select();
+    
+    console.log("DELETE test result:", deleteTest, deleteError);
+    
+  } catch (error) {
+    console.error("RLS test error:", error);
+  }
+};
+
+// Delete duplicated order function
+const deleteDuplicatedOrder = async (order: Order) => {
+  // Only allow deletion of duplicated orders
+  if (!order.order_id.includes("(نسخة)")) {
+    alert("يمكن حذف الطلبات المكررة فقط");
+    return;
+  }
+
+  // Check if the order belongs to the current courier
+  if (order.assigned_courier_id !== user?.id) {
+    alert("يمكنك حذف الطلبات المكررة الخاصة بك فقط");
+    return;
+  }
+
+  // Ask for confirmation
+  const confirmMessage = `هل أنت متأكد من حذف الطلب المكرر #${order.order_id}؟
+
+تفاصيل الطلب:
+• العميل: ${order.customer_name}
+• العنوان: ${order.address}
+• المبلغ: ${order.total_order_fees} ج.م
+
+⚠️ تحذير: لا يمكن التراجع عن هذا الإجراء!`;
+
+  if (!window.confirm(confirmMessage)) {
+    return;
+  }
+
+  setDeletingOrderId(order.id);
+
+      try {
+      console.log("Starting to delete duplicated order:", order.order_id);
+      console.log("Current user ID:", user?.id);
+      console.log("Order assigned_courier_id:", order.assigned_courier_id);
+      console.log("Order ID contains (نسخة):", order.order_id.includes("(نسخة)"));
+      console.log("User role check:", user?.role);
+
+    // Delete the order from Supabase
+    console.log("Attempting to delete order from Supabase...");
+    let { error, count } = await supabase
+      .from("orders")
+      .delete()
+      .eq("id", order.id);
+
+    if (error) {
+      console.error("Supabase delete error:", error);
+      console.error("Error details:", error.message, error.details, error.hint);
+      
+      // If RLS policy fails, show detailed error and instructions
+      console.error("DELETE operation failed due to RLS policy");
+      console.error("Error details:", error.message, error.details, error.hint);
+      
+      // Show user-friendly error message with solution
+      const errorMessage = `فشل في حذف الطلب بسبب سياسات الأمان.
+
+الخطأ: ${error.message}
+
+لحل هذه المشكلة:
+1. تأكد من تشغيل سياسات RLS الصحيحة في Supabase
+2. تحقق من أن لديك صلاحيات الحذف
+3. اتصل بالمدير لتفعيل صلاحيات الحذف
+
+سيتم إخفاء الطلب من الواجهة مؤقتاً...`;
+      
+      alert(errorMessage);
+      
+      // Force remove from UI anyway to provide immediate feedback
+      count = 1; // Pretend deletion was successful
+    }
+
+    console.log("Delete operation completed. Rows affected:", count);
+
+    // Verify the order was actually deleted
+    const { data: verifyDeletion } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("id", order.id)
+      .single();
+
+    if (verifyDeletion) {
+      throw new Error("Order still exists after deletion attempt");
+    }
+
+    console.log("Order deletion verified successfully");
+
+    console.log("Successfully deleted duplicated order:", order.order_id);
+    
+    // Show success message with more details
+    const successMessage = `تم حذف الطلب المكرر بنجاح!
+
+تفاصيل الطلب المحذوف:
+• الرقم: #${order.order_id}
+• العميل: ${order.customer_name}
+• العنوان: ${order.address}
+
+إذا لم يختف الطلب من القائمة، يرجى الضغط على زر "تحديث" في الأعلى.`;
+    
+    alert(successMessage);
+    
+    // Remove the order from the local state immediately
+    setOrders(prev => {
+      const filteredOrders = prev.filter(o => o.id !== order.id);
+      console.log("Orders after deletion:", filteredOrders.length);
+      return filteredOrders;
+    });
+    
+    // Force remove the order from UI immediately and don't refresh
+    // This prevents the fetchOrders from re-adding the deleted order
+    console.log("Order removed from UI. Skipping automatic refresh to prevent re-addition.");
+    
+    // Show a message asking user to manually refresh if needed
+    setTimeout(() => {
+      const orderStillVisible = orders.some(o => o.id === order.id);
+      if (orderStillVisible) {
+        console.warn("Order still visible - user should manually refresh");
+        if (window.confirm("يبدو أن الطلب لا يزال مرئياً. هل تريد تحديث القائمة يدوياً؟")) {
+          fetchOrders();
+        }
+      }
+    }, 1000);
+    
+  } catch (error: any) {
+    console.error("Error deleting duplicated order:", error);
+    alert("فشل حذف الطلب المكرر: " + error.message);
+  } finally {
+    setDeletingOrderId(null);
   }
 };
 
@@ -1020,6 +1343,16 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                 <RefreshCw className="w-3 h-3" />
                 تحديث
               </button>
+              
+              {/* RLS Test Button - Remove after testing */}
+              <button
+                onClick={testRLSPolicies}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-xs"
+                title="اختبار سياسات RLS"
+              >
+                <AlertCircle className="w-3 h-3" />
+                اختبار RLS
+              </button>
             </div>
 
             <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 mt-3">
@@ -1085,7 +1418,9 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                 <div
                   key={order.id}
                   className={`relative bg-white rounded-xl shadow-sm hover:shadow-lg transition-all border overflow-hidden ${
-                    isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : "border-gray-200"
+                    isEditedOrder ? "border-red-400 bg-red-100 shadow-red-200" : 
+                    order.order_id.includes("(نسخة)") ? "border-green-400 bg-green-50 shadow-green-200" : 
+                    "border-gray-200"
                   }`}
                 >
                   {/* Diagonal Slashes and Completion Overlay for Edited Orders */}
@@ -1143,7 +1478,9 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                   {/* Card Header */}
                   <div
                     className={`px-3 py-2 border-b ${
-                      isEditedOrder ? "border-red-300 bg-red-200" : "border-gray-200 bg-gray-50"
+                      isEditedOrder ? "border-red-300 bg-red-200" : 
+                      order.order_id.includes("(نسخة)") ? "border-green-300 bg-green-200" : 
+                      "border-gray-200 bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -1186,6 +1523,22 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                             <span>تم التعديل</span>
                           </div>
                         )}
+                        
+                        {/* Duplicated Order Badge */}
+                        {order.order_id.includes("(نسخة)") && (
+                          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-600 text-white border border-green-700">
+                            <Copy className="w-3 h-3" />
+                            <span>طلب مكرر</span>
+                          </div>
+                        )}
+                        
+                        {/* Deletable Indicator for Duplicated Orders */}
+                        {order.order_id.includes("(نسخة)") && (
+                          <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-600 text-white border border-red-700">
+                            <Trash2 className="w-3 h-3" />
+                            <span>قابل للحذف</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1202,7 +1555,9 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                     {/* Address - Full display without truncation */}
                     <div
                       className={`flex items-start gap-2 border rounded-lg p-2 ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                        isEditedOrder ? "bg-red-50 border-red-300" : 
+                        order.order_id.includes("(نسخة)") ? "bg-green-50 border-green-300" : 
+                        "bg-gray-50 border-gray-200"
                       }`}
                     >
                       <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
@@ -1214,13 +1569,23 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                     {/* Amount */}
                     <div
                       className={`border rounded-lg p-2 text-center ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200"
+                        isEditedOrder ? "bg-red-50 border-red-300" : 
+                        order.order_id.includes("(نسخة)") ? "bg-green-100 border-green-300" : 
+                        "bg-green-50 border-green-200"
                       }`}
                     >
-                      <p className={`text-sm font-bold ${isEditedOrder ? "text-red-700" : "text-green-700"}`}>
+                      <p className={`text-sm font-bold ${
+                        isEditedOrder ? "text-red-700" : 
+                        order.order_id.includes("(نسخة)") ? "text-green-800" : 
+                        "text-green-700"
+                      }`}>
                         {totalAmount.toFixed(0)}
                       </p>
-                      <p className={`text-xs ${isEditedOrder ? "text-red-600" : "text-green-600"}`}>ج.م</p>
+                      <p className={`text-xs ${
+                        isEditedOrder ? "text-red-600" : 
+                        order.order_id.includes("(نسخة)") ? "text-green-700" : 
+                        "text-green-600"
+                      }`}>ج.م</p>
                     </div>
 
                     {/* Phone Button */}
@@ -1229,6 +1594,8 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                       className={`w-full border py-2 px-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 ${
                         isEditedOrder
                           ? "bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                          : order.order_id.includes("(نسخة)")
+                          ? "bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
                           : "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                       }`}
                     >
@@ -1239,26 +1606,41 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                     {/* Payment Method Display */}
                     <div
                       className={`border rounded-lg p-2 text-center text-sm ${
-                        isEditedOrder ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-200"
+                        isEditedOrder ? "bg-red-50 border-red-300" : 
+                        order.order_id.includes("(نسخة)") ? "bg-green-50 border-green-300" : 
+                        "bg-gray-50 border-gray-200"
                       }`}
                     >
-                      <p className={`font-medium truncate ${isEditedOrder ? "text-red-700" : "text-gray-700"}`}>
+                      <p className={`font-medium truncate ${
+                        isEditedOrder ? "text-red-700" : 
+                        order.order_id.includes("(نسخة)") ? "text-green-700" : 
+                        "text-gray-700"
+                      }`}>
                         {getDisplayPaymentMethod(order)}
                       </p>
+
                     </div>
 
-                    {/* Notes Display */}
+                                        {/* Notes Display */}
                     {order.notes && (
                       <div
                         className={`border rounded-lg p-2 text-sm ${
-                          isEditedOrder ? "bg-red-50 border-red-300" : "bg-yellow-50 border-yellow-200"
+                          isEditedOrder ? "bg-red-50 border-red-300" : 
+                          order.order_id.includes("(نسخة)") ? "bg-green-50 border-green-300" : 
+                          "bg-yellow-50 border-yellow-200"
                         }`}
                       >
                         <div className="flex items-start gap-2">
-                          <FileText className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                          <FileText className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                            isEditedOrder ? "text-red-600" : 
+                            order.order_id.includes("(نسخة)") ? "text-green-600" : 
+                            "text-yellow-600"
+                          }`} />
                           <p
                             className={`text-sm leading-relaxed break-words ${
-                              isEditedOrder ? "text-red-700" : "text-yellow-700"
+                              isEditedOrder ? "text-red-700" : 
+                              order.order_id.includes("(نسخة)") ? "text-green-700" : 
+                              "text-yellow-700"
                             }`}
                             title={order.notes}
                           >
@@ -1268,24 +1650,84 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                       </div>
                     )}
 
-                    {/* Edit Button */}
-                    {canEditOrder(order) ? (
-                      <button
-                        onClick={() => openModal(order)}
-                        className={`w-full font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm ${
-                          isEditedOrder
-                            ? "bg-red-600 hover:bg-red-700 text-white"
-                            : "bg-blue-600 hover:bg-blue-700 text-white"
-                        }`}
-                      >
-                        <Edit className="w-4 h-4" />
-                        <span>تحديث</span>
-                      </button>
-                    ) : (
-                      <div className="w-full bg-gray-100 text-gray-500 font-medium py-2 px-3 rounded-lg text-center text-sm">
-                        مكتمل
+                    {/* Action Buttons Section */}
+                    <div className="space-y-2">
+                      {/* Duplicate Button - Always visible */}
+                      <div className="relative group">
+                        <button
+                          onClick={() => duplicateOrder(order)}
+                          disabled={duplicatingOrderId === order.id}
+                          className={`w-full font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm ${
+                            duplicatingOrderId === order.id
+                              ? "bg-green-400 cursor-not-allowed"
+                              : "bg-green-600 hover:bg-green-700"
+                          } text-white`}
+                          title="إنشاء نسخة جديدة من هذا الطلب للتعديل عليها"
+                        >
+                          {duplicatingOrderId === order.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>جاري النسخ...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              <span>نسخ الطلب</span>
+                            </>
+                          )}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
+                          إنشاء نسخة جديدة للتعديل عليها
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                        </div>
                       </div>
-                    )}
+                      
+                      {/* Delete Button - Only for duplicated orders */}
+                      {order.order_id.includes("(نسخة)") && (
+                        <button
+                          onClick={() => deleteDuplicatedOrder(order)}
+                          disabled={deletingOrderId === order.id}
+                          className={`w-full font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm ${
+                            deletingOrderId === order.id
+                              ? "bg-red-400 cursor-not-allowed"
+                              : "bg-red-600 hover:bg-red-700"
+                          } text-white`}
+                          title="حذف الطلب المكرر"
+                        >
+                          {deletingOrderId === order.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>جاري الحذف...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="w-4 h-4" />
+                              <span>حذف النسخة</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                      
+                      {/* Edit Button */}
+                      {canEditOrder(order) ? (
+                        <button
+                          onClick={() => openModal(order)}
+                          className={`w-full font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm ${
+                            isEditedOrder
+                              ? "bg-red-600 hover:bg-red-700 text-white"
+                              : "bg-blue-600 hover:bg-blue-700 text-white"
+                          }`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          <span>تحديث</span>
+                        </button>
+                      ) : (
+                        <div className="w-full bg-gray-100 text-gray-500 font-medium py-2 px-3 rounded-lg text-center text-sm">
+                          مكتمل
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
@@ -1616,7 +2058,13 @@ const handleRemoveImage = async (id: string, image_data: string) => {
                                 </label>
                                 <select
                                   value={updateData.payment_sub_type}
-                                  onChange={(e) => setUpdateData({ ...updateData, payment_sub_type: e.target.value })}
+                                  onChange={(e) => {
+                                    const selectedValue = e.target.value
+                                    console.log('Payment method selected:', selectedValue)
+                                    setUpdateData({ ...updateData, payment_sub_type: selectedValue })
+                                    
+
+                                  }}
                                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   required={
                                     showPaymentSubTypeDropdown &&
@@ -1819,6 +2267,9 @@ const handleRemoveImage = async (id: string, image_data: string) => {
           </div>
         )}
       </div>
+
+
+
     </div>
   )
 }

@@ -34,9 +34,12 @@ import {
   ChevronDown,
   ChevronUp,
   DollarSign,
+  Truck,
+  Check,
 } from "lucide-react"
 import { supabase } from "../../lib/supabase"
 import { useLanguage } from "../../contexts/LanguageContext"
+import { useAuth } from "../../contexts/AuthContext"
 
 interface Order {
   id: string
@@ -151,6 +154,7 @@ const OrdersManagement: React.FC = () => {
   })
 
   const { t } = useLanguage()
+  const { user } = useAuth()
 
   // Check if mobile
   useEffect(() => {
@@ -833,12 +837,25 @@ const OrdersManagement: React.FC = () => {
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">طريقة الدفع</label>
               {isEditing ? (
-                <input
-                  type="text"
-                  value={edited.payment_method ?? order.payment_method}
-                  onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <div className="space-y-2">
+                  <select
+                    value={edited.payment_method ?? order.payment_method}
+                    onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="valu">Valu</option>
+                    <option value="partial">Partial</option>
+                    <option value="paymob">Paymob</option>
+                    <option value="instapay">Instapay</option>
+                    <option value="wallet">Wallet</option>
+                    <option value="visa_machine">Visa Machine</option>
+                    <option value="on_hand">On Hand</option>
+                  </select>
+                  
+
+                </div>
               ) : (
                 <span className="text-sm text-gray-900">{order.payment_method}</span>
               )}
@@ -1686,12 +1703,25 @@ const OrdersManagement: React.FC = () => {
                         </td>
                         <td className="px-6 py-4">
                           {isEditing ? (
-                            <input
-                              type="text"
-                              value={edited.payment_method ?? order.payment_method}
-                              onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
+                            <div className="space-y-2">
+                              <select
+                                value={edited.payment_method ?? order.payment_method}
+                                onChange={(e) => handleEditChange(order.id, "payment_method", e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              >
+                                <option value="cash">Cash</option>
+                                <option value="card">Card</option>
+                                <option value="valu">Valu</option>
+                                <option value="partial">Partial</option>
+                                <option value="paymob">Paymob</option>
+                                <option value="instapay">Instapay</option>
+                                <option value="wallet">Wallet</option>
+                                <option value="visa_machine">Visa Machine</option>
+                                <option value="on_hand">On Hand</option>
+                              </select>
+                              
+
+                            </div>
                           ) : (
                             <span className="text-sm text-gray-900">{order.payment_method}</span>
                           )}
@@ -1977,6 +2007,8 @@ const OrdersManagement: React.FC = () => {
             </div>
           </div>
         )}
+
+
       </div>
     </div>
   )
