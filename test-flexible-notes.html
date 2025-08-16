@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Flexible Notes - Text, Image, or Both</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, button, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .preview {
+            margin-top: 10px;
+            max-width: 300px;
+        }
+        .preview img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+        .note-display {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .scenario {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .scenario h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .flex-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .flex-buttons button {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Flexible Notes System</h1>
+    <p>This demonstrates the three scenarios: <strong>Text Only</strong>, <strong>Image Only</strong>, or <strong>Both</strong></p>
+    
+    <div class="form-group">
+        <label for="noteText">Note Text (Optional):</label>
+        <textarea id="noteText" placeholder="Enter your note text here (optional)..."></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label for="noteImageFile">Select Image (Optional):</label>
+        <input type="file" id="noteImageFile" accept="image/*">
+        <div id="imagePreview" class="preview"></div>
+    </div>
+    
+    <div class="flex-buttons">
+        <button onclick="addTextOnly()" id="textOnlyBtn">Add Text Only</button>
+        <button onclick="addImageOnly()" id="imageOnlyBtn">Add Image Only</button>
+        <button onclick="addBoth()" id="bothBtn">Add Both</button>
+    </button>
+    
+    <div id="result" class="result" style="display: none;"></div>
+    
+    <div id="noteDisplay" class="note-display" style="display: none;">
+        <h3>Note Display Test:</h3>
+        <div id="noteContent"></div>
+    </div>
+
+    <div class="scenario">
+        <h3>📝 Scenario 1: Text Only</h3>
+        <p>Leave image field empty, add text, click "Add Text Only"</p>
+    </div>
+    
+    <div class="scenario">
+        <h3>🖼️ Scenario 2: Image Only</h3>
+        <p>Leave text field empty, select image, click "Add Image Only"</p>
+    </div>
+    
+    <div class="scenario">
+        <h3>📝🖼️ Scenario 3: Both</h3>
+        <p>Add both text and image, click "Add Both"</p>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://uxqeabqinastxukekqin.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4cWVhYnFpbmFzdHh1a2VrcWluIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MDk0MTc4NCwiZXhwIjoyMDY2NTE3Nzg0fQ.zLhgbsJDpwl9CxTO4FVGroVuLtN1C2r5MPn-kIm91Ts';
+        
+        // Initialize Supabase client
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Preview selected image
+        document.getElementById('noteImageFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Update button states based on form content
+        function updateButtonStates() {
+            const hasText = document.getElementById('noteText').value.trim().length > 0;
+            const hasImage = document.getElementById('noteImageFile').files.length > 0;
+            
+            document.getElementById('textOnlyBtn').disabled = !hasText;
+            document.getElementById('imageOnlyBtn').disabled = !hasImage;
+            document.getElementById('bothBtn').disabled = !hasText || !hasImage;
+        }
+        
+        // Add event listeners to update button states
+        document.getElementById('noteText').addEventListener('input', updateButtonStates);
+        document.getElementById('noteImageFile').addEventListener('change', updateButtonStates);
+        
+        async function uploadNoteImage(file) {
+            try {
+                // Validate file size (5MB limit)
+                if (file.size > 5 * 1024 * 1024) {
+                    throw new Error('Image file size must be less than 5MB');
+                }
+                
+                // Validate file type
+                const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+                if (!allowedTypes.includes(file.type)) {
+                    throw new Error('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+                }
+                
+                // Create file path for note image
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+                const filePath = `request_notes/images/${fileName}`;
+                
+                console.log('Uploading note image to path:', filePath);
+                
+                // Upload file
+                const { data, error } = await supabase.storage
+                    .from('uploads')
+                    .upload(filePath, file);
+                
+                if (error) {
+                    throw new Error(`Upload failed: ${error.message}`);
+                }
+                
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('uploads')
+                    .getPublicUrl(filePath);
+                
+                console.log('Note image uploaded successfully:', publicUrl);
+                return publicUrl;
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                throw error;
+            }
+        }
+        
+        async function addTextOnly() {
+            const noteText = document.getElementById('noteText').value.trim();
+            if (!noteText) {
+                alert('Please enter note text first');
+                return;
+            }
+            
+            await createNote(noteText, null, 'Text Only Note');
+        }
+        
+        async function addImageOnly() {
+            const fileInput = document.getElementById('noteImageFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select an image first');
+                return;
+            }
+            
+            try {
+                const imageUrl = await uploadNoteImage(file);
+                await createNote(null, imageUrl, 'Image Only Note');
+            } catch (error) {
+                alert('Failed to upload image: ' + error.message);
+            }
+        }
+        
+        async function addBoth() {
+            const noteText = document.getElementById('noteText').value.trim();
+            const fileInput = document.getElementById('noteImageFile');
+            const file = fileInput.files[0];
+            
+            if (!noteText || !file) {
+                alert('Please add both text and image');
+                return;
+            }
+            
+            try {
+                const imageUrl = await uploadNoteImage(file);
+                await createNote(noteText, imageUrl, 'Text + Image Note');
+            } catch (error) {
+                alert('Failed to upload image: ' + error.message);
+            }
+        }
+        
+        async function createNote(noteText, imageUrl, scenario) {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `Creating ${scenario}...`;
+                
+                // Simulate note creation (since we don't have a real request_id)
+                const noteData = {
+                    note: noteText,
+                    image_url: imageUrl,
+                    author: 'admin',
+                    created_at: new Date().toISOString(),
+                    scenario: scenario
+                };
+                
+                resultDiv.innerHTML = `
+                    <h3>✅ ${scenario} Created Successfully!</h3>
+                    <p><strong>Note Text:</strong> ${noteText || 'None (Image only)'}</p>
+                    <p><strong>Image:</strong> ${imageUrl ? 'Yes' : 'None'}</p>
+                    <p><strong>Author:</strong> ${noteData.author}</p>
+                    <p><strong>Created:</strong> ${noteData.created_at}</p>
+                    ${imageUrl ? `
+                        <p><strong>Image URL:</strong> <a href="${imageUrl}" target="_blank">View Image</a></p>
+                    ` : ''}
+                `;
+                
+                // Display the note as it would appear in the admin interface
+                document.getElementById('noteDisplay').style.display = 'block';
+                document.getElementById('noteContent').innerHTML = `
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="mb-2">
+                            <strong>Note:</strong> ${noteText || 'Image attachment only'}
+                        </div>
+                        ${imageUrl ? `
+                            <div class="mt-3">
+                                <img src="${imageUrl}" alt="Note attachment" style="width: 128px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid #d1d5db;">
+                            </div>
+                        ` : ''}
+                        <div class="text-xs text-gray-500 mt-2">
+                            By: ${noteData.author} | ${new Date(noteData.created_at).toLocaleString()}
+                        </div>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error creating note:', error);
+                resultDiv.innerHTML = `
+                    <h3>❌ Failed to Create Note</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Initialize button states
+        updateButtonStates();
+    </script>
+</body>
+</html>

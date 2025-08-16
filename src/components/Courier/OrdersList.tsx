@@ -757,22 +757,48 @@ const OrdersList: React.FC = () => {
             updatePayload.payment_sub_type = null
           }
         } else if (fee > 0 || partial > 0) {
-          const collected = updateData.collected_by
-          if (!collected) {
-            alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
-            return
-          }
-          if (collected === "courier") {
-            if (!updateData.payment_sub_type) {
-              alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+          // For receiving_part status, payment method is conditional
+          if (updateData.status === "receiving_part") {
+            // If courier added amounts, payment method is required
+            const collected = updateData.collected_by
+            if (!collected) {
+              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
               return
             }
-            updatePayload.collected_by = collected
-            updatePayload.payment_sub_type = updateData.payment_sub_type
+            if (collected === "courier") {
+              if (!updateData.payment_sub_type) {
+                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+                return
+              }
+              updatePayload.collected_by = collected
+              updatePayload.payment_sub_type = updateData.payment_sub_type
+            } else {
+              updatePayload.collected_by = collected
+              updatePayload.payment_sub_type = null
+            }
           } else {
-            updatePayload.collected_by = collected
-            updatePayload.payment_sub_type = null
+            // For other statuses, payment method is always required
+            const collected = updateData.collected_by
+            if (!collected) {
+              alert("يرجى اختيار طريقة تحصيل عند إضافة رسوم التوصيل.")
+              return
+            }
+            if (collected === "courier") {
+              if (!updateData.payment_sub_type) {
+                alert("يرجى اختيار نوع الدفع الفرعي للمندوب.")
+                return
+              }
+              updatePayload.collected_by = collected
+              updatePayload.payment_sub_type = updateData.payment_sub_type
+            } else {
+              updatePayload.collected_by = collected
+              updatePayload.payment_sub_type = null
+            }
           }
+        } else if (updateData.status === "receiving_part" && fee === 0 && partial === 0) {
+          // For receiving_part with no amounts, no payment method required
+          updatePayload.collected_by = null
+          updatePayload.payment_sub_type = null
         } else {
           updatePayload.collected_by = null
           updatePayload.payment_sub_type = null
@@ -813,7 +839,7 @@ const OrdersList: React.FC = () => {
   }
 
   const canEditOrder = (order: Order) => {
-    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled"].includes(order.status)
+    return ["assigned", "partial", "delivered", "hand_to_hand", "return", "canceled", "receiving_part"].includes(order.status)
   }
 
   // Helper function to get display payment method
@@ -1894,11 +1920,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         value={updateData.delivery_fee}
                         onChange={(e) => setUpdateData({ ...updateData, delivery_fee: e.target.value })}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        disabled={
-                          updateData.status === "return" ||
-                          (updateData.status === "receiving_part" &&
-                            Number.parseFloat(updateData.partial_paid_amount) === 0)
-                        }
+                                                    disabled={
+                              updateData.status === "return"
+                            }
                         placeholder="0.00"
                       />
                       <span className="absolute left-3 top-2 text-gray-500 text-sm">ج.م</span>
@@ -1940,14 +1964,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                           isOrderUnpaid &&
                           !isReturnStatus &&
                           !isHandToHandWithNoFees &&
-                          !isReceivingPartWithNoFees &&
-                          !isCanceledWithNoFees
+                          !isCanceledWithNoFees &&
+                          updateData.status !== "receiving_part"
 
                         // Condition for "Return Status" message
                         const showReturnStatusMessage = isReturnStatus
 
-                        // Condition for "Receiving Part No Fees" message
-                        const showReceivingPartNoFeesMessage = isReceivingPartWithNoFees
+
 
                         // Condition for "Hand to Hand No Fees" message
                         const showHandToHandNoFeesMessage = isHandToHandWithNoFees
@@ -1959,10 +1982,9 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         const showPaymentSubTypeDropdown =
                           !isReturnStatus &&
                           !isHandToHandWithNoFees &&
-                          !isReceivingPartWithNoFees &&
                           !isCanceledWithNoFees &&
                           ((isOrderOriginallyPaidOnline && (currentFee > 0 || currentPartial > 0)) ||
-                            isOrderUnpaid ||
+                            (isOrderUnpaid && updateData.status !== "receiving_part") ||
                             (updateData.status === "canceled" && currentFee > 0) ||
                             (updateData.status === "receiving_part" && (currentFee > 0 || currentPartial > 0)))
 
@@ -1970,7 +1992,6 @@ const deleteDuplicatedOrder = async (order: Order) => {
                         const showCollectedByDropdown =
                           !isReturnStatus &&
                           !isHandToHandWithNoFees &&
-                          !isReceivingPartWithNoFees &&
                           !isCanceledWithNoFees &&
                           (currentFee > 0 || currentPartial > 0) &&
                           (isOrderOriginallyPaidOnline ||
@@ -2003,14 +2024,18 @@ const deleteDuplicatedOrder = async (order: Order) => {
                               </div>
                             )}
 
-                            {showReceivingPartNoFeesMessage && (
-                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                                <div className="flex items-center gap-2 text-yellow-700">
+                            {updateData.status === "receiving_part" && (
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 text-blue-700">
                                   <AlertCircle className="w-4 h-4" />
-                                  <span className="text-sm font-medium">استلام قطعة بدون رسوم</span>
+                                  <span className="text-sm font-medium">استلام قطعة</span>
                                 </div>
-                                <p className="text-xs text-yellow-600 mt-1">
-                                  لا يتطلب اختيار طريقة دفع عند عدم وجود رسوم توصيل أو مبلغ جزئي.
+                                <p className="text-xs text-blue-600 mt-1">
+                                  {currentFee === 0 && currentPartial === 0 ? (
+                                    "يمكنك إضافة رسوم التوصيل أو المبلغ الجزئي حسب الحاجة. إذا أضفت مبالغ، سيُطلب منك اختيار طريقة الدفع."
+                                  ) : (
+                                    "تم إضافة مبالغ - يرجى اختيار طريقة الدفع المطلوبة."
+                                  )}
                                 </p>
                               </div>
                             )}
@@ -2070,9 +2095,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                     showPaymentSubTypeDropdown &&
                                     (isOrderUnpaid ||
                                       updateData.collected_by === "courier" ||
-                                      (updateData.status === "canceled" && currentFee > 0) ||
-                                      (updateData.status === "receiving_part" &&
-                                        (currentFee > 0 || currentPartial > 0)))
+                                      (updateData.status === "canceled" && currentFee > 0))
                                   }
                                 >
                                   <option value="">اختر طريقة الدفع</option>
@@ -2118,9 +2141,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             onChange={(e) => setUpdateData({ ...updateData, partial_paid_amount: e.target.value })}
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             disabled={
-                              updateData.status === "return" ||
-                              (updateData.status === "receiving_part" &&
-                                Number.parseFloat(updateData.delivery_fee) === 0)
+                              updateData.status === "return"
                             }
                             placeholder="0.00"
                           />

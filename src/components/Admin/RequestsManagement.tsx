@@ -49,6 +49,7 @@ interface RequestNote {
   request_id: string
   note: string
   author: string
+  image_url?: string | null
   created_at: string
 }
 
@@ -71,6 +72,11 @@ const RequestsManagement: React.FC = () => {
   const [selectedStatuses, setSelectedStatuses] = useState<Set<string>>(new Set(['pending', 'process', 'approved', 'cancelled']))
   const [reportRequests, setReportRequests] = useState<Request[]>([])
   
+  // Media modal states
+  const [showMediaModal, setShowMediaModal] = useState(false)
+  const [mediaUrl, setMediaUrl] = useState<string>('')
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
+  
   // Form states
   const [formData, setFormData] = useState({
     name: '',
@@ -87,6 +93,8 @@ const RequestsManagement: React.FC = () => {
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   
+  // Note image upload state
+  const [noteImageFile, setNoteImageFile] = useState<File | null>(null)
   const [newNote, setNewNote] = useState('')
   const [assignee, setAssignee] = useState('')
   const [status, setStatus] = useState<Request['status']>('pending')
@@ -108,6 +116,20 @@ const RequestsManagement: React.FC = () => {
     fetchRequests()
     fetchNotes()
   }, [])
+
+  // Handle ESC key to close media modal
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && showMediaModal) {
+        setShowMediaModal(false)
+      }
+    }
+
+    if (showMediaModal) {
+      document.addEventListener('keydown', handleEscKey)
+      return () => document.removeEventListener('keydown', handleEscKey)
+    }
+  }, [showMediaModal])
 
   const fetchRequests = async () => {
     try {
@@ -134,6 +156,10 @@ const RequestsManagement: React.FC = () => {
         .order('created_at', { ascending: false })
 
       if (error) throw error
+      
+      console.log('Fetched notes:', data)
+      console.log('Notes with images:', data?.filter(note => note.image_url))
+      
       setNotes(data || [])
     } catch (error) {
       console.error('Error fetching notes:', error)
@@ -190,12 +216,46 @@ const RequestsManagement: React.FC = () => {
     }
   }
 
+  const uploadNoteImage = async (file: File): Promise<string | null> => {
+    try {
+      if (!validateFile(file, 'image')) {
+        return null
+      }
+
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `request_notes/images/${fileName}`
+
+      console.log('Uploading note image to path:', filePath)
+
+      const { error: uploadError } = await supabase.storage
+        .from('uploads')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('uploads')
+        .getPublicUrl(filePath)
+
+      console.log('Note image uploaded successfully:', publicUrl)
+      return publicUrl
+    } catch (error) {
+      console.error('Error uploading note image:', error)
+      return null
+    }
+  }
+
   const removeFile = (type: 'image' | 'video') => {
     if (type === 'image') {
       setImageFile(null)
     } else {
       setVideoFile(null)
     }
+  }
+
+  const removeNoteImage = () => {
+    setNoteImageFile(null)
   }
 
   const createRequest = async () => {
@@ -300,44 +360,83 @@ const RequestsManagement: React.FC = () => {
   }
 
   const addNote = async () => {
-    if (!selectedRequest || !newNote.trim()) return
+    // Allow adding note with just image, just text, or both
+    if (!selectedRequest) {
+      alert('Please select a request to add a note to.')
+      return
+    }
 
     try {
+      let noteImageUrl = null
+      
+      // Upload note image if selected
+      if (noteImageFile) {
+        const uploadedImageUrl = await uploadNoteImage(noteImageFile)
+        if (uploadedImageUrl) {
+          noteImageUrl = uploadedImageUrl
+        }
+      }
+
+      // Prepare note data - note text can be empty if only image
+      const noteText = newNote.trim() || null
+
       const { error } = await supabase
         .from('request_notes')
         .insert([{
           request_id: selectedRequest.id,
-          note: newNote,
+          note: noteText || null, // Store null if only image
           author: 'admin',
+          image_url: noteImageUrl,
         }])
 
       if (error) throw error
       
+      console.log('Note saved successfully with image_url:', noteImageUrl)
+      
       await fetchNotes()
       setNewNote('')
+      setNoteImageFile(null) // Clear the note image file
     } catch (error) {
       console.error('Error adding note:', error)
     }
   }
 
   const deleteRequest = async (requestId: string) => {
-    if (!confirm('Are you sure you want to delete this request?')) return
+    if (!confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+      return
+    }
 
     try {
+      // First delete any associated notes
+      const { error: notesError } = await supabase
+        .from('request_notes')
+        .delete()
+        .eq('request_id', requestId)
+
+      if (notesError) {
+        console.error('Error deleting notes:', notesError)
+      }
+
+      // Then delete the request
       const { error } = await supabase
         .from('requests')
         .delete()
         .eq('id', requestId)
 
       if (error) throw error
-      
+
+      // Refresh the requests list
       await fetchRequests()
+      
+      // Close detail modal if it was open for the deleted request
       if (selectedRequest?.id === requestId) {
-        setShowDetailModal(false)
         setSelectedRequest(null)
       }
+      
+      console.log('Request deleted successfully')
     } catch (error) {
       console.error('Error deleting request:', error)
+      alert('Failed to delete request. Please try again.')
     }
   }
 
@@ -378,6 +477,43 @@ const RequestsManagement: React.FC = () => {
       alert(`Assigned ${requestIds.length} requests to ${bulkAssignee}`)
     } catch (error) {
       console.error('Error bulk updating assignee:', error)
+    }
+  }
+
+  const bulkDeleteSelected = async () => {
+    if (selectedRequests.size === 0) return
+
+    if (!confirm(`Are you sure you want to delete ${selectedRequests.size} selected request(s)? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const requestIds = Array.from(selectedRequests)
+
+      // Delete associated notes for all selected requests
+      const { error: notesError } = await supabase
+        .from('request_notes')
+        .delete()
+        .in('request_id', requestIds)
+
+      if (notesError) {
+        console.error('Error deleting notes for bulk delete:', notesError)
+      }
+
+      // Then delete the requests
+      const { error } = await supabase
+        .from('requests')
+        .delete()
+        .in('id', requestIds)
+
+      if (error) throw error
+
+      await fetchRequests()
+      setSelectedRequests(new Set())
+      alert(`Deleted ${requestIds.length} requests.`)
+    } catch (error) {
+      console.error('Error bulk deleting requests:', error)
+      alert('Failed to delete requests. Please try again.')
     }
   }
 
@@ -438,6 +574,13 @@ const RequestsManagement: React.FC = () => {
 
   const getRequestNotes = (requestId: string) => {
     return notes.filter(note => note.request_id === requestId)
+  }
+
+  const openMediaModal = (url: string, type: 'image' | 'video') => {
+    console.log('Opening media modal:', { url, type })
+    setMediaUrl(url)
+    setMediaType(type)
+    setShowMediaModal(true)
   }
 
   const generateReport = () => {
@@ -690,6 +833,13 @@ const RequestsManagement: React.FC = () => {
                    </button>
                  </div>
                  <button
+                   onClick={bulkDeleteSelected}
+                   disabled={selectedRequests.size === 0}
+                   className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-3 py-1 rounded text-sm"
+                 >
+                   Delete Selected ({selectedRequests.size})
+                 </button>
+                 <button
                    onClick={() => setSelectedRequests(new Set())}
                    className="text-blue-600 hover:text-blue-800 text-sm"
                  >
@@ -731,6 +881,9 @@ const RequestsManagement: React.FC = () => {
                    </th>
                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Date
+                   </th>
+                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                     Attachments
                    </th>
                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                      Actions
@@ -842,7 +995,41 @@ const RequestsManagement: React.FC = () => {
                          {new Date(request.created_at).toLocaleTimeString('en-US')}
                        </div>
                      </td>
-                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                     <td className="px-6 py-4 whitespace-nowrap">
+                       <div className="flex items-center space-x-2">
+                         {request.image_url && (
+                           <div className="relative group">
+                             <img 
+                               src={request.image_url} 
+                               alt="Request attachment" 
+                               className="w-12 h-12 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
+                               onClick={() => request.image_url && openMediaModal(request.image_url, 'image')}
+                             />
+                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                               <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                             </div>
+                           </div>
+                         )}
+                         {request.video_url && (
+                           <div className="relative group">
+                             <div className="w-12 h-12 bg-gray-100 rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center">
+                               <Play className="w-6 h-6 text-gray-600" />
+                             </div>
+                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                               <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                             </div>
+                             <button
+                               onClick={() => request.video_url && openMediaModal(request.video_url, 'video')}
+                               className="absolute inset-0 w-full h-full"
+                             />
+                           </div>
+                         )}
+                         {!request.image_url && !request.video_url && (
+                           <span className="text-xs text-gray-400 italic">None</span>
+                         )}
+                       </div>
+                     </td>
+                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                        <div className="flex space-x-2">
                          <button
                            onClick={() => {
@@ -860,7 +1047,7 @@ const RequestsManagement: React.FC = () => {
                              setShowDetailModal(true)
                              // Focus on notes section
                              setTimeout(() => {
-                               const notesInput = document.querySelector('input[placeholder="Add a new note..."]') as HTMLInputElement
+                               const notesInput = document.querySelector('input[placeholder="Add note text (optional)..."]') as HTMLInputElement
                                if (notesInput) notesInput.focus()
                              }, 100)
                            }}
@@ -891,15 +1078,30 @@ const RequestsManagement: React.FC = () => {
             <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                                   <h2 className="text-xl font-bold text-gray-900">
-                   Request Details #{selectedRequest.id}
-                 </h2>
-                  <button
-                    onClick={() => setShowDetailModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Request Details #{selectedRequest.id}
+                  </h2>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+                          deleteRequest(selectedRequest.id)
+                          setShowDetailModal(false)
+                        }
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm flex items-center space-x-1"
+                      title="Delete Request"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete</span>
+                    </button>
+                    <button
+                      onClick={() => setShowDetailModal(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1000,74 +1202,96 @@ const RequestsManagement: React.FC = () => {
                                                {selectedRequest.image_url && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Attached Image</label>
-                            <img 
-                              src={selectedRequest.image_url} 
-                              alt="Request attachment" 
-                              className="w-full h-32 object-cover rounded-lg border border-gray-300"
-                            />
-                            <div className="mt-2">
+                            <div className="relative group">
+                              <img 
+                                src={selectedRequest.image_url} 
+                                alt="Request attachment" 
+                                className="w-full h-32 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => openMediaModal(selectedRequest.image_url!, 'image')}
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                                <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-center space-x-2">
+                              <button
+                                onClick={() => openMediaModal(selectedRequest.image_url!, 'image')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-2"
+                              >
+                                <Eye className="w-4 h-4" />
+                                <span>View Full Size</span>
+                              </button>
                               <input
                                 type="file"
                                 accept="image/*"
                                 onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
-                              {imageFile && (
-                                <div className="text-sm text-green-600 flex items-center justify-between bg-green-50 p-2 rounded-lg mt-2">
-                                  <div className="flex items-center space-x-2">
-                                    <CheckCircle className="w-4 h-4" />
-                                    <span>{imageFile.name}</span>
-                                    <span className="text-xs text-gray-500">({(imageFile.size / 1024 / 1024).toFixed(2)} MB)</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeFile('image')}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="Remove file"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
                             </div>
+                            {imageFile && (
+                              <div className="text-sm text-green-600 flex items-center justify-between bg-green-50 p-2 rounded-lg mt-2">
+                                <div className="flex items-center space-x-2">
+                                  <CheckCircle className="w-4 h-4" />
+                                  <span>{imageFile.name}</span>
+                                  <span className="text-xs text-gray-500">({(imageFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeFile('image')}
+                                  className="text-red-600 hover:text-red-800"
+                                  title="Remove file"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {selectedRequest.video_url && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Attached Video</label>
-                            <video 
-                              src={selectedRequest.video_url} 
-                              controls
-                              className="w-full h-32 rounded-lg border border-gray-300"
-                            >
-                              Your browser does not support the video tag.
-                            </video>
-                            <div className="mt-2">
+                            <div className="relative group">
+                              <video 
+                                src={selectedRequest.video_url} 
+                                controls
+                                className="w-full h-32 rounded-lg border border-gray-300"
+                              >
+                                Your browser does not support the video tag.
+                              </video>
+                            </div>
+                            <div className="mt-2 flex items-center space-x-2">
+                              <button
+                                onClick={() => openMediaModal(selectedRequest.video_url!, 'video')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-2"
+                              >
+                                <Eye className="w-4 h-4" />
+                                <span>View Full Size</span>
+                              </button>
                               <input
                                 type="file"
                                 accept="video/*"
                                 onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               />
-                              {videoFile && (
-                                <div className="text-sm text-green-600 flex items-center justify-between bg-green-50 p-2 rounded-lg mt-2">
-                                  <div className="flex items-center space-x-2">
-                                    <CheckCircle className="w-4 h-4" />
-                                    <span>{videoFile.name}</span>
-                                    <span className="text-xs text-gray-500">({(videoFile.size / 1024 / 1024).toFixed(2)} MB)</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeFile('video')}
-                                    className="text-red-600 hover:text-red-800"
-                                    title="Remove file"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
                             </div>
+                            {videoFile && (
+                              <div className="text-sm text-green-600 flex items-center justify-between bg-green-50 p-2 rounded-lg">
+                                <div className="flex items-center space-x-2">
+                                  <CheckCircle className="w-4 h-4" />
+                                  <span>{videoFile.name}</span>
+                                  <span className="text-xs text-gray-500">({(videoFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeFile('video')}
+                                  className="text-red-600 hover:text-red-800"
+                                  title="Remove file"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                      </div>
@@ -1076,35 +1300,123 @@ const RequestsManagement: React.FC = () => {
 
                 {/* Notes Section */}
                                  <div className="mt-8">
-                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
+                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes & Attachments</h3>
                    <div className="space-y-4">
-                     <div className="flex space-x-2">
-                       <input
-                         type="text"
-                         placeholder="Add a new note..."
-                         value={newNote}
-                         onChange={(e) => setNewNote(e.target.value)}
-                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                       />
-                       <button
-                         onClick={addNote}
-                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-                       >
-                         Add
-                       </button>
-                     </div>
-                     
-                     <div className="space-y-2">
-                       {getRequestNotes(selectedRequest.id).map((note) => (
-                         <div key={note.id} className="bg-gray-50 p-3 rounded-lg">
-                           <div className="flex items-center justify-between">
-                             <span className="text-sm text-gray-900">{note.note}</span>
-                             <span className="text-xs text-gray-500">
-                               {new Date(note.created_at).toLocaleString('en-US')}
-                             </span>
+                     <div className="space-y-3">
+                       <div className="flex space-x-2">
+                         <input
+                           type="text"
+                           placeholder="Add note text (optional)..."
+                           value={newNote}
+                           onChange={(e) => setNewNote(e.target.value)}
+                           className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                         />
+                         <button
+                           onClick={addNote}
+                           disabled={!newNote.trim() && !noteImageFile}
+                           className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors disabled:cursor-not-allowed"
+                         >
+                           Add
+                         </button>
+                       </div>
+                       
+                       {/* Note Image Upload */}
+                       <div className="flex items-center space-x-2">
+                         <input
+                           type="file"
+                           accept="image/*"
+                           onChange={(e) => setNoteImageFile(e.target.files?.[0] || null)}
+                           className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="Add image (optional)"
+                         />
+                         {noteImageFile && (
+                           <button
+                             onClick={removeNoteImage}
+                             className="text-red-600 hover:text-red-800 p-2"
+                             title="Remove image"
+                           >
+                             <X className="w-4 h-4" />
+                           </button>
+                         )}
+                       </div>
+                       
+                       {/* Note Image Preview */}
+                       {noteImageFile && (
+                         <div className="text-sm text-green-600 flex items-center justify-between bg-green-50 p-2 rounded-lg">
+                           <div className="flex items-center space-x-2">
+                             <CheckCircle className="w-4 h-4" />
+                             <span>{noteImageFile.name}</span>
+                             <span className="text-xs text-gray-500">({(noteImageFile.size / 1024 / 1024).toFixed(2)} MB)</span>
                            </div>
                          </div>
-                       ))}
+                       )}
+                       
+                       {/* Help Text */}
+                       <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                         💡 <strong>Tip:</strong> You can add a note with text only, image only, or both text and image.
+                       </div>
+                     </div>
+                     
+                     <div className="space-y-3">
+                       {getRequestNotes(selectedRequest.id).map((note) => {
+                         console.log('Rendering note:', note)
+                         return (
+                           <div key={note.id} className="bg-gray-50 p-4 rounded-lg">
+                             <div className="flex items-start justify-between mb-2">
+                               <div className="flex items-center space-x-2">
+                                 {note.note && note.note.trim() ? (
+                                   <span className="text-sm text-gray-900">{note.note}</span>
+                                 ) : (
+                                   <span className="text-sm text-gray-500 italic">Image attachment only</span>
+                                 )}
+                                 {note.image_url && (
+                                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                     📷 Image
+                                   </span>
+                                 )}
+                               </div>
+                               <span className="text-xs text-gray-500 ml-2">
+                                 {new Date(note.created_at).toLocaleString('en-US')}
+                               </span>
+                             </div>
+                             
+                             {/* Display note image if exists */}
+                             {note.image_url && (
+                               <div className="mt-3">
+                                 <div className="relative group">
+                                   <img 
+                                     src={note.image_url} 
+                                     alt="Note attachment" 
+                                     className="w-32 h-24 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity"
+                                     onClick={() => {
+                                       console.log('Note image clicked:', note.image_url)
+                                       openMediaModal(note.image_url!, 'image')
+                                     }}
+                                     onError={(e) => console.error('Note image failed to load:', note.image_url, e)}
+                                   />
+                                   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                                     <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                   </div>
+                                 </div>
+                                 <button
+                                   onClick={() => {
+                                     console.log('Note image view button clicked:', note.image_url)
+                                     openMediaModal(note.image_url!, 'image')
+                                   }}
+                                   className="mt-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors flex items-center space-x-1"
+                                 >
+                                   <Eye className="w-3 h-3" />
+                                   <span>View Full Size</span>
+                                 </button>
+                               </div>
+                             )}
+                             
+                             <div className="text-xs text-gray-500 mt-2">
+                               By: {note.author}
+                             </div>
+                           </div>
+                         )
+                       })}
                      </div>
                    </div>
                  </div>
@@ -1518,6 +1830,50 @@ const RequestsManagement: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Media Modal */}
+        {showMediaModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+            <div className="relative max-w-6xl w-full max-h-[90vh]">
+              <button
+                onClick={() => setShowMediaModal(false)}
+                className="absolute top-4 right-4 z-10 bg-white bg-opacity-20 hover:bg-opacity-30 text-white p-2 rounded-full transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              
+              <div className="flex items-center justify-center h-full">
+                {mediaType === 'image' ? (
+                  <img 
+                    src={mediaUrl} 
+                    alt="Full size image" 
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                  />
+                ) : (
+                  <video 
+                    src={mediaUrl} 
+                    controls
+                    autoPlay
+                    className="max-w-full max-h-full rounded-lg"
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                )}
+              </div>
+              
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-4 py-2 rounded-lg">
+                <span className="text-sm">
+                  {mediaType === 'image' ? '📷 Image' : '🎥 Video'} - Click outside or press ESC to close
+                </span>
+              </div>
+            </div>
+            {/* Click outside to close */}
+            <div 
+              className="absolute inset-0 -z-10" 
+              onClick={() => setShowMediaModal(false)}
+            />
           </div>
         )}
       </div>
