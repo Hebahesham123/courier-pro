@@ -68,6 +68,43 @@ interface Courier {
   role: string
 }
 
+// Utility function to render notes with clickable links
+const renderNotesWithLinks = (notes: string) => {
+  // Regular expression to detect URLs (including Google Maps links)
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  // Split the text by URLs and map each part
+  const parts = notes.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    // Check if this part is a URL
+    if (urlRegex.test(part)) {
+      // Determine if it's a Google Maps link
+      const isGoogleMaps = part.includes('maps.google.com') || part.includes('goo.gl/maps') || part.includes('maps.app.goo.gl');
+      
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline hover:no-underline transition-all duration-200 ${
+            isGoogleMaps 
+              ? 'text-blue-600 hover:text-blue-800 font-medium' 
+              : 'text-blue-500 hover:text-blue-700'
+          }`}
+          title={isGoogleMaps ? "فتح في خرائط جوجل" : "فتح الرابط"}
+        >
+          {isGoogleMaps ? "📍 " + part : part}
+        </a>
+      );
+    }
+    
+    // Return regular text
+    return part;
+  });
+};
+
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ComponentType<any> }> =
   {
     assigned: {
@@ -813,7 +850,9 @@ const OrdersManagement: React.FC = () => {
               ) : (
                 <div className="flex items-start gap-2">
                   <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <span className="text-sm text-gray-900 break-words">{order.notes || "لا توجد ملاحظات"}</span>
+                  <div className="text-sm text-gray-900 break-words">
+                    {order.notes ? renderNotesWithLinks(order.notes) : "لا توجد ملاحظات"}
+                  </div>
                 </div>
               )}
             </div>
@@ -1634,9 +1673,9 @@ const OrdersManagement: React.FC = () => {
                           ) : (
                             <div className="flex items-start gap-2">
                               <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                              <span className="text-sm text-gray-900 break-words">
-                                {order.notes || "لا توجد ملاحظات"}
-                              </span>
+                              <div className="text-sm text-gray-900 break-words">
+                                {order.notes ? renderNotesWithLinks(order.notes) : "لا توجد ملاحظات"}
+                              </div>
                             </div>
                           )}
                         </td>

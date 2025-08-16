@@ -142,6 +142,52 @@ const allCollectionMethods: Record<string, string> = {
 const CLOUDINARY_CLOUD_NAME = "dclsvvfu2"
 const CLOUDINARY_UPLOAD_PRESET = "hebaaa"
 
+// Utility function to render notes with clickable links
+const renderNotesWithLinks = (notes: string, isInModal: boolean = false) => {
+  // Regular expression to detect URLs (including Google Maps links)
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  // Split the text by URLs and map each part
+  const parts = notes.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    // Check if this part is a URL
+    if (urlRegex.test(part)) {
+      // Determine if it's a Google Maps link
+      const isGoogleMaps = part.includes('maps.google.com') || part.includes('goo.gl/maps') || part.includes('maps.app.goo.gl');
+      
+      // Different styling for modal vs regular display
+      const linkClasses = isInModal 
+        ? `underline hover:no-underline transition-all duration-200 break-all ${
+            isGoogleMaps 
+              ? 'text-blue-200 hover:text-blue-50 font-medium' 
+              : 'text-blue-100 hover:text-blue-50'
+          }`
+        : `underline hover:no-underline transition-all duration-200 break-all ${
+            isGoogleMaps 
+              ? 'text-blue-600 hover:text-blue-800 font-medium' 
+              : 'text-blue-500 hover:text-blue-700'
+          }`;
+      
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClasses}
+          title={isGoogleMaps ? "فتح في خرائط جوجل" : "فتح الرابط"}
+        >
+          {isGoogleMaps ? "📍 " + part : part}
+        </a>
+      );
+    }
+    
+    // Return regular text
+    return part;
+  });
+};
+
 const OrdersList: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -1570,7 +1616,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   </div>
 
                   {/* Card Content */}
-                  <div className="p-3 space-y-3">
+                  <div className="p-3 space-y-3 overflow-hidden">
                     {/* Customer Name */}
                     <div className="text-center">
                       <p className="text-sm font-bold text-gray-900 truncate" title={order.customer_name}>
@@ -1650,7 +1696,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                                         {/* Notes Display */}
                     {order.notes && (
                       <div
-                        className={`border rounded-lg p-2 text-sm ${
+                        className={`border rounded-lg p-2 text-sm mx-3 mb-3 ${
                           isEditedOrder ? "bg-red-50 border-red-300" : 
                           order.order_id.includes("(نسخة)") ? "bg-green-50 border-green-300" : 
                           "bg-yellow-50 border-yellow-200"
@@ -1662,16 +1708,16 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             order.order_id.includes("(نسخة)") ? "text-green-600" : 
                             "text-yellow-600"
                           }`} />
-                          <p
-                            className={`text-sm leading-relaxed break-words ${
+                          <div
+                            className={`text-sm leading-relaxed break-words min-w-0 flex-1 overflow-hidden ${
                               isEditedOrder ? "text-red-700" : 
                               order.order_id.includes("(نسخة)") ? "text-green-700" : 
                               "text-yellow-700"
                             }`}
                             title={order.notes}
                           >
-                            {order.notes}
-                          </p>
+                            {renderNotesWithLinks(order.notes, false)}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1817,11 +1863,13 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     </div>
                     {/* Notes Display in Modal Header */}
                     {selectedOrder.notes && (
-                      <div className="flex items-start gap-2 mt-3 p-2 bg-blue-500 rounded-lg">
+                      <div className="flex items-start gap-2 mt-3 p-2 bg-blue-500 rounded-lg overflow-hidden">
                         <FileText className="w-4 h-4 text-blue-200 mt-0.5 flex-shrink-0" />
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className="text-blue-100 text-xs font-medium mb-1">ملاحظات الإدارة:</p>
-                          <p className="text-blue-100 text-sm leading-relaxed">{selectedOrder.notes}</p>
+                          <div className="text-blue-100 text-sm leading-relaxed break-words overflow-hidden">
+                            {renderNotesWithLinks(selectedOrder.notes, true)}
+                          </div>
                         </div>
                       </div>
                     )}

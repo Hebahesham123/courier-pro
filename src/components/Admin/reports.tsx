@@ -39,6 +39,43 @@ import Papa from "papaparse"
 import { saveAs } from "file-saver"
 import { useAuth } from "../../contexts/AuthContext" // Import useAuth
 
+// Utility function to render notes with clickable links
+const renderNotesWithLinks = (notes: string) => {
+  // Regular expression to detect URLs (including Google Maps links)
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  // Split the text by URLs and map each part
+  const parts = notes.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    // Check if this part is a URL
+    if (urlRegex.test(part)) {
+      // Determine if it's a Google Maps link
+      const isGoogleMaps = part.includes('maps.google.com') || part.includes('goo.gl/maps') || part.includes('maps.app.goo.gl');
+      
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline hover:no-underline transition-all duration-200 ${
+            isGoogleMaps 
+              ? 'text-blue-600 hover:text-blue-800 font-medium' 
+              : 'text-blue-500 hover:text-blue-700'
+          }`}
+          title={isGoogleMaps ? "فتح في خرائط جوجل" : "فتح الرابط"}
+        >
+          {isGoogleMaps ? "📍 " + part : part}
+        </a>
+      );
+    }
+    
+    // Return regular text
+    return part;
+  });
+};
+
 interface Courier {
   id: string
   name: string
@@ -1396,7 +1433,7 @@ const Reports: React.FC = () => {
                     {selectedOrder.notes && (
                       <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                         <label className="block text-sm font-medium text-blue-700 mb-2">{translate("notes")}</label>
-                        <p className="text-gray-900">{selectedOrder.notes}</p>
+                        <div className="text-gray-900">{renderNotesWithLinks(selectedOrder.notes)}</div>
                       </div>
                     )}
                   </div>
