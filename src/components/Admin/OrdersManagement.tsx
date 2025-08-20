@@ -51,6 +51,7 @@ interface Order {
   total_order_fees: number
   payment_method: string
   payment_status: "paid" | "pending" | "cod" // New field
+  financial_status?: string // New field for financial status
   status: string
   assigned_courier_id: string | null
   original_courier_id?: string | null
@@ -232,7 +233,7 @@ const OrdersManagement: React.FC = () => {
         .select(
           `
           id, order_id, customer_name, address, billing_city, mobile_number, total_order_fees,
-          payment_method, payment_status, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
+          payment_method, payment_status, financial_status, status, assigned_courier_id, original_courier_id, created_at, notes, archived, archived_at,
           users!orders_assigned_courier_id_fkey(name)
         `,
         )
@@ -693,6 +694,43 @@ const OrdersManagement: React.FC = () => {
         className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[status as keyof typeof colors] || colors.pending}`}
       >
         {displayStatus}
+      </span>
+    )
+  }
+
+  // Financial status badge
+  const getFinancialStatusBadge = (status?: string) => {
+    if (!status) {
+      return (
+        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border bg-gray-100 text-gray-600 border-gray-200">
+          غير محدد
+        </span>
+      )
+    }
+    
+    const colors = {
+      paid: "bg-green-100 text-green-800 border-green-200",
+      partial: "bg-blue-100 text-blue-800 border-blue-200",
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      overdue: "bg-red-100 text-red-800 border-red-200",
+      refunded: "bg-purple-100 text-purple-800 border-purple-200",
+      disputed: "bg-orange-100 text-orange-800 border-orange-200",
+    }
+    
+    const displayStatus = {
+      paid: "مدفوع بالكامل",
+      partial: "مدفوع جزئياً",
+      pending: "معلق",
+      overdue: "متأخر",
+      refunded: "مسترد",
+      disputed: "متنازع عليه",
+    }
+    
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[status as keyof typeof colors] || colors.pending}`}
+      >
+        {displayStatus[status as keyof typeof displayStatus] || status}
       </span>
     )
   }
@@ -1539,6 +1577,9 @@ const OrdersManagement: React.FC = () => {
                       حالة الدفع
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
+                      الحالة المالية
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">
                       الحالة
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[140px]">
@@ -1778,6 +1819,25 @@ const OrdersManagement: React.FC = () => {
                             </select>
                           ) : (
                             getPaymentStatusBadge(order.payment_status)
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {isEditing ? (
+                            <select
+                              value={edited.financial_status ?? order.financial_status ?? ""}
+                              onChange={(e) => handleEditChange(order.id, "financial_status", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                              <option value="">اختر الحالة المالية</option>
+                              <option value="paid">مدفوع بالكامل</option>
+                              <option value="partial">مدفوع جزئياً</option>
+                              <option value="pending">معلق</option>
+                              <option value="overdue">متأخر</option>
+                              <option value="refunded">مسترد</option>
+                              <option value="disputed">متنازع عليه</option>
+                            </select>
+                          ) : (
+                            getFinancialStatusBadge(order.financial_status)
                           )}
                         </td>
                         <td className="px-6 py-4">

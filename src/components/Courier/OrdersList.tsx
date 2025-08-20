@@ -55,6 +55,7 @@ interface Order {
   payment_method: string
   payment_status?: string
   payment_sub_type: string | null
+  financial_status?: string // New field for financial status
   status: string
   partial_paid_amount: number | null
   internal_comment: string | null
