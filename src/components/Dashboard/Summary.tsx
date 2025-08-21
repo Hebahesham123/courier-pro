@@ -300,10 +300,38 @@ const Summary: React.FC = () => {
   const [holdDateFilter, setHoldDateFilter] = useState<string>("all")
   const [customHoldDate, setCustomHoldDate] = useState<string>("")
   const [includeHoldFeesInPayment, setIncludeHoldFeesInPayment] = useState<boolean>(false)
+  const [courierFeeAmount, setCourierFeeAmount] = useState<string>("")
+  const [courierFeeDate, setCourierFeeDate] = useState<string>("")
+  const [courierFees, setCourierFees] = useState<Record<string, string>>({})
 
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
+
+  // Get current day's courier fee
+  const getCurrentDayFee = () => {
+    return courierFees[dateRange.startDate] || ""
+  }
+
+  // Save courier fee for specific date
+  const saveCourierFee = () => {
+    if (!courierFeeAmount) return
+    setCourierFees(prev => ({
+      ...prev,
+      [dateRange.startDate]: courierFeeAmount
+    }))
+    setCourierFeeAmount("")
+  }
+
+  // Remove courier fee for specific date
+  const removeCourierFee = () => {
+    setCourierFees(prev => {
+      const newFees = { ...prev }
+      delete newFees[dateRange.startDate]
+      return newFees
+    })
+    setCourierFeeAmount("")
+  }
 
   // Function to filter hold fees by date - prioritize removal date over addition date
   const getFilteredHoldFees = useCallback((orders: Order[], filterType: string) => {
@@ -1270,7 +1298,7 @@ const Summary: React.FC = () => {
                 <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                   Orders: {allOrders.length} | 
                   Analytics: {showAnalytics ? 'ON' : 'OFF'} | 
-                  Courier: {selectedCourier ? selectedCourier.courierName : 'None'}
+                  Courier: {selectedCourier ? (selectedCourier as CourierSummary).courierName : 'None'}
                 </div>
                 
                 {/* Quick Date Filters */}
@@ -2907,6 +2935,101 @@ const Summary: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* 💰 Courier Fees Section - Admin Only */}
+            {user.role === "admin" && (
+              <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
+                <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
+                  <div
+                    className={`bg-green-100 rounded-xl flex items-center justify-center ${
+                      isCourier ? "w-8 h-8" : "w-10 h-10"
+                    }`}
+                  >
+                    <HandCoins className={`text-green-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                  </div>
+                  <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
+                    💰 رسوم المندوب
+                  </h2>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="courier-fee-amount" className="text-sm font-medium text-gray-700">المبلغ:</label>
+                    <input
+                      id="courier-fee-amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-green-500 focus:ring-2 focus:ring-green-200 text-center"
+                      placeholder="0.00"
+                      value={courierFeeAmount}
+                      onChange={(e) => setCourierFeeAmount(e.target.value)}
+                    />
+                    <span className="text-sm text-gray-600">د.ك</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="courier-fee-date" className="text-sm font-medium text-gray-700">التاريخ:</label>
+                    <input
+                      id="courier-fee-date"
+                      type="date"
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-green-500 focus:ring-200 focus:ring-green-200"
+                      value={dateRange.startDate}
+                      onChange={(e) => {
+                        setDateRange((prev) => ({ ...prev, startDate: e.target.value, endDate: e.target.value }))
+                      }}
+                    />
+                  </div>
+                  {courierFeeAmount ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all flex items-center gap-2"
+                        onClick={saveCourierFee}
+                      >
+                        <Save className="w-4 h-4" />
+                        حفظ
+                      </button>
+                      <button
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-all flex items-center gap-2"
+                        onClick={() => setCourierFeeAmount("")}
+                      >
+                        <X className="w-4 h-4" />
+                        إلغاء
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all flex items-center gap-2"
+                      disabled={!courierFeeAmount}
+                    >
+                      <Save className="w-4 h-4" />
+                      حفظ
+                    </button>
+                  )}
+                </div>
+                {getCurrentDayFee() && (
+                  <div className="mt-3 p-3 bg-green-100 border border-green-300 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-green-800 font-medium">
+                        رسوم المندوب المحفوظة: <strong>{getCurrentDayFee()} د.ك</strong>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-600 text-sm">
+                          للتاريخ: {dateRange.startDate}
+                        </span>
+                        <button
+                          onClick={removeCourierFee}
+                          className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 text-xs text-gray-500 text-center">
+                  يمكن للمدير تحديد رسوم التوصيل اليومية لكل مندوب
+                </div>
+              </div>
+            )}
 
             {/* 💳 Payment Breakdown */}
             <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
