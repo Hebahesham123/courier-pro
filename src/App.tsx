@@ -14,6 +14,7 @@ import OrdersManagement from "./components/Admin/OrdersManagement"
 import OrdersList from "./components/Courier/OrdersList"
 import CourierYourSheet from "./components/Courier/YourSheet"
 import CouriersManagement from "./components/Admin/CouriersManagement"
+import CourierFeesManagement from "./components/Admin/CourierFeesManagement"
 import Reports from "./components/Admin/reports"
 import AdminCouriersSheet from "./components/Admin/AdminCouriersSheet"
 import RequestsManagement from "./components/Admin/RequestsManagement"
@@ -117,6 +118,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AppLayout>
                   <CouriersManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/courier-fees"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <CourierFeesManagement />
                 </AppLayout>
               </ProtectedRoute>
             }

@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Bell,
   Shield,
+  DollarSign,
 } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
@@ -93,6 +94,13 @@ const Sidebar: React.FC = () => {
       label: t("couriers") || "المندوبين",
       color: "text-orange-400",
       description: "إدارة المندوبين",
+    },
+    {
+      path: "/admin/courier-fees",
+      icon: DollarSign,
+      label: t("courierFees") || "رسوم المندوبين",
+      color: "text-green-600",
+      description: "إدارة الرسوم اليومية لكل مندوب",
     },
     {
       path: "/admin/couriers-sheet",
