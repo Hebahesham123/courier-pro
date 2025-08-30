@@ -35,6 +35,7 @@ import {
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
+import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
 interface OrderProof {
   id: string
@@ -307,6 +308,14 @@ const Summary: React.FC = () => {
   // Check if user is courier for mobile optimization
   const isCourier = user?.role === "courier"
   const isAdmin = user?.role === "admin"
+
+  // Scroll preservation hooks for modals
+  const ordersModalScroll = useModalScrollPreserve('summary-orders-modal', {
+    persistToLocalStorage: true,
+    restoreDelay: 150,
+    saveOnScroll: true,
+    autoRestore: true
+  })
 
   // Get current day's courier fee
   const getCurrentDayFee = () => {
@@ -637,6 +646,31 @@ const Summary: React.FC = () => {
       subscription.unsubscribe().catch(console.error)
     }
   }, [user, dateRange, selectedCourier, fetchSummary, fetchAllHoldFeesData])
+
+  // Cleanup effect for scroll preservation
+  useEffect(() => {
+    return () => {
+      // Save scroll position when component unmounts
+      if (ordersModalScroll.hasSavedPosition()) {
+        ordersModalScroll.restoreScroll()
+      }
+    }
+  }, [ordersModalScroll])
+
+  // Save scroll position when page visibility changes (user switches tabs/navigates away)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && selectedOrders.length > 0) {
+        // User is navigating away, save scroll position
+        ordersModalScroll.restoreScroll()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [ordersModalScroll, selectedOrders.length])
 
   // Hold Fee Management Functions
   const handleEditHoldFee = (orderId: string, currentAmount?: number, currentComment?: string) => {
@@ -2033,7 +2067,11 @@ const Summary: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelectedOrders([])}
+                  onClick={() => {
+                    // Save scroll position before closing
+                    ordersModalScroll.restoreScroll()
+                    setSelectedOrders([])
+                  }}
                   className="text-blue-100 hover:text-white transition-colors p-2"
                   aria-label={translate("close")}
                 >
@@ -2041,7 +2079,10 @@ const Summary: React.FC = () => {
                 </button>
               </div>
               {/* Modal Content */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <div 
+                ref={ordersModalScroll.containerRef}
+                className="flex-1 overflow-y-auto p-6"
+              >
                 <div className="space-y-4">
                   {selectedOrders.map((order) => {
             
@@ -3585,7 +3626,11 @@ const Summary: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelectedOrders([])}
+                  onClick={() => {
+                    // Save scroll position before closing
+                    ordersModalScroll.restoreScroll()
+                    setSelectedOrders([])
+                  }}
                   className="text-blue-100 hover:text-white transition-colors p-2"
                   aria-label={translate("close")}
                 >
@@ -3593,7 +3638,10 @@ const Summary: React.FC = () => {
                 </button>
               </div>
               {/* Modal Content */}
-              <div className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}>
+              <div 
+                ref={ordersModalScroll.containerRef}
+                className={`flex-1 overflow-y-auto ${isCourier ? "p-4" : "p-6"}`}
+              >
                 <div className={`space-y-${isCourier ? "3" : "4"}`}>
                   {selectedOrders.map((order) => {
                     

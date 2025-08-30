@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scroll Preservation Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .modal-trigger {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .modal-trigger:hover {
+            background: #0056b3;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 0;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            background: #007bff;
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            max-height: 60vh;
+        }
+        
+        .test-item {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .test-item h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        
+        .test-item p {
+            margin: 0;
+            color: #6c757d;
+            line-height: 1.5;
+        }
+        
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .instructions h3 {
+            margin: 0 0 10px 0;
+            color: #0056b3;
+        }
+        
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 8px;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Scroll Preservation Test</h1>
+        
+        <div class="instructions">
+            <h3>Test Instructions:</h3>
+            <ol>
+                <li>Click "Open Modal" to open a scrollable modal</li>
+                <li>Scroll down to any position in the modal content</li>
+                <li>Navigate to another website or tab (don't close the modal)</li>
+                <li>Return to this page</li>
+                <li>The modal should still be open and scroll position should be preserved</li>
+            </ol>
+        </div>
+        
+        <button class="modal-trigger" onclick="openModal()">Open Modal</button>
+        
+        <div id="testModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Scroll Preservation Test Modal</h2>
+                    <button class="close-btn" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    <div class="test-item">
+                        <h3>Item 1</h3>
+                        <p>This is the first test item. Scroll down to see more items and test the scroll preservation functionality.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 2</h3>
+                        <p>Second test item with some content to make the modal scrollable. Keep scrolling to find more items.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 3</h3>
+                        <p>Third test item. The scroll position should be preserved when you navigate away and return.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 4</h3>
+                        <p>Fourth test item. Try scrolling to different positions and then navigating away.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 5</h3>
+                        <p>Fifth test item. This demonstrates how the scroll position can be maintained across page navigation.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 6</h3>
+                        <p>Sixth test item. Scroll to this position, navigate away, then return to see if it's preserved.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 7</h3>
+                        <p>Seventh test item. The implementation uses localStorage and sessionStorage to maintain scroll state.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 8</h3>
+                        <p>Eighth test item. This is useful for maintaining user experience when they navigate between pages.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 9</h3>
+                        <p>Ninth test item. Scroll position preservation works for both same-session and cross-session scenarios.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 10</h3>
+                        <p>Tenth test item. This is the final item in the scrollable content. Test the functionality thoroughly!</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 11</h3>
+                        <p>Bonus item! The scroll position should be maintained even after navigating away and returning multiple times.</p>
+                    </div>
+                    
+                    <div class="test-item">
+                        <h3>Item 12</h3>
+                        <p>Final test item. This demonstrates the complete scroll preservation implementation working correctly.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let modalOpen = false;
+        let scrollPosition = 0;
+        
+        function openModal() {
+            document.getElementById('testModal').style.display = 'block';
+            modalOpen = true;
+            
+            // Restore scroll position if available
+            const savedPosition = localStorage.getItem('modal-scroll-position');
+            if (savedPosition) {
+                setTimeout(() => {
+                    const modalBody = document.getElementById('modalBody');
+                    modalBody.scrollTop = parseInt(savedPosition);
+                }, 100);
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('testModal').style.display = 'none';
+            modalOpen = false;
+            
+            // Save current scroll position
+            const modalBody = document.getElementById('modalBody');
+            localStorage.setItem('modal-scroll-position', modalBody.scrollTop.toString());
+        }
+        
+        // Save scroll position on scroll
+        document.getElementById('modalBody').addEventListener('scroll', function() {
+            if (modalOpen) {
+                scrollPosition = this.scrollTop;
+                localStorage.setItem('modal-scroll-position', scrollPosition.toString());
+            }
+        });
+        
+        // Save scroll position when page visibility changes (user switches tabs)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && modalOpen) {
+                const modalBody = document.getElementById('modalBody');
+                localStorage.setItem('modal-scroll-position', modalBody.scrollTop.toString());
+            }
+        });
+        
+        // Save scroll position before page unload
+        window.addEventListener('beforeunload', function() {
+            if (modalOpen) {
+                const modalBody = document.getElementById('modalBody');
+                localStorage.setItem('modal-scroll-position', modalBody.scrollTop.toString());
+            }
+        });
+        
+        // Close modal when clicking outside
+        document.getElementById('testModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

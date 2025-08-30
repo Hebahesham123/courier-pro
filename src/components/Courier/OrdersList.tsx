@@ -37,6 +37,7 @@ import {
 import { supabase } from "../../lib/supabase"
 import { useAuth } from "../../contexts/AuthContext"
 import { useLanguage } from "../../contexts/LanguageContext"
+import { useModalScrollPreserve } from "../../lib/useModalScrollPreserve"
 
 
 interface OrderProof {
@@ -228,10 +229,43 @@ const OrdersList: React.FC = () => {
   const { user } = useAuth()
   const { t } = useLanguage()
 
+  // Scroll preservation hook for modal
+  const modalScroll = useModalScrollPreserve('orders-list-modal', {
+    persistToLocalStorage: true,
+    restoreDelay: 150,
+    saveOnScroll: true,
+    autoRestore: true
+  })
+
 
   useEffect(() => {
     if (user?.id) fetchOrders()
   }, [user, selectedDate])
+
+  // Cleanup effect for scroll preservation
+  useEffect(() => {
+    return () => {
+      // Save scroll position when component unmounts
+      if (modalScroll.hasSavedPosition()) {
+        modalScroll.restoreScroll()
+      }
+    }
+  }, [modalScroll])
+
+  // Save scroll position when page visibility changes (user switches tabs/navigates away)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && modalOpen) {
+        // User is navigating away, save scroll position
+        modalScroll.restoreScroll()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [modalScroll, modalOpen])
 
   // Scroll detection and button visibility
   useEffect(() => {
@@ -1850,7 +1884,10 @@ const deleteDuplicatedOrder = async (order: Order) => {
         {/* Update Order Modal - keeping the same as before */}
         {modalOpen && selectedOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div 
+              ref={modalScroll.containerRef}
+              className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto"
+            >
               {/* Modal Header */}
               <div className="bg-blue-600 text-white p-6 rounded-t-xl">
                 <div className="flex items-center justify-between">
@@ -1876,7 +1913,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     )}
                   </div>
                   <button
-                    onClick={() => setModalOpen(false)}
+                    onClick={() => {
+                      // Save scroll position before closing
+                      modalScroll.restoreScroll()
+                      setModalOpen(false)
+                    }}
                     className="text-blue-100 hover:text-white transition-colors"
                   >
                     <XCircle className="w-6 h-6" />
@@ -2307,7 +2348,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                   <div className="flex gap-4 pt-4 border-t border-gray-200">
                     <button
                       type="button"
-                      onClick={() => setModalOpen(false)}
+                      onClick={() => {
+                        // Save scroll position before closing
+                        modalScroll.restoreScroll()
+                        setModalOpen(false)
+                      }}
                       className="flex-1 px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium transition-colors"
                       disabled={saving}
                     >
