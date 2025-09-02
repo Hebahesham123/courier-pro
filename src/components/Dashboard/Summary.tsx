@@ -1716,14 +1716,16 @@ const Summary: React.FC = () => {
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
-                            ...metrics.handToHand.orders
+                            ...metrics.handToHand.orders,
+                            ...metrics.canceled.orders,  // رسوم فقط
+                            ...metrics.returned.orders     // رسوم فقط
                           ].filter(order => {
                             // For online payments (Visa/ValU/etc), consider collected as the paid amount
                             if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
                               return true
                             }
-                            // For cash payments, only include if actually collected
-                            return order.status !== 'canceled' && order.status !== 'return'
+                            // Include all orders since we're now including fees only
+                            return true
                           })
                           openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
                         }}
@@ -1742,12 +1744,14 @@ const Summary: React.FC = () => {
                             <span className="text-sm font-bold text-emerald-700">المحصل فعلياً:</span>
                             <span className="font-bold text-xl text-emerald-900">
                               {(() => {
-                                // Calculate total collected from all statuses
+                                // Calculate total collected from all statuses including fees only
                                 const totalCollected = 
                                   metrics.delivered.courierCollected +
                                   metrics.partial.courierCollected +
                                   metrics.receivingPart.courierCollected +
-                                  metrics.handToHand.courierCollected
+                                  metrics.handToHand.courierCollected +
+                                  metrics.canceled.courierCollected + // رسوم فقط
+                                  metrics.returned.courierCollected    // رسوم فقط
                                 return totalCollected.toFixed(2)
                               })()} ج.م
                             </span>
@@ -1760,12 +1764,14 @@ const Summary: React.FC = () => {
                                   ...metrics.delivered.orders,
                                   ...metrics.partial.orders,
                                   ...metrics.receivingPart.orders,
-                                  ...metrics.handToHand.orders
+                                  ...metrics.handToHand.orders,
+                                  ...metrics.canceled.orders,  // رسوم فقط
+                                  ...metrics.returned.orders    // رسوم فقط
                                 ].filter(order => {
                                   if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
                                     return true
                                   }
-                                  return order.status !== 'canceled' && order.status !== 'return'
+                                  return true // Include all orders since we're now including fees only
                                 }).length
                                 return collectedOrders
                               })()} طلب
@@ -3150,14 +3156,16 @@ const Summary: React.FC = () => {
                       ...metrics.delivered.orders,
                       ...metrics.partial.orders,
                       ...metrics.receivingPart.orders,
-                      ...metrics.handToHand.orders
+                      ...metrics.handToHand.orders,
+                      ...metrics.canceled.orders,  // رسوم فقط
+                      ...metrics.returned.orders     // رسوم فقط
                     ].filter(order => {
                       // For online payments (Visa/ValU/etc), consider collected as the paid amount
                       if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
                         return true
                       }
-                      // For cash payments, only include if actually collected
-                      return order.status !== 'canceled' && order.status !== 'return'
+                      // Include all orders since we're now including fees only
+                      return true
                     })
                     openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
                   }}
@@ -3186,12 +3194,14 @@ const Summary: React.FC = () => {
                       </span>
                       <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-xl"}`}>
                         {(() => {
-                          // Calculate total collected from all statuses
+                          // Calculate total collected from all statuses including fees only
                           const totalCollected = 
                             metrics.delivered.courierCollected +
                             metrics.partial.courierCollected +
                             metrics.receivingPart.courierCollected +
-                            metrics.handToHand.courierCollected
+                            metrics.handToHand.courierCollected +
+                            metrics.canceled.courierCollected + // رسوم فقط
+                            metrics.returned.courierCollected    // رسوم فقط
                           return totalCollected.toFixed(0)
                         })()} ج.م
                       </span>
@@ -3206,12 +3216,14 @@ const Summary: React.FC = () => {
                             ...metrics.delivered.orders,
                             ...metrics.partial.orders,
                             ...metrics.receivingPart.orders,
-                            ...metrics.handToHand.orders
+                            ...metrics.handToHand.orders,
+                            ...metrics.canceled.orders,  // رسوم فقط
+                            ...metrics.returned.orders    // رسوم فقط
                           ].filter(order => {
                             if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
                               return true
                             }
-                            return order.status !== 'canceled' && order.status !== 'return'
+                            return true // Include all orders since we're now including fees only
                           }).length
                           return collectedOrders
                         })()} طلب
