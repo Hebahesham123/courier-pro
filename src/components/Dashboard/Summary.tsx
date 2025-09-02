@@ -1699,6 +1699,154 @@ const Summary: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* 💰 Total Collected and Not Delivered Summary */}
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                        <Calculator className="w-6 h-6 text-emerald-600" />
+                      </div>
+                      <h2 className="text-xl font-bold text-gray-900">💰 ملخص المحصل والغير مُسلَّم</h2>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Total Collected */}
+                      <div
+                        className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
+                        onClick={() => {
+                          const collectedOrders = [
+                            ...metrics.delivered.orders,
+                            ...metrics.partial.orders,
+                            ...metrics.receivingPart.orders,
+                            ...metrics.handToHand.orders
+                          ].filter(order => {
+                            // For online payments (Visa/ValU/etc), consider collected as the paid amount
+                            if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
+                              return true
+                            }
+                            // For cash payments, only include if actually collected
+                            return order.status !== 'canceled' && order.status !== 'return'
+                          })
+                          openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
+                        }}
+                      >
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="w-12 h-12 bg-emerald-200 rounded-xl flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-emerald-700" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-emerald-900">إجمالي مُسلَّم فعليًا</h3>
+                            <p className="text-sm text-emerald-700">مجموع المحصَّل فعليًا</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center pt-2 border-t border-emerald-300">
+                            <span className="text-sm font-bold text-emerald-700">المحصل فعلياً:</span>
+                            <span className="font-bold text-xl text-emerald-900">
+                              {(() => {
+                                // Calculate total collected from all statuses
+                                const totalCollected = 
+                                  metrics.delivered.courierCollected +
+                                  metrics.partial.courierCollected +
+                                  metrics.receivingPart.courierCollected +
+                                  metrics.handToHand.courierCollected
+                                return totalCollected.toFixed(2)
+                              })()} ج.م
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-emerald-700">الطلبات:</span>
+                            <span className="font-bold text-emerald-900">
+                              {(() => {
+                                const collectedOrders = [
+                                  ...metrics.delivered.orders,
+                                  ...metrics.partial.orders,
+                                  ...metrics.receivingPart.orders,
+                                  ...metrics.handToHand.orders
+                                ].filter(order => {
+                                  if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
+                                    return true
+                                  }
+                                  return order.status !== 'canceled' && order.status !== 'return'
+                                }).length
+                                return collectedOrders
+                              })()} طلب
+                            </span>
+                          </div>
+                        </div>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
+                          <Eye className="w-5 h-5 text-emerald-600 mx-auto" />
+                        </div>
+                      </div>
+                      {/* Total Not Delivered */}
+                      <div
+                        className="bg-red-50 border-2 border-red-200 rounded-xl p-6 cursor-pointer hover:shadow-lg transition-all group"
+                        onClick={() => {
+                          const notDeliveredOrders = [
+                            ...metrics.canceled.orders,
+                            ...metrics.returned.orders,
+                            ...metrics.assigned.orders
+                          ]
+                          openOrders(notDeliveredOrders, "إجمالي غير مُسلَّم")
+                        }}
+                      >
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="w-12 h-12 bg-red-200 rounded-xl flex items-center justify-center">
+                            <XCircle className="w-6 h-6 text-red-700" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-red-900">إجمالي غير مُسلَّم</h3>
+                            <p className="text-sm text-red-700">مجموع العجز/الغير مُحصَّل</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center pt-2 border-t border-red-300">
+                            <span className="text-sm font-bold text-red-700">الغير مُسلَّم:</span>
+                                                    <span className="font-bold text-xl text-red-900">
+                          {(() => {
+                            // Calculate total not delivered according to the specified rules
+                            let totalNotDelivered = 0
+                            
+                            // Canceled orders: full original value (as specified)
+                            totalNotDelivered += metrics.canceled.originalValue
+                            
+                            // Partial orders: (original value - actually collected)
+                            totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected)
+                            
+                            // Hand-to-hand orders: (original value - actually collected) if not collected
+                            totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected)
+                            
+                            // Receiving part orders: (original value - actually collected)
+                            totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected)
+                            
+                            // Assigned orders: full original value (not yet delivered)
+                            totalNotDelivered += metrics.assigned.originalValue
+                            
+                            // Return orders: full original value (as specified - fees only are not subtracted)
+                            totalNotDelivered += metrics.returned.originalValue
+                            
+                            return totalNotDelivered.toFixed(2)
+                          })()} ج.م
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-red-700">الطلبات:</span>
+                            <span className="font-bold text-red-900">
+                              {(() => {
+                                const notDeliveredCount = 
+                                  metrics.canceled.count +
+                                  metrics.returned.count +
+                                  metrics.assigned.count
+                                return notDeliveredCount
+                              })()} طلب
+                            </span>
+                          </div>
+                        </div>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
+                          <Eye className="w-5 h-5 text-red-600 mx-auto" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* 💳 Payment Breakdown */}
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-6">
@@ -2972,6 +3120,188 @@ const Summary: React.FC = () => {
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
                     <Eye className={`text-purple-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 💰 Total Collected and Not Delivered Summary - Courier View */}
+            <div className={`bg-white rounded-xl border border-gray-200 ${isCourier ? "p-4" : "p-6"}`}>
+              <div className={`flex items-center gap-3 ${isCourier ? "mb-4" : "mb-6"}`}>
+                <div
+                  className={`bg-emerald-100 rounded-xl flex items-center justify-center ${
+                    isCourier ? "w-8 h-8" : "w-10 h-10"
+                  }`}
+                >
+                  <Calculator className={`text-emerald-600 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                </div>
+                <h2 className={`font-bold text-gray-900 ${isCourier ? "text-lg" : "text-xl"}`}>
+                  {isCourier ? "💰 المحصل والغير مُسلَّم" : "💰 ملخص المحصل والغير مُسلَّم"}
+                </h2>
+              </div>
+              <div className={`grid ${isCourier ? "grid-cols-1 gap-3" : "grid-cols-1 lg:grid-cols-2 gap-6"}`}>
+                {/* Total Collected */}
+                <div
+                  className={`bg-emerald-50 border-2 border-emerald-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-4" : "p-6"
+                  }`}
+                  onClick={() => {
+                    const collectedOrders = [
+                      ...metrics.delivered.orders,
+                      ...metrics.partial.orders,
+                      ...metrics.receivingPart.orders,
+                      ...metrics.handToHand.orders
+                    ].filter(order => {
+                      // For online payments (Visa/ValU/etc), consider collected as the paid amount
+                      if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
+                        return true
+                      }
+                      // For cash payments, only include if actually collected
+                      return order.status !== 'canceled' && order.status !== 'return'
+                    })
+                    openOrders(collectedOrders, "إجمالي مُسلَّم فعليًا")
+                  }}
+                >
+                  <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
+                    <div
+                      className={`bg-emerald-200 rounded-xl flex items-center justify-center ${
+                        isCourier ? "w-8 h-8" : "w-12 h-12"
+                      }`}
+                    >
+                      <CheckCircle className={`text-emerald-700 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                    </div>
+                    <div>
+                      <h3 className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-lg"}`}>
+                        {isCourier ? "المُسلَّم فعليًا" : "إجمالي مُسلَّم فعليًا"}
+                      </h3>
+                      <p className={`text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        {isCourier ? "المحصَّل فعليًا" : "مجموع المحصَّل فعليًا"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className={`flex justify-between items-center pt-2 border-t border-emerald-300`}>
+                      <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        المحصل فعلياً:
+                      </span>
+                      <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                        {(() => {
+                          // Calculate total collected from all statuses
+                          const totalCollected = 
+                            metrics.delivered.courierCollected +
+                            metrics.partial.courierCollected +
+                            metrics.receivingPart.courierCollected +
+                            metrics.handToHand.courierCollected
+                          return totalCollected.toFixed(0)
+                        })()} ج.م
+                      </span>
+                    </div>
+                    <div className={`flex justify-between items-center`}>
+                      <span className={`font-bold text-emerald-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        الطلبات:
+                      </span>
+                      <span className={`font-bold text-emerald-900 ${isCourier ? "text-sm" : "text-base"}`}>
+                        {(() => {
+                          const collectedOrders = [
+                            ...metrics.delivered.orders,
+                            ...metrics.partial.orders,
+                            ...metrics.receivingPart.orders,
+                            ...metrics.handToHand.orders
+                          ].filter(order => {
+                            if (order.payment_method && ['paymob', 'valu', 'visa_machine', 'instapay', 'wallet'].includes(order.payment_method.toLowerCase())) {
+                              return true
+                            }
+                            return order.status !== 'canceled' && order.status !== 'return'
+                          }).length
+                          return collectedOrders
+                        })()} طلب
+                      </span>
+                    </div>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
+                    <Eye className={`text-emerald-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
+                  </div>
+                </div>
+                {/* Total Not Delivered */}
+                <div
+                  className={`bg-red-50 border-2 border-red-200 rounded-xl cursor-pointer hover:shadow-lg transition-all group ${
+                    isCourier ? "p-4" : "p-6"
+                  }`}
+                  onClick={() => {
+                    const notDeliveredOrders = [
+                      ...metrics.canceled.orders,
+                      ...metrics.returned.orders,
+                      ...metrics.assigned.orders
+                    ]
+                    openOrders(notDeliveredOrders, "إجمالي غير مُسلَّم")
+                  }}
+                >
+                  <div className={`flex items-center gap-4 ${isCourier ? "mb-2" : "mb-4"}`}>
+                    <div
+                      className={`bg-red-200 rounded-xl flex items-center justify-center ${
+                        isCourier ? "w-8 h-8" : "w-12 h-12"
+                      }`}
+                    >
+                      <XCircle className={`text-red-700 ${isCourier ? "w-4 h-4" : "w-6 h-6"}`} />
+                    </div>
+                    <div>
+                      <h3 className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-lg"}`}>
+                        {isCourier ? "غير مُسلَّم" : "إجمالي غير مُسلَّم"}
+                      </h3>
+                      <p className={`text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        {isCourier ? "العجز/الغير مُحصَّل" : "مجموع العجز/الغير مُحصَّل"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className={`flex justify-between items-center pt-2 border-t border-red-300`}>
+                      <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        غير مُسلَّم:
+                      </span>
+                      <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-xl"}`}>
+                        {(() => {
+                          // Calculate total not delivered according to the specified rules
+                          let totalNotDelivered = 0
+                          
+                          // Canceled orders: full original value (as specified)
+                          totalNotDelivered += metrics.canceled.originalValue
+                          
+                          // Partial orders: (original value - actually collected)
+                          totalNotDelivered += Math.max(0, metrics.partial.originalValue - metrics.partial.courierCollected)
+                          
+                          // Hand-to-hand orders: (original value - actually collected) if not collected
+                          totalNotDelivered += Math.max(0, metrics.handToHand.originalValue - metrics.handToHand.courierCollected)
+                          
+                          // Receiving part orders: (original value - actually collected)
+                          totalNotDelivered += Math.max(0, metrics.receivingPart.originalValue - metrics.receivingPart.courierCollected)
+                          
+                          // Assigned orders: full original value (not yet delivered)
+                          totalNotDelivered += metrics.assigned.originalValue
+                          
+                          // Return orders: full original value (as specified - fees only are not subtracted)
+                          totalNotDelivered += metrics.returned.originalValue
+                          
+                          return totalNotDelivered.toFixed(0)
+                        })()} ج.م
+                      </span>
+                    </div>
+                    <div className={`flex justify-between items-center`}>
+                      <span className={`font-bold text-red-700 ${isCourier ? "text-xs" : "text-sm"}`}>
+                        الطلبات:
+                      </span>
+                      <span className={`font-bold text-red-900 ${isCourier ? "text-sm" : "text-base"}`}>
+                        {(() => {
+                          const notDeliveredCount = 
+                            metrics.canceled.count +
+                            metrics.returned.count +
+                            metrics.assigned.count
+                          return notDeliveredCount
+                        })()} طلب
+                      </span>
+                    </div>
+                  </div>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-3">
+                    <Eye className={`text-red-600 mx-auto ${isCourier ? "w-4 h-4" : "w-5 h-5"}`} />
                   </div>
                 </div>
               </div>
