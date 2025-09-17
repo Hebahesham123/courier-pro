@@ -90,6 +90,8 @@ interface DateRange {
 // Updated normalize function to handle all sub-methods for onther payments
 const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa_machine" | "instapay" | "wallet" | "on_hand" | "other" => {
   const m = method.toLowerCase().trim()
+  // Treat accounting collectors (e.g., CAR, Emad) as cash on hand for summaries
+  if (m.includes("car") || m.includes("emad") || m.includes("cae")) return "on_hand"
   if (m.includes("valu") || m.includes("paymob.valu")) return "valu"
   if (m === "visa_machine") return "visa_machine"
   if (m === "instapay") return "instapay"
