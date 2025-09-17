@@ -434,7 +434,9 @@ const Summary: React.FC = () => {
     try {
       let holdFeesOrders: Order[] = []
       if (user.role === "courier") {
-        // For courier users, get all their orders with hold fees
+        // For courier users, get orders with hold fee activity (added or removed) within the date range
+        const start = `${dateRange.startDate}T00:00:00`
+        const end = `${dateRange.endDate}T23:59:59`
         const { data } = await supabase
           .from("orders")
           .select(`
@@ -442,14 +444,16 @@ const Summary: React.FC = () => {
             order_proofs (id, image_data)
           `)
           .eq("assigned_courier_id", user.id)
-          .gte("created_at", `${dateRange.startDate}T00:00:00`)
-          .lte("created_at", `${dateRange.endDate}T23:59:59`)
+          // Include orders where hold was removed in range, OR active/added in range when not yet removed
+          .or(`and(hold_fee_removed_at.gte.${start},hold_fee_removed_at.lte.${end}),and(hold_fee_removed_at.is.null,hold_fee_added_at.gte.${start},hold_fee_added_at.lte.${end})`)
         
         holdFeesOrders = (data ?? []) as Order[]
       } else {
         // For admin users
         if (selectedCourier) {
-          // If a courier is selected, fetch only their hold fees orders
+          // If a courier is selected, fetch only their orders with hold fee activity in range
+          const start = `${dateRange.startDate}T00:00:00`
+          const end = `${dateRange.endDate}T23:59:59`
           const { data } = await supabase
             .from("orders")
             .select(`
@@ -457,18 +461,19 @@ const Summary: React.FC = () => {
               order_proofs (id, image_data)
             `)
             .eq("assigned_courier_id", selectedCourier.courierId)
-            .or("hold_fee.gt.0,and(hold_fee.is.null,hold_fee_created_at.not.is.null,hold_fee_created_by.not.is.null)")
+            .or(`and(hold_fee_removed_at.gte.${start},hold_fee_removed_at.lte.${end}),and(hold_fee_removed_at.is.null,hold_fee_added_at.gte.${start},hold_fee_added_at.lte.${end})`)
           holdFeesOrders = (data ?? []) as Order[]
         } else if (showAnalytics) {
-          // If showing analytics, fetch ALL hold fees orders from ALL couriers
+          // If showing analytics, fetch ALL orders with hold fee activity in the selected date range (any courier)
+          const start = `${dateRange.startDate}T00:00:00`
+          const end = `${dateRange.endDate}T23:59:59`
           const { data } = await supabase
             .from("orders")
             .select(`
               *,
               order_proofs (id, image_data)
             `)
-            .gte("created_at", `${dateRange.startDate}T00:00:00`)
-            .lte("created_at", `${dateRange.endDate}T23:59:59`)
+            .or(`and(hold_fee_removed_at.gte.${start},hold_fee_removed_at.lte.${end}),and(hold_fee_removed_at.is.null,hold_fee_added_at.gte.${start},hold_fee_added_at.lte.${end})`)
           holdFeesOrders = (data ?? []) as Order[]
         }
       }
