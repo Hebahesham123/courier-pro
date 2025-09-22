@@ -99,6 +99,9 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
   if (m === "on_hand" || m === "on hand") return "on_hand"
   if (
     m === "paymob" ||
+    m.includes("paymob") ||
+    m.includes("pay mob") ||
+    m.includes("باي موب") ||
     m.includes("visa") ||
     m.includes("mastercard") ||
     m.includes("card") ||
@@ -106,7 +109,7 @@ const normalizePaymentMethod = (method = ""): "cash" | "paymob" | "valu" | "visa
     m.includes("debit")
   )
     return "paymob"
-  if (m === "cash") return "cash"
+  if (m === "cash" || m === "cod" || m.includes("cash on delivery") || m === "cash_on_delivery") return "cash"
   // Debug: log any sub-methods that are grouped as 'other'
   if (m && m !== "other") {
     if (typeof window !== 'undefined' && window.console) {
@@ -1176,8 +1179,15 @@ const Summary: React.FC = () => {
             }
           }
         } else {
+          // Prefer specific indicators over generic payment_method
+          // 1) If payment_sub_type is present (and not onther), use it
+          // 2) Else if collected_by is present (e.g., paymob collector), use it
+          // 3) Else fallback to payment_method
+          const sourceMethod = (o.payment_sub_type && o.payment_sub_type !== 'onther')
+            ? o.payment_sub_type
+            : (o.collected_by || o.payment_method)
           // Use normalized payment method for non-onther orders
-          const normalized = normalizePaymentMethod(o.payment_sub_type || o.payment_method)
+          const normalized = normalizePaymentMethod(sourceMethod)
           const amt = getTotalCourierAmount(o)
           // Include cash on hand orders even if amount is 0 or negative (they represent collected cash)
           if (amt > 0 || normalized === 'on_hand') {
