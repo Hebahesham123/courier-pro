@@ -225,6 +225,7 @@ const OrdersList: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [duplicatingOrderId, setDuplicatingOrderId] = useState<string | null>(null)
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
+  const [imageUploadSuccess, setImageUploadSuccess] = useState(false)
 
   const { user } = useAuth()
   const { t } = useLanguage()
@@ -716,8 +717,7 @@ const OrdersList: React.FC = () => {
 
       if (error) throw error
 
-      alert("تم رفع الصورة بنجاح!")
-
+      // Update the selected order with the new image
       setSelectedOrder((prev) => {
         if (!prev) return prev
         return {
@@ -736,6 +736,13 @@ const OrdersList: React.FC = () => {
             : o,
         ),
       )
+
+      // Show success message briefly
+      setImageUploadSuccess(true)
+      setTimeout(() => setImageUploadSuccess(false), 3000)
+
+      // Clear the file input to allow uploading the same file again if needed
+      e.target.value = ""
     } catch (error: any) {
       alert("فشل الرفع: " + error.message)
     } finally {
@@ -2277,6 +2284,11 @@ const deleteDuplicatedOrder = async (order: Order) => {
                     <label className="block text-sm font-medium text-gray-700 flex items-center gap-2">
                       <Upload className="w-4 h-4" />
                       رفع صورة إثبات
+                      {selectedOrder.order_proofs && selectedOrder.order_proofs.length > 0 && (
+                        <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                          {selectedOrder.order_proofs.length} صورة
+                        </span>
+                      )}
                     </label>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
                       <div className="space-y-3">
@@ -2305,6 +2317,15 @@ const deleteDuplicatedOrder = async (order: Order) => {
                             {imageUploading ? "جاري رفع الصورة..." : "اختر صورة من المعرض أو التقط صورة"}
                           </label>
                           <p className="text-xs text-gray-500 mt-1">يمكنك اختيار صورة من المعرض أو التقاط صورة جديدة</p>
+                          {imageUploading && (
+                            <p className="text-xs text-blue-600 mt-1">جاري معالجة الصورة...</p>
+                          )}
+                          {imageUploadSuccess && (
+                            <p className="text-xs text-green-600 mt-1 flex items-center justify-center gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              تم رفع الصورة بنجاح!
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2371,7 +2392,7 @@ const deleteDuplicatedOrder = async (order: Order) => {
                       ) : (
                         <>
                           <Save className="w-4 h-4" />
-                          حفظ التغييرات
+                          حفظ التغييرات والصور
                         </>
                       )}
                     </button>
