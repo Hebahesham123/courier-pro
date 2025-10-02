@@ -485,7 +485,7 @@ const Summary: React.FC = () => {
       console.error("Error fetching all hold fees data:", error)
       setAllHoldFeesOrders([])
     }
-  }, [user, selectedCourier, showAnalytics])
+  }, [user?.id, user?.role, selectedCourier?.courierId, showAnalytics, dateRange.startDate, dateRange.endDate])
 
   // Helper function to get consistent date string format
   const getDateString = useCallback((dateValue: string | null | undefined): string | null => {
@@ -639,13 +639,17 @@ const Summary: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [user, dateRange, selectedCourier, showAnalytics])
+  }, [user?.id, user?.role, dateRange.startDate, dateRange.endDate, selectedCourier?.courierId, showAnalytics])
 
   useEffect(() => {
     fetchSummary()
     fetchAllHoldFeesData() // Also fetch hold fees data
+  }, [fetchSummary, fetchAllHoldFeesData])
+
+  // Separate useEffect for subscription to avoid recreation on every dependency change
+  useEffect(() => {
     const subscription = supabase
-      .channel("orders_changes")
+      .channel("orders_changes_summary")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
         fetchSummary()
         fetchAllHoldFeesData() // Also refetch hold fees data on changes
@@ -655,7 +659,7 @@ const Summary: React.FC = () => {
     return () => {
       subscription.unsubscribe().catch(console.error)
     }
-  }, [user, dateRange, selectedCourier, fetchSummary, fetchAllHoldFeesData])
+  }, [fetchSummary, fetchAllHoldFeesData])
 
   // Cleanup effect for scroll preservation
   useEffect(() => {

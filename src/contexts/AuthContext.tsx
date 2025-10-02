@@ -338,6 +338,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Global subscription for all order changes (for notifications)
   useEffect(() => {
+    if (!user) return // Only subscribe when user is logged in
+    
     addDebugInfo("Setting up global order subscription for notifications")
 
     const globalSubscription = supabase
@@ -407,7 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addDebugInfo("Unsubscribing from global order changes")
       globalSubscription.unsubscribe()
     }
-  }, [addNotification]) // Depend on addNotification to re-subscribe if it changes
+  }, [user, addNotification]) // Only re-subscribe when user changes or addNotification changes
 
   const contextValue: AuthContextType = {
     user,
