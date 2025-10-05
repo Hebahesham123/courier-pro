@@ -503,27 +503,27 @@ const AdminAnalytics: React.FC = () => {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Courier Analytics</h1>
-                <p className="text-gray-600">Comprehensive performance insights for all couriers</p>
+                <h1 className="text-xl font-semibold text-gray-900">Courier Analytics</h1>
+                <p className="text-sm text-gray-500">Performance insights for all couriers</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               {/* Date Range Filter */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-4">
-                  <Calendar className="w-5 h-5 text-blue-600" />
-                  <h3 className="text-lg font-semibold text-gray-900">Date Range Filter</h3>
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-sm font-medium text-gray-900">Date Range</h3>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                   {/* Preset Date Ranges */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Quick Ranges</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Quick Ranges</label>
                     <select
                       value={dateRange.preset || ""}
                       onChange={(e) => {
@@ -566,9 +566,9 @@ const AdminAnalytics: React.FC = () => {
                           })
                         }
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
-                      <option value="">Select Quick Range</option>
+                      <option value="">Select Range</option>
                       <option value="today">Today</option>
                       <option value="yesterday">Yesterday</option>
                       <option value="last7days">Last 7 Days</option>
@@ -580,27 +580,27 @@ const AdminAnalytics: React.FC = () => {
 
                   {/* Custom Start Date */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
                     <input
                       type="date"
                       value={dateRange.start}
                       onChange={(e) => {
                         setDateRange(prev => ({ ...prev, start: e.target.value, preset: "" }))
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
 
                   {/* Custom End Date */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">To Date</label>
                     <input
                       type="date"
                       value={dateRange.end}
                       onChange={(e) => {
                         setDateRange(prev => ({ ...prev, end: e.target.value, preset: "" }))
                       }}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
 
@@ -612,10 +612,10 @@ const AdminAnalytics: React.FC = () => {
                           fetchAnalyticsData(selectedCourier.id, dateRange.start, dateRange.end)
                         }
                       }}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
                     >
-                      <RefreshCw className="w-4 h-4" />
-                      Apply Filter
+                      <RefreshCw className="w-3 h-3" />
+                      Apply
                     </button>
                     <button
                       onClick={() => {
@@ -629,24 +629,21 @@ const AdminAnalytics: React.FC = () => {
                           preset: ""
                         })
                       }}
-                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                      className="px-2 py-1.5 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
                       title="Reset"
                     >
-                      <RefreshCw className="w-4 h-4" />
+                      <RefreshCw className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
 
                 {/* Selected Date Range Display */}
-                <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    <span>Selected Period:</span>
-                    <span className="font-medium text-gray-900">
-                      {dateRange.start} - {dateRange.end}
-                    </span>
+                <div className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-md p-2">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    <span>{dateRange.start} - {dateRange.end}</span>
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-400">
                     {(() => {
                       const start = new Date(dateRange.start)
                       const end = new Date(dateRange.end)
@@ -660,55 +657,55 @@ const AdminAnalytics: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <div className="flex items-center bg-gray-100 rounded-md p-0.5">
                 <button
                   onClick={() => setViewMode("overview")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === "overview"
                       ? "bg-white text-blue-600 shadow-sm"
                       : "text-gray-600 hover:text-gray-800"
                   }`}
                 >
-                  <BarChart3 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Overview</span>
+                  <BarChart3 className="w-3 h-3" />
+                  <span>Overview</span>
                 </button>
                 <button
                   onClick={() => setViewMode("detailed")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === "detailed"
                       ? "bg-white text-blue-600 shadow-sm"
                       : "text-gray-600 hover:text-gray-800"
                   }`}
                 >
-                  <Activity className="w-4 h-4" />
-                  <span className="hidden sm:inline">Detailed Analysis</span>
+                  <Activity className="w-3 h-3" />
+                  <span>Detailed</span>
                 </button>
                 <button
                   onClick={() => setViewMode("orders")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors ${
                     viewMode === "orders"
                       ? "bg-white text-blue-600 shadow-sm"
                       : "text-gray-600 hover:text-gray-800"
                   }`}
                 >
-                  <Package className="w-4 h-4" />
-                  <span className="hidden sm:inline">Order Details</span>
+                  <Package className="w-3 h-3" />
+                  <span>Orders</span>
                 </button>
               </div>
               {selectedCourier && (
                 <button
                   onClick={exportData}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
                 >
-                  <Download className="w-4 h-4" />
-                  Export Data
+                  <Download className="w-3 h-3" />
+                  Export
                 </button>
               )}
               <button
                 onClick={() => selectedCourier && fetchAnalyticsData(selectedCourier.id, dateRange.start, dateRange.end)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="w-3 h-3" />
                 Refresh
               </button>
             </div>
@@ -858,15 +855,15 @@ const AdminAnalytics: React.FC = () => {
                       
                       {/* Main Statistics Grid */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200 shadow-lg hover:shadow-xl transition-shadow">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="w-14 h-14 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                              <Package className="w-7 h-7 text-white" />
+                        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                              <Package className="w-5 h-5 text-white" />
                             </div>
                             <div className="text-right">
-                              <p className="text-4xl font-bold text-blue-900">{analyticsData?.totalOrders || 0}</p>
-                              <p className="text-sm text-blue-700 font-medium">Total Orders</p>
-                              <p className="text-xs text-blue-600 mt-1">100% of all orders</p>
+                              <p className="text-2xl font-bold text-gray-900">{analyticsData?.totalOrders || 0}</p>
+                              <p className="text-sm text-gray-600 font-medium">Total Orders</p>
+                              <p className="text-xs text-gray-500 mt-1">100% of all orders</p>
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
@@ -880,15 +877,15 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200 shadow-lg hover:shadow-xl transition-shadow">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="w-14 h-14 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                              <CheckCircle className="w-7 h-7 text-white" />
+                        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                              <CheckCircle className="w-5 h-5 text-white" />
                             </div>
                             <div className="text-right">
-                              <p className="text-4xl font-bold text-green-900">{analyticsData?.deliveredOrders || 0}</p>
-                              <p className="text-sm text-green-700 font-medium">Successful Orders</p>
-                              <p className="text-xs text-green-600 mt-1">{analyticsData?.completionRate.toFixed(1) || 0}% of total orders</p>
+                              <p className="text-2xl font-bold text-gray-900">{analyticsData?.deliveredOrders || 0}</p>
+                              <p className="text-sm text-gray-600 font-medium">Successful Orders</p>
+                              <p className="text-xs text-gray-500 mt-1">{analyticsData?.completionRate.toFixed(1) || 0}% of total orders</p>
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
@@ -902,15 +899,15 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200 shadow-lg hover:shadow-xl transition-shadow">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="w-14 h-14 bg-red-500 rounded-xl flex items-center justify-center shadow-md">
-                              <XCircle className="w-7 h-7 text-white" />
+                        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
+                              <XCircle className="w-5 h-5 text-white" />
                             </div>
                             <div className="text-right">
-                              <p className="text-4xl font-bold text-red-900">{analyticsData?.canceledOrders || 0}</p>
-                              <p className="text-sm text-red-700 font-medium">Canceled Orders</p>
-                              <p className="text-xs text-red-600 mt-1">
+                              <p className="text-2xl font-bold text-gray-900">{analyticsData?.canceledOrders || 0}</p>
+                              <p className="text-sm text-gray-600 font-medium">Canceled Orders</p>
+                              <p className="text-xs text-gray-500 mt-1">
                                 {analyticsData?.totalOrders ? ((analyticsData.canceledOrders / analyticsData.totalOrders) * 100).toFixed(1) : 0}% of total orders
                               </p>
                             </div>
@@ -928,15 +925,15 @@ const AdminAnalytics: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200 shadow-lg hover:shadow-xl transition-shadow">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="w-14 h-14 bg-purple-500 rounded-xl flex items-center justify-center shadow-md">
-                              <DollarSign className="w-7 h-7 text-white" />
+                        <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                              <DollarSign className="w-5 h-5 text-white" />
                             </div>
                             <div className="text-right">
-                              <p className="text-4xl font-bold text-purple-900">{analyticsData?.totalRevenue.toFixed(0) || 0}</p>
-                              <p className="text-sm text-purple-700 font-medium">Total Revenue (EGP)</p>
-                              <p className="text-xs text-purple-600 mt-1">Avg {analyticsData?.averageOrderValue.toFixed(0) || 0} EGP per order</p>
+                              <p className="text-2xl font-bold text-gray-900">{analyticsData?.totalRevenue.toFixed(0) || 0}</p>
+                              <p className="text-sm text-gray-600 font-medium">Total Revenue (EGP)</p>
+                              <p className="text-xs text-gray-500 mt-1">Avg {analyticsData?.averageOrderValue.toFixed(0) || 0} EGP per order</p>
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
@@ -952,24 +949,24 @@ const AdminAnalytics: React.FC = () => {
                       </div>
 
                       {/* Detailed Status Breakdown */}
-                      <div className="bg-gray-50 rounded-xl p-6">
-                        <h4 className="text-lg font-semibold text-gray-900 mb-4">Order Status Breakdown</h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="text-base font-semibold text-gray-900 mb-3">Order Status Breakdown</h4>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                           {analyticsData?.statusDistribution.map((statusData, index) => {
                             const percentage = analyticsData?.totalOrders ? (statusData.count / analyticsData.totalOrders) * 100 : 0
                             return (
-                              <div key={index} className="text-center p-4 bg-white rounded-lg border border-gray-200">
+                              <div key={index} className="text-center p-3 bg-white rounded-md border border-gray-200">
                                 <div 
-                                  className="w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center"
+                                  className="w-8 h-8 mx-auto mb-2 rounded-lg flex items-center justify-center"
                                   style={{ backgroundColor: statusData.color + '20' }}
                                 >
                                   <div 
-                                    className="w-6 h-6 rounded-lg"
+                                    className="w-4 h-4 rounded"
                                     style={{ backgroundColor: statusData.color }}
                                   ></div>
                                 </div>
-                                <p className="text-2xl font-bold text-gray-900">{statusData.count}</p>
-                                <p className="text-sm text-gray-600 mb-1">{statusData.status}</p>
+                                <p className="text-lg font-bold text-gray-900">{statusData.count}</p>
+                                <p className="text-xs text-gray-600 mb-1">{statusData.status}</p>
                                 <p className="text-xs text-gray-500">{percentage.toFixed(1)}%</p>
                               </div>
                             )
@@ -978,51 +975,51 @@ const AdminAnalytics: React.FC = () => {
                       </div>
 
                       {/* Financial Breakdown */}
-                      <div className="mt-6 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-8 border border-yellow-200 shadow-lg">
-                        <div className="flex items-center gap-3 mb-6">
-                          <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                            <DollarSign className="w-5 h-5 text-white" />
+                      <div className="mt-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center">
+                            <DollarSign className="w-4 h-4 text-white" />
                           </div>
-                          <h4 className="text-xl font-bold text-gray-900">Financial Analysis</h4>
+                          <h4 className="text-base font-semibold text-gray-900">Financial Analysis</h4>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                          <div className="text-center p-6 bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <DollarSign className="w-6 h-6 text-green-600" />
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
+                            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                              <DollarSign className="w-4 h-4 text-green-600" />
                             </div>
-                            <p className="text-3xl font-bold text-green-600">{analyticsData?.deliveredRevenue.toFixed(0) || 0}</p>
-                            <p className="text-sm text-gray-700 font-medium mb-2">Successful Revenue</p>
-                            <p className="text-xs text-green-600">
-                              {analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(1) : 0}% of total revenue
+                            <p className="text-xl font-bold text-gray-900">{analyticsData?.deliveredRevenue.toFixed(0) || 0}</p>
+                            <p className="text-xs text-gray-600 font-medium mb-1">Successful Revenue</p>
+                            <p className="text-xs text-gray-500">
+                              {analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(1) : 0}% of total
                             </p>
                           </div>
-                          <div className="text-center p-6 bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <Target className="w-6 h-6 text-blue-600" />
+                          <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                              <Target className="w-4 h-4 text-blue-600" />
                             </div>
-                            <p className="text-3xl font-bold text-blue-600">{analyticsData?.averageOrderValue.toFixed(0) || 0}</p>
-                            <p className="text-sm text-gray-700 font-medium mb-2">Average Order Value</p>
-                            <p className="text-xs text-blue-600">EGP per order</p>
+                            <p className="text-xl font-bold text-gray-900">{analyticsData?.averageOrderValue.toFixed(0) || 0}</p>
+                            <p className="text-xs text-gray-600 font-medium mb-1">Average Order Value</p>
+                            <p className="text-xs text-gray-500">EGP per order</p>
                           </div>
-                          <div className="text-center p-6 bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <Percent className="w-6 h-6 text-purple-600" />
+                          <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
+                            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                              <Percent className="w-4 h-4 text-purple-600" />
                             </div>
-                            <p className="text-3xl font-bold text-purple-600">
+                            <p className="text-xl font-bold text-gray-900">
                               {analyticsData?.totalRevenue ? ((analyticsData.deliveredRevenue / analyticsData.totalRevenue) * 100).toFixed(1) : 0}%
                             </p>
-                            <p className="text-sm text-gray-700 font-medium mb-2">Revenue Achievement Rate</p>
-                            <p className="text-xs text-purple-600">of total revenue</p>
+                            <p className="text-xs text-gray-600 font-medium mb-1">Revenue Achievement</p>
+                            <p className="text-xs text-gray-500">of total revenue</p>
                           </div>
-                          <div className="text-center p-6 bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <CheckCircle className="w-6 h-6 text-orange-600" />
+                          <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
+                            <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                              <CheckCircle className="w-4 h-4 text-orange-600" />
                             </div>
-                            <p className="text-3xl font-bold text-orange-600">
+                            <p className="text-xl font-bold text-gray-900">
                               {analyticsData?.completionRate.toFixed(1) || 0}%
                             </p>
-                            <p className="text-sm text-gray-700 font-medium mb-2">Success Rate</p>
-                            <p className="text-xs text-orange-600">successful orders</p>
+                            <p className="text-xs text-gray-600 font-medium mb-1">Success Rate</p>
+                            <p className="text-xs text-gray-500">successful orders</p>
                           </div>
                         </div>
                       </div>
