@@ -13,6 +13,8 @@ import UploadOrders from "./components/Admin/UploadOrders"
 import OrdersManagement from "./components/Admin/OrdersManagement"
 import OrdersList from "./components/Courier/OrdersList"
 import CourierYourSheet from "./components/Courier/YourSheet"
+import Analytics from "./components/Courier/TestAnalytics"
+import AdminAnalytics from "./components/Admin/AdminAnalytics"
 import CouriersManagement from "./components/Admin/CouriersManagement"
 import CourierFeesManagement from "./components/Admin/CourierFeesManagement"
 import Reports from "./components/Admin/reports"
@@ -103,6 +105,16 @@ const AppRoutes: React.FC = () => {
             }
           />
           <Route
+            path="/admin/analytics"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AppLayout>
+                  <AdminAnalytics />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/upload"
             element={
               <ProtectedRoute allowedRoles={["admin"]}>
@@ -178,6 +190,16 @@ const AppRoutes: React.FC = () => {
               <ProtectedRoute allowedRoles={["courier"]}>
                 <AppLayout>
                   <CourierYourSheet />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/courier/analytics"
+            element={
+              <ProtectedRoute allowedRoles={["courier"]}>
+                <AppLayout>
+                  <Analytics />
                 </AppLayout>
               </ProtectedRoute>
             }

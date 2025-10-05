@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sidebar Debug Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .step {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .code {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug: مشكلة عدم ظهور التحليلات في القائمة الجانبية</h1>
+        
+        <div class="error">
+            <h3>❌ المشكلة: لا تظهر "التحليلات" في القائمة الجانبية</h3>
+            <p>دعنا نحل هذه المشكلة خطوة بخطوة...</p>
+        </div>
+
+        <div class="step">
+            <h3>🔧 الحل السريع - جرب هذا أولاً:</h3>
+            <ol>
+                <li><strong>تأكد من تسجيل الدخول كمندوب:</strong>
+                    <div class="code">- اذهب إلى: http://localhost:5174/login<br>- سجل دخولك بحساب مندوب (role: "courier")<br>- وليس بحساب مدير (role: "admin")</div>
+                </li>
+                <li><strong>امسح ذاكرة التخزين المؤقت:</strong>
+                    <div class="code">- اضغط Ctrl + Shift + R<br>- أو افتح نافذة متصفح جديدة في وضع التصفح الخفي</div>
+                </li>
+                <li><strong>تحقق من المسار:</strong>
+                    <div class="code">- يجب أن تكون في: http://localhost:5174/courier<br>- وليس في: http://localhost:5174/admin</div>
+                </li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>🧪 اختبار مباشر:</h3>
+            <p>جرب الوصول مباشرة لصفحة التحليلات:</p>
+            <div class="code">
+                <a href="http://localhost:5174/courier/analytics" target="_blank" style="color: #60a5fa;">
+                    http://localhost:5174/courier/analytics
+                </a>
+            </div>
+            <p><strong>إذا عمل هذا الرابط:</strong> المشكلة في القائمة الجانبية فقط<br>
+            <strong>إذا لم يعمل:</strong> هناك مشكلة في المكون نفسه</p>
+        </div>
+
+        <div class="step">
+            <h3>🔍 فحص وحدة التحكم (Console):</h3>
+            <ol>
+                <li>اضغط <code>F12</code> لفتح Developer Tools</li>
+                <li>اذهب إلى تبويب <strong>Console</strong></li>
+                <li>ابحث عن أي أخطاء (خطوط حمراء)</li>
+                <li>إذا وجدت أخطاء، أرسل لنا لقطة شاشة</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>🔄 إعادة تشغيل الخادم:</h3>
+            <p>إذا لم تنجح الحلول أعلاه:</p>
+            <div class="code">
+                1. في Terminal، اضغط Ctrl + C لإيقاف الخادم<br>
+                2. شغل: npm run dev<br>
+                3. انتظر حتى يبدأ الخادم<br>
+                4. امسح ذاكرة التخزين المؤقت<br>
+                5. حدث الصفحة
+            </div>
+        </div>
+
+        <div class="warning">
+            <h3>⚠️ تحقق من دور المستخدم:</h3>
+            <p>التحليلات تظهر فقط للمندوبين. للتحقق من دورك:</p>
+            <div class="code">
+                1. اضغط F12<br>
+                2. اذهب إلى Application > Local Storage<br>
+                3. ابحث عن بيانات المستخدم<br>
+                4. تحقق من أن role = "courier"<br>
+                5. إذا كان role = "admin"، سجل دخولك كمندوب
+            </div>
+        </div>
+
+        <div class="success">
+            <h3>✅ الحلول المقترحة بالترتيب:</h3>
+            <ol>
+                <li><strong>تأكد من تسجيل الدخول كمندوب</strong> (الأهم!)</li>
+                <li><strong>امسح ذاكرة التخزين المؤقت</strong> (Ctrl + Shift + R)</li>
+                <li><strong>تحقق من المسار</strong> (/courier وليس /admin)</li>
+                <li><strong>جرب الرابط المباشر</strong> للتحليلات</li>
+                <li><strong>تحقق من وحدة التحكم</strong> للأخطاء</li>
+                <li><strong>أعد تشغيل الخادم</strong> إذا لزم الأمر</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>📞 إذا استمرت المشكلة:</h3>
+            <p>أرسل لنا:</p>
+            <ul>
+                <li>لقطة شاشة من القائمة الجانبية</li>
+                <li>لقطة شاشة من وحدة التحكم (Console)</li>
+                <li>دور المستخدم الحالي (courier أم admin)</li>
+                <li>الرابط الذي تستخدمه</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

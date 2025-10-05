@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .feature-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .feature-card h3 {
+            color: #1e40af;
+            margin-top: 0;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .feature-list li:before {
+            content: "✓";
+            color: #10b981;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .chart-preview {
+            background: #f1f5f9;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            color: #64748b;
+            margin: 20px 0;
+        }
+        .status {
+            background: #dcfce7;
+            color: #166534;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 صفحة التحليلات - CourierPro</h1>
+            <p>تحليلات مفصلة وشاملة لأداء المندوبين</p>
+        </div>
+
+        <div class="status">
+            ✅ تم إنشاء صفحة التحليلات بنجاح! يمكنك الآن الوصول إليها من القائمة الجانبية
+        </div>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>📈 المقاييس الرئيسية</h3>
+                <ul class="feature-list">
+                    <li>إجمالي الطلبات</li>
+                    <li>الطلبات المسلمة</li>
+                    <li>معدل الإنجاز</li>
+                    <li>إجمالي الإيرادات</li>
+                    <li>متوسط قيمة الطلب</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>📊 الرسوم البيانية</h3>
+                <ul class="feature-list">
+                    <li>رسم بياني للطلبات اليومية</li>
+                    <li>رسم دائري لتوزيع الحالات</li>
+                    <li>رسم بياني لطرق الدفع</li>
+                    <li>رسم بياني للمناطق</li>
+                    <li>رسوم بيانية تفاعلية</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>🔍 التصفية والبحث</h3>
+                <ul class="feature-list">
+                    <li>تصفية حسب الفترة الزمنية</li>
+                    <li>آخر 7 أيام / 30 يوم / 90 يوم</li>
+                    <li>فترة مخصصة</li>
+                    <li>تصدير البيانات</li>
+                    <li>تحديث فوري</li>
+                </ul>
+            </div>
+
+            <div class="feature-card">
+                <h3>📋 التحليلات التفصيلية</h3>
+                <ul class="feature-list">
+                    <li>توزيع حالات الطلبات</li>
+                    <li>إحصائيات طرق الدفع</li>
+                    <li>أهم المناطق</li>
+                    <li>مقاييس الأداء</li>
+                    <li>مقارنة شهرية</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="chart-preview">
+            <h3>📊 معاينة الرسوم البيانية</h3>
+            <p>ستظهر هنا الرسوم البيانية التفاعلية باستخدام مكتبة Recharts</p>
+            <p>• رسم أعمدة للطلبات اليومية</p>
+            <p>• رسم دائري لتوزيع الحالات</p>
+            <p>• رسم خطي للاتجاهات</p>
+            <p>• رسم منطقة للإيرادات</p>
+        </div>
+
+        <div class="feature-card">
+            <h3>🚀 الميزات المتقدمة</h3>
+            <ul class="feature-list">
+                <li>واجهة مستخدم عربية كاملة</li>
+                <li>تصميم متجاوب للهواتف</li>
+                <li>ألوان مميزة لكل حالة</li>
+                <li>أيقونات تعبيرية</li>
+                <li>تحديث البيانات في الوقت الفعلي</li>
+                <li>تصدير البيانات بصيغة JSON</li>
+                <li>عرض مفصل وعرض عام</li>
+                <li>مقاييس الأداء المحسوبة</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px; padding: 20px; background: #eff6ff; border-radius: 8px;">
+            <h3 style="color: #1e40af; margin-top: 0;">🎯 كيفية الوصول للتحليلات</h3>
+            <p>1. سجل دخولك كـ <strong>مندوب</strong></p>
+            <p>2. اذهب إلى القائمة الجانبية</p>
+            <p>3. اضغط على <strong>"التحليلات"</strong></p>
+            <p>4. استمتع بالتحليلات المفصلة! 🎉</p>
+        </div>
+    </div>
+</body>
+</html>

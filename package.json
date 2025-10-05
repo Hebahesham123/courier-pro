@@ -25,7 +25,7 @@
     "react-dom": "^18.3.1",
     "react-movable": "^3.4.1",
     "react-router-dom": "^6.20.1",
-    "recharts": "^3.1.0",
+    "recharts": "^3.2.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

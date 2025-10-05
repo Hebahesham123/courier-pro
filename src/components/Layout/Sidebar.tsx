@@ -123,6 +123,13 @@ const Sidebar: React.FC = () => {
       color: "text-yellow-400",
       description: "Manage customer general requests",
     },
+    {
+      path: "/admin/analytics",
+      icon: BarChart3,
+      label: "التحليلات",
+      color: "text-orange-400",
+      description: "تحليلات مفصلة لجميع المندوبين",
+    },
   ]
 
   const courierMenuItems: MenuItem[] = [
@@ -146,6 +153,13 @@ const Sidebar: React.FC = () => {
       label: t("ورقة الطلبات") || "ورقة الطلبات",
       color: "text-purple-400",
       description: "جدول الطلبات الخاص بي",
+    },
+    {
+      path: "/courier/analytics",
+      icon: BarChart3,
+      label: "التحليلات",
+      color: "text-orange-400",
+      description: "تحليلات مفصلة لأداء التوصيل",
     },
   ]
 
