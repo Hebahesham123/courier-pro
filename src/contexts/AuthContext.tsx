@@ -336,77 +336,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null)
   }
 
-  // Global subscription for all order changes (for notifications)
+  // Targeted subscription for important order changes only (for notifications)
   useEffect(() => {
     if (!user) return // Only subscribe when user is logged in
     
-    addDebugInfo("Setting up global order subscription for notifications")
+    addDebugInfo("Setting up targeted order subscription for notifications")
 
     const globalSubscription = supabase
-      .channel("global_orders_changes")
+      .channel("important_orders_changes")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "orders",
         },
         async (payload: any) => {
           addDebugInfo(
-            `Global order change detected: ${payload.eventType} for order ${payload.new?.order_id || payload.old?.order_id}`,
+            `New order detected: ${payload.new?.order_id} - ${payload.new?.customer_name}`,
           )
 
           try {
-            if (payload.eventType === "INSERT") {
+            // Only notify for new orders, not edits
+            await addNotification(
+              `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
+              "new",
+              payload.new.order_id,
+              payload.new.assigned_courier_id,
+            )
+          } catch (error) {
+            console.error("Error processing new order notification:", error)
+            addDebugInfo(`Error processing new order notification: ${error}`)
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "orders",
+          filter: "status=neq.status", // Only trigger when status actually changes
+        },
+        async (payload: any) => {
+          addDebugInfo(
+            `Status change detected for order: ${payload.new?.order_id}`,
+          )
+
+          try {
+            const oldStatus = payload.old?.status as string | undefined
+            const newStatus = payload.new?.status as string
+
+            if (oldStatus !== newStatus) {
+              const oldLabel = getStatusLabel(oldStatus || "غير محدد")
+              const newLabel = getStatusLabel(newStatus)
               await addNotification(
-                `طلب جديد #${payload.new.order_id} - ${payload.new.customer_name}`,
-                "new",
+                `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
+                "status_change",
                 payload.new.order_id,
                 payload.new.assigned_courier_id,
               )
-            } else if (payload.eventType === "UPDATE") {
-              const oldStatus = payload.old?.status as string | undefined
-              const newStatus = payload.new?.status as string
-              const oldUpdatedAt = payload.old?.updated_at as string
-              const newUpdatedAt = payload.new?.updated_at as string
-
-              if (oldStatus !== newStatus) {
-                const oldLabel = getStatusLabel(oldStatus || "غير محدد")
-                const newLabel = getStatusLabel(newStatus)
-                await addNotification(
-                  `تغيير حالة الطلب #${payload.new.order_id} من ${oldLabel} إلى ${newLabel}`,
-                  "status_change",
-                  payload.new.order_id,
-                  payload.new.assigned_courier_id,
-                )
-              } else if (newUpdatedAt !== oldUpdatedAt) {
-                await addNotification(
-                  `تم تعديل الطلب #${payload.new.order_id}`,
-                  "order_edit",
-                  payload.new.order_id,
-                  payload.new.assigned_courier_id,
-                )
-              } else {
-                await addNotification(
-                  `تم تحديث الطلب #${payload.new.order_id} - ${payload.new.customer_name}`,
-                  "update",
-                  payload.new.order_id,
-                  payload.new.assigned_courier_id,
-                )
-              }
             }
           } catch (error) {
-            console.error("Error processing notification:", error)
-            addDebugInfo(`Error processing notification: ${error}`)
+            console.error("Error processing status change notification:", error)
+            addDebugInfo(`Error processing status change notification: ${error}`)
           }
         },
       )
       .subscribe((status) => {
-        addDebugInfo(`Global subscription status: ${status}`)
+        addDebugInfo(`Targeted subscription status: ${status}`)
       })
 
     return () => {
-      addDebugInfo("Unsubscribing from global order changes")
+      addDebugInfo("Unsubscribing from targeted order changes")
       globalSubscription.unsubscribe()
     }
   }, [user, addNotification]) // Only re-subscribe when user changes or addNotification changes

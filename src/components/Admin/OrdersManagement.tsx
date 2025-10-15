@@ -448,6 +448,15 @@ const OrdersManagement: React.FC = () => {
 
       if (error) throw error
 
+      // Update local state instead of refetching all orders
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          order.id === orderId
+            ? { ...order, ...changes, updated_at: new Date().toISOString() }
+            : order
+        )
+      )
+
       setSuccessMessage("Changes saved successfully / تم حفظ التغييرات بنجاح")
       setOrderEdits((prev) => {
         const copy = { ...prev }
@@ -455,7 +464,6 @@ const OrdersManagement: React.FC = () => {
         return copy
       })
       setEditingOrder(null)
-      fetchOrders()
     } catch (error: any) {
       setError("Failed to save changes / فشل حفظ التغييرات: " + error.message)
     }
@@ -493,7 +501,20 @@ const OrdersManagement: React.FC = () => {
         if (error) throw error
       }
 
-      await fetchOrders()
+      // Update local state instead of refetching all orders
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          selectedOrders.includes(order.id)
+            ? {
+                ...order,
+                assigned_courier_id: selectedCourier,
+                status: "assigned",
+                courier_name: couriers.find((c) => c.id === selectedCourier)?.name || undefined,
+              }
+            : order
+        )
+      )
+
       setSelectedOrders([])
       setSelectedCourier("")
       setSuccessMessage(
@@ -539,7 +560,11 @@ const OrdersManagement: React.FC = () => {
         if (error) throw error
       }
 
-      await fetchOrders()
+      // Update local state instead of refetching all orders
+      setOrders((prevOrders) =>
+        prevOrders.filter((order) => !selectedOrders.includes(order.id))
+      )
+
       setSelectedOrders([])
       setShowArchiveConfirm(false)
       setSuccessMessage(
@@ -582,7 +607,21 @@ const OrdersManagement: React.FC = () => {
         if (error) throw error
       }
 
-      await fetchOrders()
+      // Update local state instead of refetching all orders
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          selectedOrders.includes(order.id)
+            ? {
+                ...order,
+                archived: false,
+                archived_at: undefined,
+                assigned_courier_id: order.original_courier_id || null,
+                courier_name: couriers.find((c) => c.id === order.original_courier_id)?.name || undefined,
+              }
+            : order
+        )
+      )
+
       setSelectedOrders([])
       setSuccessMessage(
         `Successfully restored ${selectedOrders.length} orders / تم استعادة ${selectedOrders.length} طلبات بنجاح`,
@@ -608,7 +647,11 @@ const OrdersManagement: React.FC = () => {
 
       if (error) throw error
 
-      await fetchOrders()
+      // Update local state instead of refetching all orders
+      setOrders((prevOrders) =>
+        prevOrders.filter((order) => !selectedOrders.includes(order.id))
+      )
+
       setSelectedOrders([])
       setShowDeleteConfirm(false)
       setSuccessMessage(
