@@ -148,6 +148,7 @@ const AdminAnalytics: React.FC = () => {
     end: new Date().toISOString().split("T")[0], // today
     preset: "" as string
   })
+  const [refreshKey, setRefreshKey] = useState(0)
   const [selectedPeriod, setSelectedPeriod] = useState<"7d" | "30d" | "90d" | "custom">("30d")
   const [chartType, setChartType] = useState<"bar" | "line" | "area">("bar")
   const [viewMode, setViewMode] = useState<"overview" | "detailed" | "orders">("overview")
@@ -480,6 +481,11 @@ const AdminAnalytics: React.FC = () => {
   useEffect(() => {
     filterOrders()
   }, [filterOrders])
+
+  // Auto-refresh courier overview when date range changes
+  useEffect(() => {
+    setRefreshKey(prev => prev + 1)
+  }, [dateRange.start, dateRange.end])
 
   const filteredCouriers = couriers.filter(courier =>
     courier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1344,12 +1350,39 @@ const AdminAnalytics: React.FC = () => {
             ) : (
               <div className="space-y-6">
                 {/* All Couriers Overview */}
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-6">نظرة عامة على جميع المندوبين</h3>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-gray-900">All Couriers Overview</h3>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                        {dateRange.start} - {dateRange.end}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setRefreshKey(prev => prev + 1)
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                        title="Refresh data"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6" key={refreshKey}>
                     {couriers.map((courier: Courier) => {
-                      // Calculate basic stats for each courier (simplified for now)
-                      const courierOrders = orders.filter(order => order.assigned_courier_id === courier.id)
+                      // Calculate basic stats for each courier with date filtering
+                      const courierOrders = orders.filter(order => {
+                        if (order.assigned_courier_id !== courier.id) return false
+                        
+                        // Apply date range filter
+                        const orderDate = new Date(order.created_at)
+                        const startDate = new Date(dateRange.start)
+                        const endDate = new Date(dateRange.end)
+                        endDate.setHours(23, 59, 59, 999) // Include the entire end date
+                        
+                        return orderDate >= startDate && orderDate <= endDate
+                      })
                       const totalOrders = courierOrders.length
                       const deliveredOrders = courierOrders.filter(o => o.status === "delivered").length
                       const partialOrders = courierOrders.filter(o => o.status === "partial").length
@@ -1379,52 +1412,52 @@ const AdminAnalytics: React.FC = () => {
                               <div className="mt-2">
                                 <div className="flex items-center gap-2">
                                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                  <span className="text-xs text-green-600 font-medium">معدل النجاح: {completionRate.toFixed(1)}%</span>
+                                  <span className="text-xs text-green-600 font-medium">Success Rate: {completionRate.toFixed(1)}%</span>
                                 </div>
                               </div>
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                              <p className="text-3xl font-bold text-blue-600">{totalOrders}</p>
-                              <p className="text-sm text-gray-700 font-medium">إجمالي الطلبات</p>
-                              <p className="text-xs text-blue-600 mt-1">100%</p>
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="text-center p-3 bg-blue-50 rounded-md border border-blue-200">
+                              <p className="text-xl font-bold text-blue-600">{totalOrders}</p>
+                              <p className="text-xs text-gray-600 font-medium">Total Orders</p>
+                              <p className="text-xs text-blue-500 mt-1">100%</p>
                             </div>
-                            <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
-                              <p className="text-3xl font-bold text-green-600">{successfulOrders}</p>
-                              <p className="text-sm text-gray-700 font-medium">تم التوصيل والجزئي</p>
-                              <p className="text-xs text-green-600 mt-1">{completionRate.toFixed(1)}%</p>
+                            <div className="text-center p-3 bg-green-50 rounded-md border border-green-200">
+                              <p className="text-xl font-bold text-green-600">{successfulOrders}</p>
+                              <p className="text-xs text-gray-600 font-medium">Successful</p>
+                              <p className="text-xs text-green-500 mt-1">{completionRate.toFixed(1)}%</p>
                             </div>
-                            <div className="text-center p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
-                              <p className="text-3xl font-bold text-red-600">{canceledOrders}</p>
-                              <p className="text-sm text-gray-700 font-medium">ملغاة</p>
-                              <p className="text-xs text-red-600 mt-1">{totalOrders > 0 ? ((canceledOrders / totalOrders) * 100).toFixed(1) : 0}%</p>
+                            <div className="text-center p-3 bg-red-50 rounded-md border border-red-200">
+                              <p className="text-xl font-bold text-red-600">{canceledOrders}</p>
+                              <p className="text-xs text-gray-600 font-medium">Canceled</p>
+                              <p className="text-xs text-red-500 mt-1">{totalOrders > 0 ? ((canceledOrders / totalOrders) * 100).toFixed(1) : 0}%</p>
                             </div>
-                            <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
-                              <p className="text-3xl font-bold text-purple-600">{totalRevenue.toFixed(0)}</p>
-                              <p className="text-sm text-gray-700 font-medium">إيرادات (ج.م)</p>
-                              <p className="text-xs text-purple-600 mt-1">متوسط {totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(0) : 0} ج.م</p>
+                            <div className="text-center p-3 bg-purple-50 rounded-md border border-purple-200">
+                              <p className="text-xl font-bold text-purple-600">{totalRevenue.toFixed(0)}</p>
+                              <p className="text-xs text-gray-600 font-medium">Revenue (EGP)</p>
+                              <p className="text-xs text-purple-500 mt-1">Avg {totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(0) : 0} EGP</p>
                             </div>
                           </div>
 
-                          <div className="bg-gray-50 rounded-lg p-4">
-                            <h5 className="text-sm font-semibold text-gray-700 mb-3">تفصيل الحالات</h5>
+                          <div className="bg-gray-50 rounded-md p-3">
+                            <h5 className="text-xs font-semibold text-gray-700 mb-2">Status Details</h5>
                             <div className="grid grid-cols-2 gap-3 text-xs">
                               <div className="flex justify-between items-center">
-                                <span className="text-gray-600">جزئي:</span>
+                                <span className="text-gray-600">Partial:</span>
                                 <span className="font-medium text-orange-600">{partialOrders} ({totalOrders > 0 ? ((partialOrders / totalOrders) * 100).toFixed(1) : 0}%)</span>
                               </div>
                               <div className="flex justify-between items-center">
-                                <span className="text-gray-600">مرتجع:</span>
+                                <span className="text-gray-600">Returned:</span>
                                 <span className="font-medium text-purple-600">{returnedOrders} ({totalOrders > 0 ? ((returnedOrders / totalOrders) * 100).toFixed(1) : 0}%)</span>
                               </div>
                               <div className="flex justify-between items-center">
-                                <span className="text-gray-600">استبدال:</span>
+                                <span className="text-gray-600">Hand to Hand:</span>
                                 <span className="font-medium text-cyan-600">{courierOrders.filter(o => o.status === "hand_to_hand").length} ({totalOrders > 0 ? ((courierOrders.filter(o => o.status === "hand_to_hand").length / totalOrders) * 100).toFixed(1) : 0}%)</span>
                               </div>
                               <div className="flex justify-between items-center">
-                                <span className="text-gray-600">بطاقة:</span>
+                                <span className="text-gray-600">Card:</span>
                                 <span className="font-medium text-blue-600">{courierOrders.filter(o => o.status === "card").length} ({totalOrders > 0 ? ((courierOrders.filter(o => o.status === "card").length / totalOrders) * 100).toFixed(1) : 0}%)</span>
                               </div>
                             </div>

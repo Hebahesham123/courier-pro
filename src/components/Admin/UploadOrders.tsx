@@ -31,7 +31,7 @@ interface OrderData {
   billing_city: string
   mobile_number: string
   total_order_fees: number
-  payment_method: "cash" | "card" | "valu" | "partial" | "paid"
+  payment_method: "cash" | "card" | "valu" | "partial" | "paid" | "paymob"
   payment_status: "paid" | "pending" | "cod" // New field to track payment status
   financial_status?: string // New field for financial status
   notes?: string
@@ -40,17 +40,25 @@ interface OrderData {
 // Improved payment method normalization with Paymob and other gateways
 const normalizePayment = (
   value: string,
-): { method: "cash" | "card" | "valu" | "partial" | "paid"; status: "paid" | "pending" | "cod" } => {
+): { method: "cash" | "card" | "valu" | "partial" | "paid" | "paymob"; status: "paid" | "pending" | "cod" } => {
   const v = value?.toLowerCase() || ""
 
-  // Check for specific payment methods that are always paid
+  // Check for Paymob and installment payment methods (these are always paid and should be categorized as paymob)
+  if (v.includes("paymob") || v.includes("pay mob")) return { method: "paymob", status: "paid" }
+  if (v.includes("visa") || v.includes("credit") || v.includes("mastercard") || v.includes("master")) 
+    return { method: "paymob", status: "paid" }
+  if (v.includes("sympl")) return { method: "paymob", status: "paid" }
+  if (v.includes("installment") || v.includes("installments")) return { method: "paymob", status: "paid" }
+  
+  // Check for ValU (separate from Paymob)
   if (v.includes("valu")) return { method: "valu", status: "paid" }
-  if (v.includes("visa") || v.includes("card") || v.includes("credit") || v.includes("mastercard"))
+  
+  // Check for other specific payment methods
+  if (v.includes("card") && !v.includes("visa") && !v.includes("mastercard") && !v.includes("credit")) 
     return { method: "card", status: "paid" }
   if (v.includes("partial")) return { method: "partial", status: "paid" }
 
-  // Check for payment gateways (these are always paid)
-  if (v.includes("paymob") || v.includes("pay mob")) return { method: "paid", status: "paid" }
+  // Check for other payment gateways (these are always paid)
   if (v.includes("fawry")) return { method: "paid", status: "paid" }
   if (v.includes("paypal")) return { method: "paid", status: "paid" }
   if (v.includes("stripe")) return { method: "paid", status: "paid" }
@@ -357,6 +365,7 @@ const UploadOrders: React.FC = () => {
       valu: "bg-purple-100 text-purple-800 border-purple-200",
       partial: "bg-yellow-100 text-yellow-800 border-yellow-200",
       paid: "bg-green-100 text-green-800 border-green-200",
+      paymob: "bg-green-100 text-green-800 border-green-200",
     }
     return (
       <span
@@ -640,8 +649,19 @@ const UploadOrders: React.FC = () => {
                 <div className="flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
                   <span>
-                    <strong>Paid:</strong> Paymob, Fawry, Visa, Card, ValU, Vodafone Cash, Orange Cash, InstaPay,
-                    PayPal, Stripe
+                    <strong>Paymob (Paid):</strong> Paymob, Visa, Credit, Mastercard, Sympl, Installment
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>
+                    <strong>ValU (Paid):</strong> ValU payments
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 mt-0.5 text-blue-600" />
+                  <span>
+                    <strong>Other Paid:</strong> Fawry, Card, Vodafone Cash, Orange Cash, InstaPay, PayPal, Stripe
                   </span>
                 </div>
                 <div className="flex items-start gap-2">

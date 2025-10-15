@@ -307,7 +307,7 @@ const OrdersManagement: React.FC = () => {
       paymob: "bg-green-100 text-green-800 border-green-200",
       fawry: "bg-green-100 text-green-800 border-green-200",
     }
-    const displayMethod = method === "paid" ? "Paid Online" : method
+    const displayMethod = method === "paid" ? "Paid Online" : method === "paymob" ? "Paymob" : method
     return (
       <span
         className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${colors[method as keyof typeof colors] || colors.paid}`}
